@@ -38,13 +38,13 @@ export async function POST(request:Request){
     if(supabase&&batchId){
       await supabase.from("submission_targets").insert({
         batch_id:batchId,url,status:result.status,message:result.message,
-        detected_fields:result.detectedFields??[],submitted_at:result.status==="success"?new Date().toISOString():null
+        detected_fields:result.detectedFields??[],submitted_at:["success","submitted_unverified"].includes(result.status)?new Date().toISOString():null
       });
     }
   }
   if(supabase&&batchId){
-    const success=results.filter(r=>r.status==="success").length;
-    await supabase.from("submission_batches").update({status:success===results.length?"completed":"completed_with_issues"}).eq("id",batchId);
+    const sent=results.filter(r=>["success","submitted_unverified"].includes(r.status)).length;
+    await supabase.from("submission_batches").update({status:sent+results.filter(r=>r.status==="captcha_required").length===results.length?"completed":"completed_with_issues"}).eq("id",batchId);
   }
   return NextResponse.json({batchId,dryRun,results});
 }
