@@ -42,6 +42,7 @@ async function inspect(page:Page){
 }
 async function detectChallenge(page:Page){
   return page.evaluate((pattern)=>{
+    const re=new RegExp(pattern,"i");
     const visible=(el:Element)=>{
       const node=el as HTMLElement;
       const style=getComputedStyle(node);
@@ -52,8 +53,8 @@ async function detectChallenge(page:Page){
     return elements.some(el=>{
       if(!visible(el))return false;
       const text=[el.textContent||"",el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("id")||"",el.getAttribute("class")||"",el.getAttribute("name")||"",el.getAttribute("data-sitekey")||""].join(" ");
-      return pattern.test(text);
-    }) || pattern.test(document.body?.innerText||"");
+      return re.test(text);
+    }) || re.test(document.body?.innerText||"");
   },challengePattern.source);
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
@@ -97,7 +98,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     let best={formIndex:0,mapping:[] as Array<{key:MappingKey;controlIndex:number;score:number}>};
     for(const form of forms){
       const used=new Set<number>();
-      const mapping:(Array<{key:MappingKey;controlIndex:number;score:number}>)=[];
+      const mapping:Array<{key:MappingKey;controlIndex:number;score:number}>=[];
       const keys=(Object.keys(aliases) as MappingKey[]).sort((a,b)=>a==="fullName"?1:b==="fullName"?-1:0);
       for(const key of keys){
         let bestMatch={controlIndex:-1,score:0};
