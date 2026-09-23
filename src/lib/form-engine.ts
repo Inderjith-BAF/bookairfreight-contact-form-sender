@@ -22,17 +22,24 @@ function scoreField(field:{tag:string;type:string;name:string;id:string;placehol
   return score;
 }
 async function inspect(page:Page){
-  return page.evaluate(()=>Array.from(document.forms).map((form,formIndex)=>{
-    const controls=Array.from(form.querySelectorAll("input,textarea,select")).filter((el:any)=>{
-      const type=(el.type||"").toLowerCase();
-      return !el.disabled&&!["hidden","submit","button","reset","file","image","checkbox","radio"].includes(type);
-    }).map((el:any)=>({tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||""}));
-    return {formIndex,controls};
-  }));
+  return page.evaluate(()=>{
+    const forms=Array.from(document.forms);
+    forms.forEach((form,i)=>form.setAttribute("data-baf-form",String(i)));
+    return forms.map((form,formIndex)=>{
+      const controls=Array.from(form.querySelectorAll("input,textarea,select")).filter((el:any)=>{
+        const type=(el.type||"").toLowerCase();
+        return !el.disabled&&!["hidden","submit","button","reset","file","image","checkbox","radio"].includes(type);
+      }).map((el:any,index)=>{
+        el.setAttribute("data-baf-control",String(index));
+        return {tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||""};
+      });
+      return {formIndex,controls};
+    });
+  });
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
-  const handles=await page.$$(`form:nth-of-type(${formIndex+1}) input, form:nth-of-type(${formIndex+1}) textarea, form:nth-of-type(${formIndex+1}) select`);
-  const handle=handles[controlIndex]; if(!handle)return false;
+  const handle=await page.$(`form[data-baf-form="${formIndex}"] [data-baf-control="${controlIndex}"]`);
+  if(!handle)return false;
   await handle.evaluate((el:any,nextValue:string)=>{
     const proto=el.tagName==="TEXTAREA"?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
     const setter=Object.getOwnPropertyDescriptor(proto,"value")?.set;
@@ -44,11 +51,13 @@ async function fillField(page:Page,formIndex:number,controlIndex:number,value:st
   await handle.dispose(); return true;
 }
 async function submitForm(page:Page,formIndex:number){
-  const forms=await page.$$("form"); const form=forms[formIndex]; if(!form)throw new Error("Target form disappeared.");
+  const form=await page.$(`form[data-baf-form="${formIndex}"]`);
+  if(!form)throw new Error("Target form disappeared.");
   const submitter=await form.$('button[type="submit"],input[type="submit"],button:not([type]),button');
+  const navigation=page.waitForNavigation({waitUntil:"domcontentloaded",timeout:12000}).catch(()=>null);
   if(submitter){try{await submitter.click({delay:30});}catch{await form.evaluate((el:any)=>el.requestSubmit());}}
   else await form.evaluate((el:any)=>el.requestSubmit());
-  await Promise.race([page.waitForNavigation({waitUntil:"domcontentloaded",timeout:12000}).catch(()=>null),new Promise(resolve=>setTimeout(resolve,4000))]);
+  await Promise.race([navigation,new Promise(resolve=>setTimeout(resolve,4000))]);
 }
 async function successSignal(page:Page,beforeUrl:string){
   const currentUrl=page.url();
