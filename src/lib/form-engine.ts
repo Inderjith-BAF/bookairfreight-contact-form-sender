@@ -103,7 +103,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     const forms=await inspect(page);
     if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
     const challenge=await detectChallenge(page);
-    if(challenge)return{url,status:"captcha_required",message:"CAPTCHA or anti-bot challenge detected. Manual completion is required."};
+    if(challenge)return{url,status:"captcha_required",message:"CAPTCHA or anti-bot challenge detected. Submission skipped and added to the CAPTCHA queue."};
     let best:{formIndex:number;mapping:Array<{key:MappingKey;controlIndex:number;score:number}>}|null=null;
     for(const form of forms){
       const used=new Set<number>();
@@ -127,11 +127,11 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
       if(value)await fillField(page,best.formIndex,item.controlIndex,value);
     }
     if(dryRun)return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields};
-    if(await detectChallenge(page))return{url,status:"captcha_required",message:"An anti-bot challenge appeared before submission. Nothing was submitted.",detectedFields};
+    if(await detectChallenge(page))return{url,status:"captcha_required",message:"An anti-bot challenge appeared before submission. Submission skipped and added to the CAPTCHA queue.",detectedFields};
     const beforeUrl=page.url();
     await submitForm(page,best.formIndex);
     const success=await successSignal(page,beforeUrl);
-    return{url,status:success?"success":"failed",message:success?"Form submitted and a success signal was detected.":"The form was submitted, but a success confirmation could not be verified.",detectedFields};
+    return{url,status:success?"success":"submitted_unverified",message:success?"Form submitted and a success signal was detected.":"Form was submitted, but a success confirmation could not be verified. Treat as sent and review if needed.",detectedFields};
   }catch(error){return{url,status:"failed",message:error instanceof Error?error.message:"Browser automation failed."};}
   finally{await browser.close().catch(()=>undefined);}
 }
