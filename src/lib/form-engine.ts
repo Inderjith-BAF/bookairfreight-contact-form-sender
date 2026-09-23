@@ -1,5 +1,6 @@
 import type { Page } from "puppeteer-core";
 import { launchBrowser } from "@/lib/browser";
+import { assertSafeTargetUrl } from "@/lib/url-safety";
 import type { SenderDetails, SubmissionResult } from "@/types/submission";
 
 type MappingKey=keyof SenderDetails|"fullName";
@@ -62,8 +63,7 @@ async function detectChallenge(page:Page){
       const text=[el.textContent||"",el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("aria-label")||"",el.getAttribute("data-sitekey")||"",el.getAttribute("role")||""].join(" ");
       return re.test(text);
     });
-    const visibleText=document.body?.innerText||"";
-    return elementChallenge||textRe.test(visibleText);
+    return elementChallenge||textRe.test(document.body?.innerText||"");
   },{element:challengePattern.source,text:visibleChallengeText.source});
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
@@ -94,12 +94,20 @@ async function successSignal(page:Page,beforeUrl:string){
   return currentUrl!==beforeUrl||/thank you|thanks for|message sent|successfully sent|submission received|we'll be in touch|we will be in touch/i.test(text);
 }
 export async function submitContactForm(url:string,details:SenderDetails,dryRun=false):Promise<SubmissionResult>{
+  let safeUrl:string;
+  try{safeUrl=await assertSafeTargetUrl(url);}catch(error){return{url,status:"failed",message:error instanceof Error?error.message:"Target URL was rejected."};}
   const browser=await launchBrowser();
   try{
     const page=await browser.newPage();
     await page.setUserAgent("BookAirfreightContactFormSender/1.0");
     await page.setDefaultNavigationTimeout(20000);
-    await page.goto(url,{waitUntil:"domcontentloaded",timeout:20000});
+    await page.setRequestInterception(true);
+    page.on("request",async request=>{
+      if(!request.isNavigationRequest()){request.continue().catch(()=>undefined);return;}
+      try{await assertSafeTargetUrl(request.url());request.continue().catch(()=>undefined);}
+      catch{request.abort("blockedbyclient").catch(()=>undefined);}
+    });
+    await page.goto(safeUrl,{waitUntil:"domcontentloaded",timeout:20000});
     const forms=await inspect(page);
     if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
     const challenge=await detectChallenge(page);
