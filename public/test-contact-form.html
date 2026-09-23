@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BookAirfreight — Contact Form Test</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;font-family:Inter,Arial,sans-serif;background:#07110f;color:#f4fff9;display:flex;align-items:center;justify-content:center;padding:32px}
+    .card{width:min(760px,100%);background:#0d1916;border:1px solid #244239;border-radius:24px;padding:34px;box-shadow:0 20px 60px #0008}
+    .eyebrow{color:#b7ff45;font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:12px}
+    h1{margin:8px 0 8px;font-size:34px}
+    p{color:#9fb8ae;line-height:1.6}
+    form{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}
+    label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700;color:#cfe1da}
+    .full{grid-column:1/-1}
+    input,textarea{width:100%;border:1px solid #315248;background:#08120f;color:#fff;border-radius:12px;padding:13px 14px;font:inherit;outline:none}
+    input:focus,textarea:focus{border-color:#b7ff45;box-shadow:0 0 0 3px #b7ff4520}
+    textarea{min-height:140px;resize:vertical}
+    button{grid-column:1/-1;border:0;border-radius:12px;padding:14px 18px;background:#b7ff45;color:#07110f;font-weight:900;font-size:15px;cursor:pointer}
+    .note{font-size:12px;color:#78938a;margin-top:18px}
+    @media(max-width:620px){form{grid-template-columns:1fr}.full{grid-column:auto}}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">BookAirfreight • Automation Test</div>
+    <h1>Contact Form Receiver Test</h1>
+    <p>Use this page only for testing the BookAirfreight Contact Form Sender. Submissions are sent to the controlled Webhook.site test endpoint.</p>
+    <form action="https://webhook.site/a85e269b-2294-4f67-b562-b83fecd05f3a" method="POST">
+      <label>First Name<input name="first_name" autocomplete="given-name" required></label>
+      <label>Last Name<input name="last_name" autocomplete="family-name" required></label>
+      <label>Company<input name="company" autocomplete="organization"></label>
+      <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      <label>Phone<input name="phone" type="tel" autocomplete="tel"></label>
+      <label>Subject<input name="subject" required></label>
+      <label class="full">Message<textarea name="message" required></textarea></label>
+      <button type="submit">Send Test Message</button>
+    </form>
+    <div class="note">Test endpoint: webhook.site/a85e269b-2294-4f67-b562-b83fecd05f3a</div>
+  </main>
+</body>
+</html>
