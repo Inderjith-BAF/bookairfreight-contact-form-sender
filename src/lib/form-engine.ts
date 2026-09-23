@@ -103,7 +103,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     await page.setDefaultNavigationTimeout(20000);
     await page.setRequestInterception(true);
     page.on("request",async request=>{
-      if(!request.isNavigationRequest()){request.continue().catch(()=>undefined);return;}
+      if(!request.isNavigationRequest()||request.frame()!==page.mainFrame()){request.continue().catch(()=>undefined);return;}
       try{await assertSafeTargetUrl(request.url());request.continue().catch(()=>undefined);}
       catch{request.abort("blockedbyclient").catch(()=>undefined);}
     });
