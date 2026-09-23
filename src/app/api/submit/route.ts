@@ -11,8 +11,8 @@ export const maxDuration=60;
 const schema=z.object({
   urls:z.array(z.string().url()).min(1).max(25),
   details:z.object({
-    name:z.string().trim().min(1).max(200),company:z.string().trim().max(200),
-    email:z.string().email().max(320),phone:z.string().max(60),
+    firstName:z.string().trim().min(1).max(100),lastName:z.string().trim().min(1).max(100),
+    company:z.string().trim().max(200),email:z.string().email().max(320),phone:z.string().max(60),
     subject:z.string().max(300),message:z.string().min(1).max(10000)
   }),
   dryRun:z.boolean().default(false)
@@ -26,7 +26,7 @@ export async function POST(request:Request){
   let batchId:string|undefined;
   if(supabase&&!dryRun){
     const {data}=await supabase.from("submission_batches").insert({
-      sender_name:details.name,company:details.company,email:details.email,phone:details.phone,
+      sender_name:`${details.firstName} ${details.lastName}`.trim(),company:details.company,email:details.email,phone:details.phone,
       subject:details.subject,message:details.message,total_targets:urls.length,status:"running"
     }).select("id").single();
     batchId=data?.id;
