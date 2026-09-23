@@ -27,7 +27,50 @@ export function SenderWorkspace(){
    <div className="glass rounded-3xl p-5 md:p-7"><div className="mb-5"><p className="text-xs font-black uppercase tracking-[.25em] text-lime-300">02 / Payload</p><h2 className="mt-2 text-2xl font-black">Load your details.</h2></div><div className="grid gap-3 sm:grid-cols-2">{([["firstName","First name"],["lastName","Last name"],["company","Company"],["email","Email"],["phone","Phone"],["subject","Subject"]] as const).map(([key,label])=><label key={key} className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}<input value={details[key]} onChange={e=>update(key,e.target.value)} className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm font-normal normal-case tracking-normal text-white outline-none focus:border-lime-300/50"/></label>)}<label className="text-xs font-bold uppercase tracking-wider text-slate-500 sm:col-span-2">Message<textarea value={details.message} onChange={e=>update("message",e.target.value)} className="mt-1.5 min-h-28 w-full rounded-xl border border-white/10 bg-black/20 p-3 text-sm font-normal normal-case tracking-normal text-white outline-none focus:border-lime-300/50"/></label></div></div>
   </section>
   <section className="mt-5 flex flex-col gap-4 rounded-3xl border border-lime-300/20 bg-lime-300/[.04] p-5 md:flex-row md:items-center md:justify-between md:p-6"><div><div className="flex items-center gap-3"><p className="text-sm font-bold text-lime-100">{dryRun?"Preview mode":"Live dispatch"}</p><button onClick={()=>setDryRun(v=>!v)} className={"relative h-6 w-11 rounded-full transition "+(dryRun?"bg-cyan-300":"bg-lime-300")}><span className={"absolute top-1 h-4 w-4 rounded-full bg-slate-950 transition "+(dryRun?"left-1":"left-6")}/></button></div><p className="mt-1 text-sm text-slate-500">{dryRun?"Fills and maps forms without submitting. Use this first.":"Submits supported forms and records each result in Supabase."}</p></div><button disabled={sending||!targetUrls.length} onClick={run} className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-lime-300 px-7 py-4 font-black text-slate-950 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40">{sending?<><Loader2 className="animate-spin" size={18}/> {dryRun?"Scanning…":"Dispatching…"}</>:dryRun?<><Radar size={18}/> Preview targets <ArrowUpRight size={17}/></>:<><Send size={18}/> Send to all <ArrowUpRight size={17}/></>}</button></section>
-  <section className="mt-8 glass rounded-3xl p-5 md:p-7"><div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-[.25em] text-slate-500">03 / Tracking</p><h2 className="mt-2 text-2xl font-black">Shipment status</h2></div>{results.length>0&&<span className="text-xs font-bold text-slate-500">{results.length} processed</span>}</div>{results.length===0?<div className="mt-6 rounded-2xl border border-dashed border-white/10 p-10 text-center text-sm text-slate-600">Run Preview first to see field mapping and target health.</div>:<><div className="mt-6 flex flex-wrap gap-2">{(["all","success","captcha_required","submitted_unverified","unsupported","failed"] as const).map(key=><button key={key} onClick={()=>setFilter(key)} className={"rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider "+(filter===key?"border-lime-300/50 bg-lime-300/10 text-lime-200":"border-white/10 text-slate-500")}>{key==="all"?"All":key==="captcha_required"?"CAPTCHA queue":key==="submitted_unverified"?"Sent / unverified":key.replace("_"," ")} <span className="ml-1 opacity-70">{counts[key]}</span></button>)}</div><div className="mt-3 space-y-3">{visibleResults.map((r,i)=>{const Icon=r.status==="success"||r.status==="submitted_unverified"?CheckCircle2:r.status==="captcha_required"?TriangleAlert:r.status==="failed"?XCircle:Radar;return <div key={r.url+"-"+i} className="flex gap-4 rounded-2xl border border-white/10 bg-black/15 p-4"><Icon className={r.status==="success"?"text-lime-300":r.status==="submitted_unverified"?"text-cyan-300":r.status==="captcha_required"?"text-amber-300":"text-slate-500"}/><div className="min-w-0 flex-1"><div className="break-all text-sm font-semibold text-slate-200">{r.url}</div><p className="mt-1 text-sm text-slate-500">{r.message}</p>{r.detectedFields?.length?<div className="mt-2 flex flex-wrap gap-1.5">{r.detectedFields.map(f=><span key={f} className="rounded-full bg-white/5 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-500">{f}</span>)}</div>:null}</div></div>})}</div>}</section>
+  <section className="mt-8 glass rounded-3xl p-5 md:p-7">
+   <div className="flex items-center justify-between">
+    <div>
+     <p className="text-xs font-black uppercase tracking-[.25em] text-slate-500">03 / Tracking</p>
+     <h2 className="mt-2 text-2xl font-black">Shipment status</h2>
+    </div>
+    {results.length > 0 && <span className="text-xs font-bold text-slate-500">{results.length} processed</span>}
+   </div>
+   {results.length === 0 ? (
+    <div className="mt-6 rounded-2xl border border-dashed border-white/10 p-10 text-center text-sm text-slate-600">
+     Run Preview first to see field mapping and target health.
+    </div>
+   ) : (
+    <>
+     <div className="mt-6 flex flex-wrap gap-2">
+      {(["all","success","captcha_required","submitted_unverified","unsupported","failed"] as const).map(key => (
+       <button key={key} onClick={() => setFilter(key)} className={"rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider " + (filter === key ? "border-lime-300/50 bg-lime-300/10 text-lime-200" : "border-white/10 text-slate-500")}>
+        {key === "all" ? "All" : key === "captcha_required" ? "CAPTCHA queue" : key === "submitted_unverified" ? "Sent / unverified" : key.replace("_", " ")}
+        <span className="ml-1 opacity-70">{counts[key]}</span>
+       </button>
+      ))}
+     </div>
+     <div className="mt-3 space-y-3">
+      {visibleResults.map((r,i) => {
+       const Icon = r.status === "success" || r.status === "submitted_unverified" ? CheckCircle2 : r.status === "captcha_required" ? TriangleAlert : r.status === "failed" ? XCircle : Radar;
+       return (
+        <div key={r.url + "-" + i} className="flex gap-4 rounded-2xl border border-white/10 bg-black/15 p-4">
+         <Icon className={r.status === "success" ? "text-lime-300" : r.status === "submitted_unverified" ? "text-cyan-300" : r.status === "captcha_required" ? "text-amber-300" : "text-slate-500"} />
+         <div className="min-w-0 flex-1">
+          <div className="break-all text-sm font-semibold text-slate-200">{r.url}</div>
+          <p className="mt-1 text-sm text-slate-500">{r.message}</p>
+          {r.detectedFields?.length ? (
+           <div className="mt-2 flex flex-wrap gap-1.5">
+            {r.detectedFields.map(f => <span key={f} className="rounded-full bg-white/5 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-500">{f}</span>)}
+           </div>
+          ) : null}
+         </div>
+        </div>
+       );
+      })}
+     </div>
+    </>
+   )}
+  </section>
   <footer className="mt-10 pb-4 text-center text-xs text-slate-700">BOOKAIRFREIGHT • OUTBOUND CONTROL ROOM</footer>
  </div></main>;
 }
