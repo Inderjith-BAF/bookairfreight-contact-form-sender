@@ -25,6 +25,11 @@ function scoreField(field:{tag:string;type:string;name:string;id:string;placehol
   if(key==="message"&&field.tag==="textarea")score+=30;
   return score;
 }
+function isContactMapping(mapping:Array<{key:MappingKey;controlIndex:number;score:number}>){
+  const keys=new Set(mapping.map(x=>x.key));
+  const hasName=keys.has("firstName")||keys.has("lastName")||keys.has("fullName");
+  return (keys.has("email")&&keys.has("message"))||(hasName&&keys.has("email"))||(hasName&&keys.has("message")&&mapping.length>=3);
+}
 async function inspect(page:Page){
   return page.evaluate(()=>{
     const forms=Array.from(document.forms);
@@ -99,7 +104,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
     const challenge=await detectChallenge(page);
     if(challenge)return{url,status:"captcha_required",message:"CAPTCHA or anti-bot challenge detected. Manual completion is required."};
-    let best={formIndex:0,mapping:[] as Array<{key:MappingKey;controlIndex:number;score:number}>};
+    let best:{formIndex:number;mapping:Array<{key:MappingKey;controlIndex:number;score:number}>}|null=null;
     for(const form of forms){
       const used=new Set<number>();
       const mapping:Array<{key:MappingKey;controlIndex:number;score:number}>=[];
@@ -109,10 +114,12 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
         form.controls.forEach((control,index)=>{if(used.has(index))return;const score=scoreField(control,key);if(score>bestMatch.score)bestMatch={controlIndex:index,score};});
         if(bestMatch.controlIndex>=0&&bestMatch.score>=30){mapping.push({key,...bestMatch});used.add(bestMatch.controlIndex);}
       }
-      if(mapping.reduce((s,x)=>s+x.score,0)>best.mapping.reduce((s,x)=>s+x.score,0))best={formIndex:form.formIndex,mapping};
+      if(!isContactMapping(mapping))continue;
+      const score=mapping.reduce((s,x)=>s+x.score,0);
+      if(!best||score>best.mapping.reduce((s,x)=>s+x.score,0))best={formIndex:form.formIndex,mapping};
     }
+    if(!best)return{url,status:"unsupported",message:"No mappable HTML contact form was detected on this page."};
     const detectedFields=best.mapping.map(x=>x.key);
-    if(detectedFields.length<2)return{url,status:"unsupported",message:"A form was found, but its fields could not be mapped confidently.",detectedFields};
     for(const item of best.mapping){
       let value="";
       if(item.key==="fullName")value=`${details.firstName} ${details.lastName}`.trim();
