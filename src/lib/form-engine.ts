@@ -67,7 +67,7 @@ async function detectChallenge(page:Page){
   },{element:challengePattern.source,text:visibleChallengeText.source});
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
-  const handle=await page.$(\`form[data-baf-form="\${formIndex}"] [data-baf-control="\${controlIndex}"]\`);
+  const handle=await page.$(`form[data-baf-form="${formIndex}"] [data-baf-control="${controlIndex}"]`);
   if(!handle)return false;
   await handle.evaluate((el:any,nextValue:string)=>{
     const proto=el.tagName==="TEXTAREA"?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
@@ -81,7 +81,7 @@ async function fillField(page:Page,formIndex:number,controlIndex:number,value:st
 }
 async function validateForm(page:Page,formIndex:number){
   return page.evaluate((index)=>{
-    const form=document.querySelector(\`form[data-baf-form="\${index}"]\`) as HTMLFormElement|null;
+    const form=document.querySelector(`form[data-baf-form="${index}"]`) as HTMLFormElement|null;
     if(!form)return {valid:false,missing:["Target form disappeared."]};
     const invalid=Array.from(form.elements).filter((el:any)=>typeof el.checkValidity==="function"&&!el.checkValidity()).map((el:any)=>{
       const label=el.labels?.[0]?.textContent?.trim();
@@ -91,7 +91,7 @@ async function validateForm(page:Page,formIndex:number){
   },formIndex);
 }
 async function submitForm(page:Page,formIndex:number){
-  const form=await page.$(\`form[data-baf-form="\${formIndex}"]\`);
+  const form=await page.$(`form[data-baf-form="${formIndex}"]`);
   if(!form)throw new Error("Target form disappeared.");
   const submission=await form.evaluate((el:any)=>{
     const submitter=el.querySelector('button[type="submit"],input[type="submit"],button:not([type]),button') as HTMLButtonElement|HTMLInputElement|null;
