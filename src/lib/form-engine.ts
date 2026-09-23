@@ -14,6 +14,7 @@ const aliases: Record<MappingKey,string[]> = {
   message:["message","comments","comment","enquiry","inquiry","description","your-message","details"]
 };
 const challengePattern=/captcha|recaptcha|hcaptcha|turnstile|challenge-platform|cf-chl-|i am not a robot|verify you are human/i;
+const visibleChallengeText=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|security check|human verification/i;
 function norm(v:string){return v.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
 function scoreField(field:{tag:string;type:string;name:string;id:string;placeholder:string;autocomplete:string;label:string},key:MappingKey){
   const hay=norm([field.name,field.id,field.placeholder,field.autocomplete,field.label].join(" "));
@@ -41,21 +42,24 @@ async function inspect(page:Page){
   });
 }
 async function detectChallenge(page:Page){
-  return page.evaluate((pattern)=>{
-    const re=new RegExp(pattern,"i");
+  return page.evaluate((patterns)=>{
+    const re=new RegExp(patterns.element,"i");
+    const textRe=new RegExp(patterns.text,"i");
     const visible=(el:Element)=>{
       const node=el as HTMLElement;
       const style=getComputedStyle(node);
       const rect=node.getBoundingClientRect();
       return style.display!=="none"&&style.visibility!=="hidden"&&Number(style.opacity||1)>0&&rect.width>0&&rect.height>0;
     };
-    const elements=Array.from(document.querySelectorAll("iframe, [id], [class], [name], [data-sitekey]"));
-    return elements.some(el=>{
+    const elements=Array.from(document.querySelectorAll("iframe, [data-sitekey], [aria-label], [role='checkbox']"));
+    const elementChallenge=elements.some(el=>{
       if(!visible(el))return false;
-      const text=[el.textContent||"",el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("id")||"",el.getAttribute("class")||"",el.getAttribute("name")||"",el.getAttribute("data-sitekey")||""].join(" ");
+      const text=[el.textContent||"",el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("aria-label")||"",el.getAttribute("data-sitekey")||"",el.getAttribute("role")||""].join(" ");
       return re.test(text);
-    }) || re.test(document.body?.innerText||"");
-  },challengePattern.source);
+    });
+    const visibleText=document.body?.innerText||"";
+    return elementChallenge||textRe.test(visibleText);
+  },{element:challengePattern.source,text:visibleChallengeText.source});
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
   const handle=await page.$(`form[data-baf-form="${formIndex}"] [data-baf-control="${controlIndex}"]`);
@@ -92,9 +96,9 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     await page.setDefaultNavigationTimeout(20000);
     await page.goto(url,{waitUntil:"domcontentloaded",timeout:20000});
     const forms=await inspect(page);
+    if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
     const challenge=await detectChallenge(page);
     if(challenge)return{url,status:"captcha_required",message:"CAPTCHA or anti-bot challenge detected. Manual completion is required."};
-    if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
     let best={formIndex:0,mapping:[] as Array<{key:MappingKey;controlIndex:number;score:number}>};
     for(const form of forms){
       const used=new Set<number>();
