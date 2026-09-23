@@ -1,4 +1,5 @@
-import type { Page } from "puppeteer-core";
+import { randomUUID } from "node:crypto";
+import type { Browser, Page } from "puppeteer-core";
 import { launchBrowser } from "@/lib/browser";
 import type { SenderDetails, SubmissionResult } from "@/types/submission";
 
@@ -15,21 +16,41 @@ const aliases: Record<MappingKey,string[]> = {
 };
 const challengePattern=/captcha|recaptcha|hcaptcha|turnstile|challenge-platform|cf-chl-|i am not a robot|verify you are human/i;
 const visibleChallengeText=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|security check|human verification/i;
+
+type PendingSession={
+  browser:Browser;
+  page:Page;
+  url:string;
+  formIndex:number;
+  batchId?:string;
+  createdAt:number;
+};
+
+const pendingSessions=new Map<string,PendingSession>();
+const SESSION_TTL_MS=10*60*1000;
+
 function norm(v:string){return v.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
+
 function scoreField(field:{tag:string;type:string;name:string;id:string;placeholder:string;autocomplete:string;label:string},key:MappingKey){
   const hay=norm([field.name,field.id,field.placeholder,field.autocomplete,field.label].join(" "));
   let score=0;
-  for(const alias of aliases[key]){const a=norm(alias);if(hay===a)score+=100;else if(hay.includes(a))score+=30;}
+  for(const alias of aliases[key]){
+    const a=norm(alias);
+    if(hay===a)score+=100;
+    else if(hay.includes(a))score+=30;
+  }
   if(key==="email"&&field.type==="email")score+=35;
   if(key==="phone"&&["tel","phone"].includes(field.type))score+=35;
   if(key==="message"&&field.tag==="textarea")score+=30;
   return score;
 }
+
 function isContactMapping(mapping:Array<{key:MappingKey;controlIndex:number;score:number}>){
   const keys=new Set(mapping.map(x=>x.key));
   const hasName=keys.has("firstName")||keys.has("lastName")||keys.has("fullName");
   return (keys.has("email")&&keys.has("message"))||(hasName&&keys.has("email"))||(hasName&&keys.has("message")&&mapping.length>=3);
 }
+
 async function inspect(page:Page){
   return page.evaluate(()=>{
     const forms=Array.from(document.forms);
@@ -37,15 +58,24 @@ async function inspect(page:Page){
     return forms.map((form,formIndex)=>{
       const controls=Array.from(form.querySelectorAll("input,textarea,select")).filter((el:any)=>{
         const type=(el.type||"").toLowerCase();
-        return !el.disabled&&!["hidden","submit","button","reset","file","image","checkbox","radio"].includes(type);
+        return !el.disabled&&![ "hidden","submit","button","reset","file","image","checkbox","radio"].includes(type);
       }).map((el:any,index)=>{
         el.setAttribute("data-baf-control",String(index));
-        return {tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||""};
+        return {
+          tag:el.tagName.toLowerCase(),
+          type:(el.type||"").toLowerCase(),
+          name:el.name||"",
+          id:el.id||"",
+          placeholder:el.placeholder||"",
+          autocomplete:el.autocomplete||"",
+          label:el.labels?.[0]?.textContent?.trim()||""
+        };
       });
       return {formIndex,controls};
     });
   });
 }
+
 async function detectChallenge(page:Page){
   return page.evaluate((patterns)=>{
     const re=new RegExp(patterns.element,"i");
@@ -59,13 +89,21 @@ async function detectChallenge(page:Page){
     const elements=Array.from(document.querySelectorAll("iframe, [data-sitekey], [aria-label], [role='checkbox']"));
     const elementChallenge=elements.some(el=>{
       if(!visible(el))return false;
-      const text=[el.textContent||"",el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("aria-label")||"",el.getAttribute("data-sitekey")||"",el.getAttribute("role")||""].join(" ");
+      const text=[
+        el.textContent||"",
+        el.getAttribute("src")||"",
+        el.getAttribute("title")||"",
+        el.getAttribute("aria-label")||"",
+        el.getAttribute("data-sitekey")||"",
+        el.getAttribute("role")||""
+      ].join(" ");
       return re.test(text);
     });
     const visibleText=document.body?.innerText||"";
     return elementChallenge||textRe.test(visibleText);
   },{element:challengePattern.source,text:visibleChallengeText.source});
 }
+
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
   const handle=await page.$(`form[data-baf-form="${formIndex}"] [data-baf-control="${controlIndex}"]`);
   if(!handle)return false;
@@ -77,33 +115,55 @@ async function fillField(page:Page,formIndex:number,controlIndex:number,value:st
     el.dispatchEvent(new Event("change",{bubbles:true}));
     el.dispatchEvent(new Event("blur",{bubbles:true}));
   },value);
-  await handle.dispose(); return true;
+  await handle.dispose();
+  return true;
 }
+
 async function submitForm(page:Page,formIndex:number){
   const form=await page.$(`form[data-baf-form="${formIndex}"]`);
   if(!form)throw new Error("Target form disappeared.");
   const submitter=await form.$('button[type="submit"],input[type="submit"],button:not([type]),button');
   const navigation=page.waitForNavigation({waitUntil:"domcontentloaded",timeout:12000}).catch(()=>null);
-  if(submitter){try{await submitter.click({delay:30});}catch{await form.evaluate((el:any)=>el.requestSubmit());}}
-  else await form.evaluate((el:any)=>el.requestSubmit());
+  if(submitter){
+    try{await submitter.click({delay:30});}
+    catch{await form.evaluate((el:any)=>el.requestSubmit());}
+  } else {
+    await form.evaluate((el:any)=>el.requestSubmit());
+  }
   await Promise.race([navigation,new Promise(resolve=>setTimeout(resolve,4000))]);
 }
+
 async function successSignal(page:Page,beforeUrl:string){
   const currentUrl=page.url();
   const text=await page.evaluate(()=>document.body?.innerText?.slice(0,50000)||"");
   return currentUrl!==beforeUrl||/thank you|thanks for|message sent|successfully sent|submission received|we'll be in touch|we will be in touch/i.test(text);
 }
-export async function submitContactForm(url:string,details:SenderDetails,dryRun=false):Promise<SubmissionResult>{
-  const browser=await launchBrowser();
+
+function cleanupSession(sessionId:string){
+  const session=pendingSessions.get(sessionId);
+  pendingSessions.delete(sessionId);
+  if(session)void session.browser.close().catch(()=>undefined);
+}
+
+function expireSession(sessionId:string){
+  setTimeout(()=>{
+    const session=pendingSessions.get(sessionId);
+    if(session&&Date.now()-session.createdAt>=SESSION_TTL_MS)cleanupSession(sessionId);
+  },SESSION_TTL_MS+1000);
+}
+
+export async function submitContactForm(url:string,details:SenderDetails,dryRun=false,batchId?:string):Promise<SubmissionResult>{
+  const browser=await launchBrowser({interactive:!dryRun});
+  let keepBrowserOpen=false;
   try{
     const page=await browser.newPage();
     await page.setUserAgent("BookAirfreightContactFormSender/1.0");
     await page.setDefaultNavigationTimeout(20000);
     await page.goto(url,{waitUntil:"domcontentloaded",timeout:20000});
+
     const forms=await inspect(page);
     if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
-    const challenge=await detectChallenge(page);
-    if(challenge)return{url,status:"captcha_required",message:"CAPTCHA or anti-bot challenge detected. Manual completion is required."};
+
     let best:{formIndex:number;mapping:Array<{key:MappingKey;controlIndex:number;score:number}>}|null=null;
     for(const form of forms){
       const used=new Set<number>();
@@ -111,27 +171,94 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
       const keys=(Object.keys(aliases) as MappingKey[]).sort((a,b)=>a==="fullName"?1:b==="fullName"?-1:0);
       for(const key of keys){
         let bestMatch={controlIndex:-1,score:0};
-        form.controls.forEach((control,index)=>{if(used.has(index))return;const score=scoreField(control,key);if(score>bestMatch.score)bestMatch={controlIndex:index,score};});
-        if(bestMatch.controlIndex>=0&&bestMatch.score>=30){mapping.push({key,...bestMatch});used.add(bestMatch.controlIndex);}
+        form.controls.forEach((control,index)=>{
+          if(used.has(index))return;
+          const score=scoreField(control,key);
+          if(score>bestMatch.score)bestMatch={controlIndex:index,score};
+        });
+        if(bestMatch.controlIndex>=0&&bestMatch.score>=30){
+          mapping.push({key,...bestMatch});
+          used.add(bestMatch.controlIndex);
+        }
       }
       if(!isContactMapping(mapping))continue;
       const score=mapping.reduce((s,x)=>s+x.score,0);
       if(!best||score>best.mapping.reduce((s,x)=>s+x.score,0))best={formIndex:form.formIndex,mapping};
     }
+
     if(!best)return{url,status:"unsupported",message:"No mappable HTML contact form was detected on this page."};
+
     const detectedFields=best.mapping.map(x=>x.key);
     for(const item of best.mapping){
-      let value="";
-      if(item.key==="fullName")value=`${details.firstName} ${details.lastName}`.trim();
-      else value=details[item.key];
+      const value=item.key==="fullName"?`${details.firstName} ${details.lastName}`.trim():details[item.key];
       if(value)await fillField(page,best.formIndex,item.controlIndex,value);
     }
-    if(dryRun)return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields};
-    if(await detectChallenge(page))return{url,status:"captcha_required",message:"An anti-bot challenge appeared before submission. Nothing was submitted.",detectedFields};
+
+    if(dryRun){
+      return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields};
+    }
+
+    if(await detectChallenge(page)){
+      if(process.env.VERCEL_ENV){
+        return{url,status:"captcha_required",message:"CAPTCHA or anti-bot challenge detected. Manual completion requires the local browser runner; nothing was submitted.",detectedFields};
+      }
+      const sessionId=randomUUID();
+      pendingSessions.set(sessionId,{browser,page,url,formIndex:best.formIndex,batchId,createdAt:Date.now()});
+      keepBrowserOpen=true;
+      expireSession(sessionId);
+      return{
+        url,
+        status:"captcha_required",
+        message:"CAPTCHA detected. Complete the challenge in the opened browser window, then click Continue.",
+        detectedFields,
+        sessionId
+      };
+    }
+
     const beforeUrl=page.url();
     await submitForm(page,best.formIndex);
     const success=await successSignal(page,beforeUrl);
-    return{url,status:success?"success":"failed",message:success?"Form submitted and a success signal was detected.":"The form was submitted, but a success confirmation could not be verified.",detectedFields};
-  }catch(error){return{url,status:"failed",message:error instanceof Error?error.message:"Browser automation failed."};}
-  finally{await browser.close().catch(()=>undefined);}
+    return{
+      url,
+      status:success?"success":"failed",
+      message:success?"Form submitted and a success signal was detected.":"The form was submitted, but a success confirmation could not be verified.",
+      detectedFields
+    };
+  }catch(error){
+    return{url,status:"failed",message:error instanceof Error?error.message:"Browser automation failed."};
+  }finally{
+    if(!keepBrowserOpen)await browser.close().catch(()=>undefined);
+  }
+}
+
+export async function continueContactForm(sessionId:string):Promise<SubmissionResult>{
+  const session=pendingSessions.get(sessionId);
+  if(!session){
+    return{url:"",status:"failed",message:"This CAPTCHA session has expired or is no longer available. Please start the dispatch again."};
+  }
+
+  if(session.page.isClosed()){
+    cleanupSession(sessionId);
+    return{url:session.url,status:"failed",message:"The browser window was closed before the CAPTCHA was completed."};
+  }
+
+  try{
+    if(await detectChallenge(session.page)){
+      return{url:session.url,status:"captcha_required",message:"The CAPTCHA is still present. Complete it in the browser, then click Continue.",sessionId};
+    }
+
+    const beforeUrl=session.page.url();
+    await submitForm(session.page,session.formIndex);
+    const success=await successSignal(session.page,beforeUrl);
+    const result:SubmissionResult={
+      url:session.url,
+      status:success?"success":"failed",
+      message:success?"Form submitted and a success signal was detected.":"The form was submitted, but a success confirmation could not be verified."
+    };
+    cleanupSession(sessionId);
+    return result;
+  }catch(error){
+    cleanupSession(sessionId);
+    return{url:session.url,status:"failed",message:error instanceof Error?error.message:"Browser automation failed."};
+  }
 }
