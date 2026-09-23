@@ -41,7 +41,7 @@ async function inspect(page:Page){
         return !el.disabled&&!["hidden","submit","button","reset","file","image","checkbox","radio"].includes(type);
       }).map((el:any,index)=>{
         el.setAttribute("data-baf-control",String(index));
-        return {tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||""};
+        return {tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||"",required:Boolean(el.required)};
       });
       return {formIndex,controls};
     });
@@ -67,7 +67,7 @@ async function detectChallenge(page:Page){
   },{element:challengePattern.source,text:visibleChallengeText.source});
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
-  const handle=await page.$(`form[data-baf-form="${formIndex}"] [data-baf-control="${controlIndex}"]`);
+  const handle=await page.$(\`form[data-baf-form="\${formIndex}"] [data-baf-control="\${controlIndex}"]\`);
   if(!handle)return false;
   await handle.evaluate((el:any,nextValue:string)=>{
     const proto=el.tagName==="TEXTAREA"?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
@@ -79,14 +79,37 @@ async function fillField(page:Page,formIndex:number,controlIndex:number,value:st
   },value);
   await handle.dispose(); return true;
 }
+async function validateForm(page:Page,formIndex:number){
+  return page.evaluate((index)=>{
+    const form=document.querySelector(\`form[data-baf-form="\${index}"]\`) as HTMLFormElement|null;
+    if(!form)return {valid:false,missing:["Target form disappeared."]};
+    const invalid=Array.from(form.elements).filter((el:any)=>typeof el.checkValidity==="function"&&!el.checkValidity()).map((el:any)=>{
+      const label=el.labels?.[0]?.textContent?.trim();
+      return label||el.name||el.id||el.type||"required field";
+    });
+    return {valid:form.checkValidity(),missing:[...new Set(invalid)]};
+  },formIndex);
+}
 async function submitForm(page:Page,formIndex:number){
-  const form=await page.$(`form[data-baf-form="${formIndex}"]`);
+  const form=await page.$(\`form[data-baf-form="\${formIndex}"]\`);
   if(!form)throw new Error("Target form disappeared.");
-  const submitter=await form.$('button[type="submit"],input[type="submit"],button:not([type]),button');
+  const submission=await form.evaluate((el:any)=>{
+    const submitter=el.querySelector('button[type="submit"],input[type="submit"],button:not([type]),button') as HTMLButtonElement|HTMLInputElement|null;
+    const action=new URL(submitter?.formAction||el.action||location.href,location.href).toString();
+    const method=(submitter?.formMethod||el.method||"get").toUpperCase();
+    return {action,method};
+  });
+  const requestPromise=page.waitForRequest(
+    request=>request.frame()===page.mainFrame()&&request.url()===submission.action&&request.method()===submission.method,
+    {timeout:8000},
+  ).catch(()=>null);
   const navigation=page.waitForNavigation({waitUntil:"domcontentloaded",timeout:12000}).catch(()=>null);
+  if(submission.method==="DIALOG")return {observed:false,request:null};
+  const submitter=await form.$('button[type="submit"],input[type="submit"],button:not([type]),button');
   if(submitter){try{await submitter.click({delay:30});}catch{await form.evaluate((el:any)=>el.requestSubmit());}}
   else await form.evaluate((el:any)=>el.requestSubmit());
-  await Promise.race([navigation,new Promise(resolve=>setTimeout(resolve,4000))]);
+  const [request]=await Promise.all([requestPromise,Promise.race([navigation,new Promise(resolve=>setTimeout(resolve,4000))])]);
+  return {observed:Boolean(request),request};
 }
 async function successSignal(page:Page,beforeUrl:string){
   const currentUrl=page.url();
@@ -103,7 +126,11 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     await page.setDefaultNavigationTimeout(20000);
     await page.setRequestInterception(true);
     page.on("request",async request=>{
-      if(!request.isNavigationRequest()||request.frame()!==page.mainFrame()){request.continue().catch(()=>undefined);return;}
+      if(request.isInterceptResolutionHandled())return;
+      if(!request.isNavigationRequest()||request.frame()!==page.mainFrame()){
+        request.continue().catch(()=>undefined);
+        return;
+      }
       try{await assertSafeTargetUrl(request.url());request.continue().catch(()=>undefined);}
       catch{request.abort("blockedbyclient").catch(()=>undefined);}
     });
@@ -130,16 +157,22 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     const detectedFields=best.mapping.map(x=>x.key);
     for(const item of best.mapping){
       let value="";
-      if(item.key==="fullName")value=`${details.firstName} ${details.lastName}`.trim();
+      if(item.key==="fullName")value=(details.firstName+" "+details.lastName).trim();
       else value=details[item.key];
       if(value)await fillField(page,best.formIndex,item.controlIndex,value);
     }
     if(dryRun)return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields};
     if(await detectChallenge(page))return{url,status:"captcha_required",message:"An anti-bot challenge appeared before submission. Submission skipped and added to the CAPTCHA queue.",detectedFields};
+    const validity=await validateForm(page,best.formIndex);
+    if(!validity.valid)return{url,status:"failed",message:"Form validation blocked submission. Missing or invalid field: "+validity.missing.join(", ")+".",detectedFields};
     const beforeUrl=page.url();
-    await submitForm(page,best.formIndex);
+    const submission=await submitForm(page,best.formIndex);
     const success=await successSignal(page,beforeUrl);
-    return{url,status:success?"success":"submitted_unverified",message:success?"Form submitted and a success signal was detected.":"Form was submitted, but a success confirmation could not be verified. Treat as sent and review if needed.",detectedFields};
-  }catch(error){return{url,status:"failed",message:error instanceof Error?error.message:"Browser automation failed."};}
+    if(submission.observed){
+      return{url,status:success?"success":"submitted_unverified",message:success?"Form submission request was observed and a success signal was detected.":"Form submission request was observed, but a success confirmation could not be verified. Treat as sent and review if needed.",detectedFields};
+    }
+    if(success)return{url,status:"submitted_unverified",message:"The form changed state after submission, but the expected submission request could not be directly observed. Treat as sent and review if needed.",detectedFields};
+    return{url,status:"failed",message:"No submission request or success signal was observed after clicking the form submit control.",detectedFields};
+  }catch(error){return{url,status:"failed",message:error instanceof Error?error.message:"Browser automation failed.",detectedFields:[]};}
   finally{await browser.close().catch(()=>undefined);}
 }
