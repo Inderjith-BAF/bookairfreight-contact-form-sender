@@ -1,6 +1,7 @@
 export type Role = "admin" | "manager" | "member";
 export type ActivityChannel = "cold_email" | "contact_form";
 export type Freshness = "fresh" | "recycled";
+export type ResponseOrigin = "current_outreach" | "previous_outreach";
 export type Sequence = {
   id: string; name: string; stage: string; subject_template: string;
   content_template: string; content_link: string; content_creator: string;
@@ -15,7 +16,7 @@ export type OutboundActivity = {
   outreach_volume: number; open_count: number; open_rate: number; positive_replies: number;
   neutral_replies: number; negative_replies: number; unsubscribes: number; bounced: number;
   auto_responses: number; clicks: number; bounce_rate: number; qualified_leads: number;
-  follow_ups: number; freshness?: Freshness; channel: ActivityChannel; source_file?: string;
+  follow_ups: number; freshness?: Freshness; response_origin?: ResponseOrigin; response_sequence_id?: string | null; response_note?: string; channel: ActivityChannel; source_file?: string;
   source_sheet?: string; source_row?: number; imported_at?: string;
 };
 export type DashboardData = {
