@@ -150,7 +150,8 @@ function CountryTile({tile,sequences,selectedSequence,patch,paste,addRows,saveCo
  const applySequence=(index:number,sequenceIndex:number)=>{const s=sequences[sequenceIndex];if(!s)return;patch(tile.country,index,"sequence_id",s.id);patch(tile.country,index,"stage",sequenceLabel(s));};
  const startSequenceDrag=(index:number)=>{const currentId=tile.rows[index]?.sequence_id||selectedSequence;const sequenceIndex=sequences.findIndex((s:Sequence)=>s.id===currentId);if(sequenceIndex>=0)setSequenceDrag({source:index,sequenceIndex});};
  const dragSequenceOver=(index:number)=>{if(!sequenceDrag||index<sequenceDrag.source)return;const nextIndex=Math.max(0,Math.min(sequences.length-1,sequenceDrag.sequenceIndex+(index-sequenceDrag.source)));applySequence(index,nextIndex);};
- const startColumnDrag=(index:number,field:"content_link"|"content_creator")=>setColumnDrag({source:index,field});\n const dragColumnOver=(index:number)=>{if(!columnDrag||index<columnDrag.source)return;const value=tile.rows[columnDrag.source]?.[columnDrag.field]||"";patch(tile.country,index,columnDrag.field,value);};
+ const startColumnDrag=(index:number,field:"content_link"|"content_creator")=>setColumnDrag({source:index,field});
+const dragColumnOver=(index:number)=>{if(!columnDrag||index<columnDrag.source)return;const value=tile.rows[columnDrag.source]?.[columnDrag.field]||"";patch(tile.country,index,columnDrag.field,value);};
  return <div className="glass overflow-hidden rounded-3xl">
   <div className="border-b border-white/10 bg-white/[.025] p-5">
    <div className="flex flex-wrap items-center justify-between gap-3">
