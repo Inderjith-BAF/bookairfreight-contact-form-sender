@@ -1,56 +1,9 @@
 import type { Page } from "puppeteer-core";
 import { launchBrowser } from "@/lib/browser";
 import { assertSafeTargetUrl } from "@/lib/url-safety";
-import type { SenderDetails, SubmissionEvidence, SubmissionResult } from "@/types/submission";
+import type { SenderDetails, SubmissionResult } from "@/types/submission";
+import { chooseBestContactForm } from "@/lib/form-mapper";
 
-type MappingKey=keyof SenderDetails|"fullName";
-const aliases: Record<MappingKey,string[]> = {
-  firstName:["first_name","firstname","first-name","given_name","givenname","given-name"],
-  lastName:["last_name","lastname","last-name","surname","family_name","familyname","family-name"],
-  fullName:["full_name","fullname","full-name","contact_name","contact-name","your-name","name"],
-  company:["company","company_name","organization","organisation","business"],
-  email:["email","email_address","e-mail","your-email","mail"],
-  phone:["phone","telephone","tel","mobile","phone_number","contact_number"],
-  subject:["subject","topic","enquiry_subject","inquiry_subject"],
-  message:["message","comments","comment","enquiry","inquiry","description","your-message","details"]
-};
-const challengePattern=/captcha|recaptcha|hcaptcha|turnstile|challenge-platform|cf-chl-|i am not a robot|verify you are human/i;
-const visibleChallengeText=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|security check|human verification|this site is protected by hcaptcha|protected by hcaptcha|hcaptcha protection/i;
-function norm(v:string){return v.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
-function scoreField(field:{tag:string;type:string;name:string;id:string;placeholder:string;autocomplete:string;label:string},key:MappingKey){
-  const hay=norm([field.name,field.id,field.placeholder,field.autocomplete,field.label].join(" "));
-  let score=0;
-  for(const alias of aliases[key]){const a=norm(alias);if(hay===a)score+=100;else if(hay.includes(a))score+=30;}
-  if(key==="email"&&field.type==="email")score+=35;
-  if(key==="phone"&&["tel","phone"].includes(field.type))score+=35;
-  if(key==="message"&&field.tag==="textarea")score+=30;
-  return score;
-}
-function isContactMapping(mapping:Array<{key:MappingKey;controlIndex:number;score:number}>){
-  const keys=new Set(mapping.map(x=>x.key));
-  const hasName=keys.has("firstName")||keys.has("lastName")||keys.has("fullName");
-  return (keys.has("email")&&keys.has("message"))||(hasName&&keys.has("email"))||(hasName&&keys.has("message")&&mapping.length>=3);
-}
-async function inspect(page:Page){
-  return page.evaluate(()=>{
-    const forms=Array.from(document.forms);
-    forms.forEach((form,i)=>form.setAttribute("data-baf-form",String(i)));
-    return forms.map((form,formIndex)=>{
-      const controls=Array.from(form.querySelectorAll("input,textarea,select")).filter((el:any)=>{
-        const type=(el.type||"").toLowerCase();
-        return !el.disabled&&!["hidden","submit","button","reset","file","image","checkbox","radio"].includes(type);
-      }).map((el:any,index)=>{
-        el.setAttribute("data-baf-control",String(index));
-        return {tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||"",required:Boolean(el.required)};
-      });
-      const action=form.getAttribute("action")||"";
-      const method=(form.getAttribute("method")||"get").toUpperCase();
-      const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
-      const shopifyContact=/\/contact(?:#|$)/i.test(action)||formType==="contact";
-      return {formIndex,controls,action,method,formType,shopifyContact};
-    });
-  });
-}
 async function detectProtection(page:Page,formIndex:number|null):Promise<SubmissionEvidence[]>{
   return page.evaluate((index)=>{
     const evidence:string[]=[]; const add=(v:string)=>{if(!evidence.includes(v))evidence.push(v);};
@@ -184,35 +137,22 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     const challenge=await detectChallenge(page);
     const shopifyCaptcha=await detectShopifyCaptcha(page);
     if(challenge||shopifyCaptcha)return{url,status:"captcha_required",message:shopifyCaptcha?"Shopify hCaptcha protection detected on the contact form. Submission skipped and added to the CAPTCHA queue.":"CAPTCHA or anti-bot challenge detected. Submission skipped and added to the CAPTCHA queue."};
-    let best:{formIndex:number;mapping:Array<{key:MappingKey;controlIndex:number;score:number}>}|null=null;
-    for(const form of forms){
-      const used=new Set<number>();
-      const mapping:Array<{key:MappingKey;controlIndex:number;score:number}>=[];
-      const keys=(Object.keys(aliases) as MappingKey[]).sort((a,b)=>a==="fullName"?1:b==="fullName"?-1:0);
-      for(const key of keys){
-        let bestMatch={controlIndex:-1,score:0};
-        form.controls.forEach((control,index)=>{if(used.has(index))return;const score=scoreField(control,key);if(score>bestMatch.score)bestMatch={controlIndex:index,score};});
-        if(bestMatch.controlIndex>=0&&bestMatch.score>=30){mapping.push({key,...bestMatch});used.add(bestMatch.controlIndex);}
-      }
-      if(!isContactMapping(mapping))continue;
-      const score=mapping.reduce((s,x)=>s+x.score,0);
-      if(!best||score>best.mapping.reduce((s,x)=>s+x.score,0))best={formIndex:form.formIndex,mapping};
-    }
+    const best=chooseBestContactForm(forms);
     if(!best)return{url,status:"unsupported",message:"No mappable HTML contact form was detected on this page."};
-    const detectedFields=best.mapping.map(x=>x.key);
-    for(const item of best.mapping){
+    const detectedFields=best.mapping.detectedFields;
+    for(const item of best.mapping.matches){
       let value="";
       if(item.key==="fullName")value=(details.firstName+" "+details.lastName).trim();
       else value=details[item.key];
-      if(value)await fillField(page,best.formIndex,item.controlIndex,value);
+      if(value)await fillField(page,best.form.formIndex,item.controlIndex,value);
     }
     if(dryRun)return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields};
     const afterFillProtection=await detectProtection(page,best.formIndex);\n    if(afterFillProtection.length)return{url,status:"captcha_required",message:"Explicit anti-bot protection detected before submission: "+afterFillProtection.join(" • "),detectedFields,evidence:afterFillProtection};
-    const validity=await validateForm(page,best.formIndex);
+    const validity=await validateForm(page,best.form.formIndex);
     if(!validity.valid)return{url,status:"failed",message:"Form validation blocked submission. Missing or invalid field: "+validity.missing.join(", ")+".",detectedFields};
     const beforeUrl=page.url();
-    const submission=await submitForm(page,best.formIndex);
-    const success=await successSignal(page,beforeUrl,best.formIndex);
+    const submission=await submitForm(page,best.form.formIndex);
+    const success=await successSignal(page,beforeUrl,best.form.formIndex);
     if(success.challengeText)return{url,status:"captcha_required",message:"An anti-bot or spam-protection signal appeared during submission. Submission could not be safely verified and was added to the CAPTCHA queue.",detectedFields};
     if(submission.observed){
       return{url,status:success.confirmed?"success":"submitted_unverified",message:success.confirmed?"Submission request was observed and the page returned a success signal. "+submission.diagnostic:"Submission request was observed, but the page did not return a success confirmation. "+submission.diagnostic,detectedFields};
