@@ -225,8 +225,10 @@ function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows
     if(Array.isArray(parsed))restored=parsed;
    }
   }catch{}
-  const next=restored||saved;
-  setTiles(next);
+  const draftMap=new Map((restored||[]).map(tile=>[tile.country,tile]));
+  const merged=saved.map(tile=>draftMap.get(tile.country)||tile);
+  (restored||[]).forEach(tile=>{if(!saved.some(savedTile=>savedTile.country===tile.country))merged.push(tile)});
+  setTiles(merged);
   setSavedSignatures(savedMap);
   setMessages({});
   hydratedRef.current=true;
