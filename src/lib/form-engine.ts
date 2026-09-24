@@ -46,7 +46,7 @@ async function inspect(page:Page){
       const action=form.getAttribute("action")||"";
       const method=(form.getAttribute("method")||"get").toUpperCase();
       const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
-      const shopifyContact=/\\/contact(?:#|$)/i.test(action)||formType==="contact";
+      const shopifyContact=/\/contact(?:#|$)/i.test(action)||formType==="contact";
       return {formIndex,controls,action,method,formType,shopifyContact};
     });
   });
@@ -57,7 +57,7 @@ async function detectShopifyCaptcha(page:Page){
     return forms.some(form=>{
       const action=form.getAttribute("action")||"";
       const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
-      const isContact=/\\/contact(?:#|$)/i.test(action)||formType==="contact";
+      const isContact=/\/contact(?:#|$)/i.test(action)||formType==="contact";
       if(!isContact)return false;
       const protectedByAttribute=form.getAttribute("data-shopify-captcha")==="true";
       const hasCaptchaMarkup=Boolean(form.querySelector('[data-sitekey], .h-captcha, iframe[src*="hcaptcha"], iframe[src*="recaptcha"]'));
