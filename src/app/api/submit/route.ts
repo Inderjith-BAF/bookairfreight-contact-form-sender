@@ -33,7 +33,17 @@ export async function POST(request:Request){
   }
   const results=[];
   for(const url of urls){
-    const result=await submitContactForm(url,details as SenderDetails,dryRun);
+    let result;
+    try{
+      result=await submitContactForm(url,details as SenderDetails,dryRun);
+    }catch(error){
+      result={
+        url,
+        status:"failed" as const,
+        message:error instanceof Error?error.message:"Target processing failed unexpectedly.",
+        evidence:["Automation error"] as const
+      };
+    }
     results.push(result);
     if(supabase&&batchId){
       await supabase.from("submission_targets").insert({
