@@ -110,7 +110,7 @@ async function validateForm(page:Page,formIndex:number){
   },formIndex);
 }
 async function submitForm(page:Page,formIndex:number){
-  const form=await page.$(`form[data-baf-form="${formIndex}"]`);
+  const form=await page.$('form[data-baf-form="'+formIndex+'"]');
   if(!form)throw new Error("Target form disappeared.");
   const submission=await form.evaluate((el:any)=>{
     const submitter=el.querySelector('button[type="submit"],input[type="submit"],button:not([type]),button') as HTMLButtonElement|HTMLInputElement|null;
@@ -119,30 +119,53 @@ async function submitForm(page:Page,formIndex:number){
     return {action,method};
   });
   const expectedAction=new URL(submission.action);
-  const requestPromise=page.waitForRequest(
-    request=>{
-      if(request.method()!==submission.method)return false;
-      try{
-        const actual=new URL(request.url());
-        return actual.origin===expectedAction.origin&&actual.pathname===expectedAction.pathname;
-      }catch{
-        return false;
-      }
-    },
-    {timeout:8000},
-  ).catch(()=>null);
-  const navigation=page.waitForNavigation({waitUntil:"domcontentloaded",timeout:12000}).catch(()=>null);
-  if(submission.method==="DIALOG")return {observed:false,request:null};
-  const submitter=await form.$('button[type="submit"],input[type="submit"],button:not([type]),button');
-  if(submitter){try{await submitter.click({delay:30});}catch{await form.evaluate((el:any)=>el.requestSubmit());}}
-  else await form.evaluate((el:any)=>el.requestSubmit());
-  const [request]=await Promise.all([requestPromise,Promise.race([navigation,new Promise(resolve=>setTimeout(resolve,4000))])]);
-  return {observed:Boolean(request),request};
+  const requests:Array<{method:string;url:string}>=[];
+  const responses:Array<{method:string;url:string;status:number}>=[];
+  const onRequest=(request:any)=>{
+    if(request.isNavigationRequest()&&request.frame()!==page.mainFrame())return;
+    const method=request.method();
+    if(["GET","POST","PUT","PATCH","DELETE"].includes(method))requests.push({method,url:request.url()});
+  };
+  const onResponse=(response:any)=>{
+    const request=response.request();
+    const method=request.method();
+    if(["GET","POST","PUT","PATCH","DELETE"].includes(method))responses.push({method,url:response.url(),status:response.status()});
+  };
+  page.on("request",onRequest);
+  page.on("response",onResponse);
+  try{
+    if(submission.method==="DIALOG")return {observed:false,request:null,requests,responses,diagnostic:"The form uses a dialog submission method."};
+    const navigation=page.waitForNavigation({waitUntil:"domcontentloaded",timeout:12000}).catch(()=>null);
+    const submitter=await form.$('button[type="submit"],input[type="submit"],button:not([type]),button');
+    if(submitter){try{await submitter.click({delay:30});}catch{await form.evaluate((el:any)=>el.requestSubmit());}}
+    else await form.evaluate((el:any)=>el.requestSubmit());
+    await Promise.race([navigation,new Promise(resolve=>setTimeout(resolve,5000))]);
+    const sameOriginRequest=requests.find(item=>{try{const actual=new URL(item.url);return actual.origin===expectedAction.origin&&item.method===submission.method;}catch{return false;}});
+    const responseForRequest=sameOriginRequest?responses.find(item=>item.url===sameOriginRequest.url&&item.method===sameOriginRequest.method):undefined;
+    const postLike=requests.find(item=>item.method==="POST");
+    const responseStatus=responseForRequest?.status;
+    const diagnostic=sameOriginRequest
+      ? "Submission request observed: "+sameOriginRequest.method+" "+sameOriginRequest.url+(responseStatus?" (HTTP "+responseStatus+")":"")+"."
+      : postLike
+        ? "A POST request occurred, but not to the form action: "+postLike.url+"."
+        : "No POST or matching "+submission.method+" request was observed. "+requests.length+" HTTP request(s) occurred during submission.";
+    return {observed:Boolean(sameOriginRequest),request:sameOriginRequest||null,requests,responses,diagnostic};
+  }finally{
+    page.off("request",onRequest);
+    page.off("response",onResponse);
+  }
 }
-async function successSignal(page:Page,beforeUrl:string){
+async function successSignal(page:Page,beforeUrl:string,formIndex:number){
   const currentUrl=page.url();
-  const text=await page.evaluate(()=>document.body?.innerText?.slice(0,50000)||"");
-  return currentUrl!==beforeUrl||/thank you|thanks for|message sent|successfully sent|submission received|we'll be in touch|we will be in touch/i.test(text);
+  const state=await page.evaluate((index)=>{
+    const form=document.querySelector('form[data-baf-form="'+index+'"]') as HTMLFormElement|null;
+    const text=document.body?.innerText?.slice(0,50000)||"";
+    const visibleText=/thank you|thanks for|message sent|successfully sent|submission received|we'll be in touch|we will be in touch/i.test(text);
+    const challengeText=/captcha|hcaptcha|recaptcha|verify you are human|security check|spam/i.test(text);
+    const formState=form?{exists:true,visible:!!(form as HTMLElement).offsetParent,submitDisabled:Boolean(form.querySelector('button[type="submit"]:disabled,input[type="submit"]:disabled')),values:Array.from(form.elements).filter((el:any)=>"value" in el).map((el:any)=>String(el.value||"")).join("|")}:{exists:false,visible:false,submitDisabled:false,values:""};
+    return {visibleText,challengeText,formState};
+  },formIndex);
+  return {confirmed:currentUrl!==beforeUrl||state.visibleText,challengeText:state.challengeText,formState:state.formState,currentUrl};
 }
 export async function submitContactForm(url:string,details:SenderDetails,dryRun=false):Promise<SubmissionResult>{
   let safeUrl:string;
@@ -196,12 +219,13 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     if(!validity.valid)return{url,status:"failed",message:"Form validation blocked submission. Missing or invalid field: "+validity.missing.join(", ")+".",detectedFields};
     const beforeUrl=page.url();
     const submission=await submitForm(page,best.formIndex);
-    const success=await successSignal(page,beforeUrl);
+    const success=await successSignal(page,beforeUrl,best.formIndex);
+    if(success.challengeText)return{url,status:"captcha_required",message:"An anti-bot or spam-protection signal appeared during submission. Submission could not be safely verified and was added to the CAPTCHA queue.",detectedFields};
     if(submission.observed){
-      return{url,status:success?"success":"submitted_unverified",message:success?"Form submission request was observed and a success signal was detected.":"Form submission request was observed, but a success confirmation could not be verified. Treat as sent and review if needed.",detectedFields};
+      return{url,status:success.confirmed?"success":"submitted_unverified",message:success.confirmed?"Submission request was observed and the page returned a success signal. "+submission.diagnostic:"Submission request was observed, but the page did not return a success confirmation. "+submission.diagnostic,detectedFields};
     }
-    if(success)return{url,status:"submitted_unverified",message:"The form changed state after submission, but the expected submission request could not be directly observed. Treat as sent and review if needed.",detectedFields};
-    return{url,status:"failed",message:"No submission request or success signal was observed after clicking the form submit control.",detectedFields};
+    if(success.confirmed)return{url,status:"submitted_unverified",message:"The form changed state after submission, but the expected submission request could not be directly observed. "+submission.diagnostic+" Treat as sent and review if needed.",detectedFields};
+    return{url,status:"failed",message:"No submission request or success signal was observed after clicking the form submit control. "+submission.diagnostic,detectedFields};
   }catch(error){
     const raw=error instanceof Error?error.message:"Browser automation failed.";
     const browserTargetError=/target closed|targetclose|execution context was destroyed|session closed|protocol error/i.test(raw);
