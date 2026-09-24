@@ -99,8 +99,17 @@ async function submitForm(page:Page,formIndex:number){
     const method=(submitter?.formMethod||el.method||"get").toUpperCase();
     return {action,method};
   });
+  const expectedAction=new URL(submission.action);
   const requestPromise=page.waitForRequest(
-    request=>request.frame()===page.mainFrame()&&request.url()===submission.action&&request.method()===submission.method,
+    request=>{
+      if(request.method()!==submission.method)return false;
+      try{
+        const actual=new URL(request.url());
+        return actual.origin===expectedAction.origin&&actual.pathname===expectedAction.pathname;
+      }catch{
+        return false;
+      }
+    },
     {timeout:8000},
   ).catch(()=>null);
   const navigation=page.waitForNavigation({waitUntil:"domcontentloaded",timeout:12000}).catch(()=>null);
