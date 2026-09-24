@@ -51,7 +51,23 @@ function mapHistoricalRow(raw:Record<string,unknown>, sheet:string, fallbackYear
   return {activity_date,employee_name:employee,email_account_text:account,prospect_email:account,subject,stage,content,content_link:link,content_creator:creator,outreach_volume:volume,open_count:openCount,open_rate:openRate,positive_replies:n(get(["Positive Replies","Positive Response","Qualified leads"])),neutral_replies:n(get(["Neutral Replies","Neutral Response"])),negative_replies:n(get(["Negative Replies","Negative Response"])),unsubscribes:n(get(["Unsubscribe","Unsubscribes"])),bounced:bounce,auto_responses:n(get(["Auto Response","Auto Responses"])),clicks:n(get(["Clicks"])),bounce_rate:bounceRate,qualified_leads:n(get(["Qualified leads","Qualified Leads"])),follow_ups:n(get(["Follow-ups","Follow Ups"])),industry:String(get(["Industry"])),region:String(get(["Country","Region"])),lead_source:String(get(["Lead Source"])),campaign:String(get(["Campaign"])),freshness:/recycl/i.test(String(get(["Fresh / Recycled","Fresh/Old Account","Freshness"])))?"recycled":"fresh",channel:/contact form/i.test(sheet)?"contact_form":"cold_email",source_sheet:sheet,source_row:rowNumber,source_file:fileName};
 }
 
-function aggregate(rows:OutboundActivity[]){return rows.reduce((a,r)=>{a.outreach+=n(r.outreach_volume);a.open+=n(r.open_count)||Math.round(n(r.outreach_volume)*n(r.open_rate)/100);a.positive+=n(r.positive_replies);a.neutral+=n(r.neutral_replies);a.negative+=n(r.negative_replies);a.bounce+=n(r.bounced);a.unsubscribe+=n(r.unsubscribes);a.clicks+=n(r.clicks);a.leads+=n(r.qualified_leads);a.followups+=n(r.follow_ups);const pc=responseMeta(r.response_note||"");a.previousPositive+=pc.positive;a.previousNeutral+=pc.neutral;a.previousNegative+=pc.negative;return a},{outreach:0,open:0,positive:0,neutral:0,negative:0,bounce:0,unsubscribe:0,clicks:0,leads:0,followups:0,previousPositive:0,previousNeutral:0,previousNegative:0})}
+function aggregate(rows:OutboundActivity[]){
+ const a=rows.reduce((a,r)=>{
+  const pc=responseMeta(r.response_note||"");
+  const hasPC=pc.positive+pc.neutral+pc.negative>0;
+  a.outreach+=n(r.outreach_volume);
+  a.open+=n(r.open_count)||Math.round(n(r.outreach_volume)*n(r.open_rate)/100);
+  a.positive+=Math.max(0,n(r.positive_replies)-(hasPC?pc.positive:0));
+  a.neutral+=Math.max(0,n(r.neutral_replies)-(hasPC?pc.neutral:0));
+  a.negative+=Math.max(0,n(r.negative_replies)-(hasPC?pc.negative:0));
+  a.bounce+=n(r.bounced);a.unsubscribe+=n(r.unsubscribes);a.clicks+=n(r.clicks);a.leads+=n(r.qualified_leads);a.followups+=n(r.follow_ups);
+  a.previousPositive+=pc.positive;a.previousNeutral+=pc.neutral;a.previousNegative+=pc.negative;
+  return a
+ },{outreach:0,open:0,positive:0,neutral:0,negative:0,bounce:0,unsubscribe:0,clicks:0,leads:0,followups:0,previousPositive:0,previousNeutral:0,previousNegative:0,pcAccounts:0});
+ const pcAccounts=new Set(rows.filter(r=>{const pc=responseMeta(r.response_note||"");return pc.positive+pc.neutral+pc.negative>0}).map(r=>r.prospect_email||r.email_account_text).filter(Boolean));
+ a.pcAccounts=pcAccounts.size;
+ return a
+}
 function pct(a:number,b:number){return b?((a/b)*100):0}
 
 export function OutboundOS(){
@@ -127,15 +143,19 @@ function Report({title,subtitle,stats,openRate,replyRate,bounceRate,activities,s
    const m=new Map<string,any>();
    activities.forEach((a:any)=>{
     const k=(a[key]||"Unspecified").toString().trim()||"Unspecified";
-    const x=m.get(k)||{name:k,outreach:0,open:0,pos:0,neutral:0,negative:0,bounce:0,clicks:0,leads:0};
+    const x=m.get(k)||{name:k,outreach:0,open:0,pos:0,neutral:0,negative:0,bounce:0,clicks:0,leads:0,pcPositive:0,pcNeutral:0,pcNegative:0,pcAccounts:new Set<string>()};
     const outreach=n(a.outreach_volume);
     const openCount=n(a.open_count);
     const openRateValue=n(a.open_rate);
+    const pc=responseMeta(a.response_note||"");
+    const hasPC=pc.positive+pc.neutral+pc.negative>0;
     x.outreach+=outreach;
     x.open+=openCount||Math.round(outreach*openRateValue/100);
-    x.pos+=n(a.positive_replies);
-    x.neutral+=n(a.neutral_replies);
-    x.negative+=n(a.negative_replies);
+    x.pos+=Math.max(0,n(a.positive_replies)-(hasPC?pc.positive:0));
+    x.neutral+=Math.max(0,n(a.neutral_replies)-(hasPC?pc.neutral:0));
+    x.negative+=Math.max(0,n(a.negative_replies)-(hasPC?pc.negative:0));
+    x.pcPositive+=pc.positive;x.pcNeutral+=pc.neutral;x.pcNegative+=pc.negative;
+    if(hasPC){const email=(a.prospect_email||a.email_account_text||"").trim();if(email)x.pcAccounts.add(email)}
     x.bounce+=n(a.bounced);
     x.clicks+=n(a.clicks);
     x.leads+=n(a.qualified_leads);
@@ -164,14 +184,14 @@ function Report({title,subtitle,stats,openRate,replyRate,bounceRate,activities,s
     </div>
    </div>
 
-   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">{[["OUTREACH",stats.outreach.toLocaleString(),"messages sent"],["OPEN RATE",openRate.toFixed(1)+"%","engagement"],["POSITIVE",String(stats.positive),"positive responses"],["BOUNCE",bounceRate.toFixed(1)+"%","deliverability"],["REPLY RATE",replyRate.toFixed(2)+"%","all responses"]].map((x:any,i:number)=><div key={x[0]} className="glass lift rounded-2xl p-5" style={{animationDelay:i*70+"ms"}}><p className="text-[9px] font-black uppercase tracking-[.28em] text-slate-500">{x[0]}</p><p className="mt-2 text-3xl font-black tracking-tight">{x[1]}</p><p className="mt-1 text-[11px] font-bold text-slate-500">{x[2]}</p></div>)}</div>
+   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">{[["OUTREACH",stats.outreach.toLocaleString(),"messages sent"],["OPEN RATE",openRate.toFixed(1)+"%","engagement"],["POSITIVE",String(stats.positive),"positive responses"],["PC ACCOUNTS",String(stats.pcAccounts),"previous campaign"],["BOUNCE",bounceRate.toFixed(1)+"%","deliverability"],["REPLY RATE",replyRate.toFixed(2)+"%","all responses"]].map((x:any,i:number)=><div key={x[0]} className="glass lift rounded-2xl p-5" style={{animationDelay:i*70+"ms"}}><p className="text-[9px] font-black uppercase tracking-[.28em] text-slate-500">{x[0]}</p><p className="mt-2 text-3xl font-black tracking-tight">{x[1]}</p><p className="mt-1 text-[11px] font-bold text-slate-500">{x[2]}</p></div>)}</div>
 
    <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
     <div className="glass lift rounded-3xl p-6"><div className="flex items-end justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">01 · OVERALL ANALYSIS</p><h2 className="mt-2 text-3xl font-black">The pulse of outbound.</h2></div><Sparkles className="text-[#4d5cff]"/></div><div className="mt-6 grid gap-3 sm:grid-cols-3">{[["Positive",stats.positive,"bg-[#4d5cff]"],["Neutral",stats.neutral,"bg-cyan-300"],["Negative",stats.negative,"bg-red-300"]].map((x:any)=><div key={x[0]} className="rounded-2xl border border-white/10 bg-white/[.03] p-4"><div className="flex justify-between text-sm font-black"><span>{x[0]}</span><span>{x[1]}</span></div><div className="mt-3 h-3 rounded-full bg-slate-100"><div className={"h-3 rounded-full "+x[2]+" transition-all duration-1000"} style={{width:responseTotal?Math.max(4,x[1]/responseTotal*100)+"%":"4%"}}/></div><p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">{responseTotal?pctOf(x[1],responseTotal):0}% of responses</p></div>)}</div><div className="mt-4 grid gap-3 sm:grid-cols-4">{[["Clicks",stats.clicks],["Unsubscribes",stats.unsubscribe],["Bounces",stats.bounce]].map((x:any)=><div key={x[0]} className="rounded-xl bg-blue-50/70 p-3"><p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{x[0]}</p><p className="mt-1 text-xl font-black">{x[1]}</p></div>)}</div></div>
     <div className="glass lift rounded-3xl p-6"><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">DELIVERABILITY & ENGAGEMENT</p><h2 className="mt-2 text-2xl font-black">Signal health</h2><div className="mt-6 space-y-5">{[["Open rate",openRate,100],["Reply rate",replyRate,10],["Bounce rate",bounceRate,5]].map((x:any)=><div key={x[0]}><div className="flex justify-between text-sm font-black"><span>{x[0]}</span><span>{x[1].toFixed(2)}%</span></div><div className="mt-2 h-3 rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-[#4d5cff] transition-all duration-1000" style={{width:Math.min(100,Math.max(4,x[1]/x[2]*100))+"%"}}/></div></div>)}</div><div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-xs font-black text-[#29458f]">Report window</p><p className="mt-1 text-sm font-bold text-slate-600">{rangeLabel}</p></div></div>
    </div>
 
-   <div className="glass lift rounded-3xl p-6"><div className="flex items-end justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">02 · COUNTRY WISE ANALYSIS</p><h2 className="mt-2 text-3xl font-black">Markets in motion.</h2></div><span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700">{countries.length} markets</span></div><div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{countries.length?countries.map((x:any,i:number)=><div key={x.name} className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white/70 to-blue-50/70 p-5 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#4d5cff] text-xs font-black text-white">{String(i+1).padStart(2,"0")}</span><div><p className="text-base font-black">{x.name}</p><p className="text-xs font-bold text-slate-500">{x.outreach.toLocaleString()} outreach</p></div></div><span className="text-xl font-black">{responseRate(x)}%</span></div><div className="mt-4 h-2 rounded-full bg-blue-100"><div className="h-full rounded-full bg-cyan-300 transition-all duration-1000" style={{width:Math.max(4,responseRate(x))+"%"}}/></div><div className="mt-3 grid grid-cols-3 gap-3 text-xs font-bold text-slate-500"><span>{openRateFor(x)}% open</span><span>{x.pos} positive</span></div></div>):<p className="text-sm text-slate-500">No country data in this period.</p>}</div></div>
+   <div className="glass lift rounded-3xl p-6"><div className="flex items-end justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">02 · COUNTRY WISE ANALYSIS</p><h2 className="mt-2 text-3xl font-black">Markets in motion.</h2></div><span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700">{countries.length} markets</span></div><div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{countries.length?countries.map((x:any,i:number)=><div key={x.name} className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white/70 to-blue-50/70 p-5 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#4d5cff] text-xs font-black text-white">{String(i+1).padStart(2,"0")}</span><div><p className="text-base font-black">{x.name}</p><p className="text-xs font-bold text-slate-500">{x.outreach.toLocaleString()} outreach</p></div></div><span className="text-xl font-black">{responseRate(x)}%</span></div><div className="mt-4 h-2 rounded-full bg-blue-100"><div className="h-full rounded-full bg-cyan-300 transition-all duration-1000" style={{width:Math.max(4,responseRate(x))+"%"}}/></div><div className="mt-3 grid grid-cols-3 gap-3 text-xs font-bold text-slate-500"><span>{openRateFor(x)}% open</span><span>{x.pos} positive</span><span>{x.pcAccounts.size} PC accounts</span></div></div>):<p className="text-sm text-slate-500">No country data in this period.</p>}</div></div>
 
    <div className="grid gap-6 xl:grid-cols-2">
     <div className="glass lift rounded-3xl p-6"><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">03 · LEAD WISE ANALYSIS</p><h2 className="mt-2 text-3xl font-black">Where are the leads coming from?</h2><RankList items={leads} label="Lead source" accent="cyan"/></div>
@@ -180,7 +200,7 @@ function Report({title,subtitle,stats,openRate,replyRate,bounceRate,activities,s
 
    <div className="glass lift rounded-3xl p-6"><div className="flex items-end justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">04 · SUBJECT LINE ANALYSIS</p><h2 className="mt-2 text-3xl font-black">What is getting attention?</h2></div><Target className="text-[#4d5cff]"/></div><RankList items={subjects} label="Subject line"/><div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{subjects.slice(0,4).map((x:any)=><div key={x.name} className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4"><p className="line-clamp-2 text-sm font-black">{x.name}</p><div className="mt-3 flex gap-3 text-[10px] font-bold text-slate-500"><span>{x.outreach} sends</span><span>{x.pos} positive</span></div></div>)}</div></div>
 
-   {showPreviousCampaign&&stats.previousPositive+stats.previousNeutral+stats.previousNegative>0&&<div className="glass rounded-3xl border border-cyan-300/20 p-5"><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">Previous campaign</p><div className="mt-3 grid gap-3 sm:grid-cols-3"><Metric label="Positive (PC)" value={String(stats.previousPositive)}/><Metric label="Neutral (PC)" value={String(stats.previousNeutral)}/><Metric label="Negative (PC)" value={String(stats.previousNegative)}/></div></div>}
+   {showPreviousCampaign&&stats.previousPositive+stats.previousNeutral+stats.previousNegative>0&&<div className="glass rounded-3xl border border-cyan-300/20 p-5"><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">Previous campaign</p><div className="mt-3 grid gap-3 sm:grid-cols-4"><Metric label="PC Accounts" value={String(stats.pcAccounts)}/><Metric label="Positive (PC)" value={String(stats.previousPositive)}/><Metric label="Neutral (PC)" value={String(stats.previousNeutral)}/><Metric label="Negative (PC)" value={String(stats.previousNegative)}/></div></div>}
  </div>
 }
 function rowSignature(r:Row){
