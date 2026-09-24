@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       source_row:num(row.source_row), imported_at:new Date().toISOString(), import_batch_id:importBatchId
     };
   });
-  const invalid=normalized.findIndex(r=>!r.activity_date||!r.prospect_email);
+  const invalid=normalized.findIndex((r: { activity_date: string; prospect_email: string })=>!r.activity_date||!r.prospect_email);
   if(invalid>=0)return NextResponse.json({error:"Historical row "+(invalid+1)+" needs an activity date and account/prospect email."},{status:400});
   const {error}=await admin.from("outbound_activities").insert(normalized);
   if(error)return NextResponse.json({error:error.message},{status:500});
