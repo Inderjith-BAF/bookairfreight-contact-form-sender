@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     outreach_volume: num(row.outreach_volume), open_count: num(row.open_count), open_rate: num(row.open_rate), positive_replies: num(row.positive_replies),
     neutral_replies: num(row.neutral_replies), negative_replies: num(row.negative_replies), unsubscribes: num(row.unsubscribes), bounced: num(row.bounced),
     auto_responses: num(row.auto_responses), clicks: num(row.clicks), bounce_rate: num(row.bounce_rate), qualified_leads: num(row.qualified_leads), follow_ups: num(row.follow_ups),
-    freshness: row.freshness === "recycled" ? "recycled" : "fresh", channel: row.channel === "contact_form" ? "contact_form" : "cold_email",
+    freshness: row.freshness === "recycled" ? "recycled" : "fresh", response_origin: row.response_origin === "previous_outreach" ? "previous_outreach" : "current_outreach", response_sequence_id: typeof row.response_sequence_id === "string" ? row.response_sequence_id : null, response_note: String(row.response_note ?? ""), channel: row.channel === "contact_form" ? "contact_form" : "cold_email",
   }));
   const invalid = normalized.findIndex((r: { prospect_email: string }) => !r.prospect_email);
   if (invalid >= 0) return NextResponse.json({ error: "Row " + (invalid + 1) + " is missing an account/prospect email." }, { status: 400 });
