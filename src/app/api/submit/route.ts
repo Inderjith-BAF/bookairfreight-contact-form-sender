@@ -38,7 +38,7 @@ export async function POST(request:Request){
     if(supabase&&batchId){
       await supabase.from("submission_targets").insert({
         batch_id:batchId,url,status:result.status,message:result.message,
-        detected_fields:result.detectedFields??[],submitted_at:["success","submitted_unverified"].includes(result.status)?new Date().toISOString():null
+        detected_fields:result.detectedFields??[],evidence:result.evidence??[],submitted_at:["success","submitted_unverified"].includes(result.status)?new Date().toISOString():null
       });
     }
   }
