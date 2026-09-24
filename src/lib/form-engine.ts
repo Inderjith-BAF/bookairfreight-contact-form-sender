@@ -43,7 +43,26 @@ async function inspect(page:Page){
         el.setAttribute("data-baf-control",String(index));
         return {tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||"",required:Boolean(el.required)};
       });
-      return {formIndex,controls};
+      const action=form.getAttribute("action")||"";
+      const method=(form.getAttribute("method")||"get").toUpperCase();
+      const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
+      const shopifyContact=/\\/contact(?:#|$)/i.test(action)||formType==="contact";
+      return {formIndex,controls,action,method,formType,shopifyContact};
+    });
+  });
+}
+async function detectShopifyCaptcha(page:Page){
+  return page.evaluate(()=>{
+    const forms=Array.from(document.forms);
+    return forms.some(form=>{
+      const action=form.getAttribute("action")||"";
+      const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
+      const isContact=/\\/contact(?:#|$)/i.test(action)||formType==="contact";
+      if(!isContact)return false;
+      const protectedByAttribute=form.getAttribute("data-shopify-captcha")==="true";
+      const hasCaptchaMarkup=Boolean(form.querySelector('[data-sitekey], .h-captcha, iframe[src*="hcaptcha"], iframe[src*="recaptcha"]'));
+      const shopifyCaptcha=typeof (window as any).Shopify?.captcha?.protect==="function";
+      return protectedByAttribute||hasCaptchaMarkup||shopifyCaptcha;
     });
   });
 }
@@ -147,7 +166,8 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     const forms=await inspect(page);
     if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
     const challenge=await detectChallenge(page);
-    if(challenge)return{url,status:"captcha_required",message:"CAPTCHA or anti-bot challenge detected. Submission skipped and added to the CAPTCHA queue."};
+    const shopifyCaptcha=await detectShopifyCaptcha(page);
+    if(challenge||shopifyCaptcha)return{url,status:"captcha_required",message:shopifyCaptcha?"Shopify hCaptcha protection detected on the contact form. Submission skipped and added to the CAPTCHA queue.":"CAPTCHA or anti-bot challenge detected. Submission skipped and added to the CAPTCHA queue."};
     let best:{formIndex:number;mapping:Array<{key:MappingKey;controlIndex:number;score:number}>}|null=null;
     for(const form of forms){
       const used=new Set<number>();
@@ -171,7 +191,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
       if(value)await fillField(page,best.formIndex,item.controlIndex,value);
     }
     if(dryRun)return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields};
-    if(await detectChallenge(page))return{url,status:"captcha_required",message:"An anti-bot challenge appeared before submission. Submission skipped and added to the CAPTCHA queue.",detectedFields};
+    if(await detectChallenge(page)||await detectShopifyCaptcha(page))return{url,status:"captcha_required",message:"An anti-bot challenge or Shopify hCaptcha protection was detected before submission. Submission skipped and added to the CAPTCHA queue.",detectedFields};
     const validity=await validateForm(page,best.formIndex);
     if(!validity.valid)return{url,status:"failed",message:"Form validation blocked submission. Missing or invalid field: "+validity.missing.join(", ")+".",detectedFields};
     const beforeUrl=page.url();
