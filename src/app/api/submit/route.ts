@@ -22,6 +22,8 @@ const schema=z.object({
 });
 
 export async function POST(request:Request){
+  const auth=await requireOutboundUser(request);
+  if("error" in auth)return auth.error;
   const requestId=crypto.randomUUID();
   const parsed=schema.safeParse(await request.json().catch(()=>null));
   if(!parsed.success)return NextResponse.json({error:"Please check the URLs and sender details.",issues:parsed.error.flatten()},{status:400});
