@@ -162,7 +162,7 @@ async function successSignal(page:Page,beforeUrl:string,formIndex:number){
     const formState=form?{exists:true,visible:!!(form as HTMLElement).offsetParent,submitDisabled:Boolean(form.querySelector('button[type="submit"]:disabled,input[type="submit"]:disabled')),values:Array.from(form.elements).filter((el:any)=>"value" in el).map((el:any)=>String(el.value||"")).join("|")}:{exists:false,visible:false,submitDisabled:false,values:""};
     return {visibleText,challengeText,errorText,formState};
   },formIndex);
-  return {confirmed:currentUrl!==beforeUrl||state.visibleText,challengeText:state.challengeText,formState:state.formState,currentUrl};
+  return {confirmed:currentUrl!==beforeUrl||state.visibleText,challengeText:state.challengeText,errorText:state.errorText,formState:state.formState,currentUrl};
 }
 export async function submitContactForm(url:string,details:SenderDetails,dryRun=false):Promise<SubmissionResult>{
   let safeUrl:string;
