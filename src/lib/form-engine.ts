@@ -1,7 +1,7 @@
 import type { Page } from "puppeteer-core";
 import { launchBrowser } from "@/lib/browser";
 import { assertSafeTargetUrl } from "@/lib/url-safety";
-import type { SenderDetails, SubmissionResult } from "@/types/submission";
+import type { SenderDetails, SubmissionEvidence, SubmissionResult } from "@/types/submission";
 
 type MappingKey=keyof SenderDetails|"fullName";
 const aliases: Record<MappingKey,string[]> = {
@@ -51,39 +51,32 @@ async function inspect(page:Page){
     });
   });
 }
-async function detectShopifyCaptcha(page:Page){
-  return page.evaluate(()=>{
-    const forms=Array.from(document.forms);
-    return forms.some(form=>{
-      const action=form.getAttribute("action")||"";
-      const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
-      const isContact=/\/contact(?:#|$)/i.test(action)||formType==="contact";
-      if(!isContact)return false;
-      const protectedByAttribute=form.getAttribute("data-shopify-captcha")==="true";
-      const hasCaptchaMarkup=Boolean(form.querySelector('[data-sitekey], .h-captcha, iframe[src*="hcaptcha"], iframe[src*="recaptcha"]'));
-      const responseFields=Boolean(form.querySelector('textarea[name*="captcha" i], input[name*="captcha" i], textarea[name="g-recaptcha-response"], textarea[name="h-captcha-response"]'));
-      return protectedByAttribute||hasCaptchaMarkup||responseFields;
-    });
-  });
-}
-async function detectChallenge(page:Page){
-  return page.evaluate((patterns)=>{
-    const re=new RegExp(patterns.element,"i");
-    const textRe=new RegExp(patterns.text,"i");
-    const visible=(el:Element)=>{
-      const node=el as HTMLElement;
-      const style=getComputedStyle(node);
-      const rect=node.getBoundingClientRect();
-      return style.display!=="none"&&style.visibility!=="hidden"&&Number(style.opacity||1)>0&&rect.width>0&&rect.height>0;
-    };
-    const elements=Array.from(document.querySelectorAll("iframe, [data-sitekey], [aria-label], [role='checkbox']"));
-    const elementChallenge=elements.some(el=>{
-      if(!visible(el))return false;
-      const text=[el.textContent||"",el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("aria-label")||"",el.getAttribute("data-sitekey")||"",el.getAttribute("role")||""].join(" ");
-      return re.test(text);
-    });
-    return elementChallenge||textRe.test(document.body?.innerText||"");
-  },{element:challengePattern.source,text:visibleChallengeText.source});
+async function detectProtection(page:Page,formIndex:number|null):Promise<SubmissionEvidence[]>{
+  return page.evaluate((index)=>{
+    const evidence:string[]=[]; const add=(v:string)=>{if(!evidence.includes(v))evidence.push(v);};
+    const visible=(el:Element)=>{const n=el as HTMLElement,s=getComputedStyle(n),r=n.getBoundingClientRect();return s.display!=="none"&&s.visibility!=="hidden"&&Number(s.opacity||1)>0&&r.width>0&&r.height>0;};
+    const form=index===null?null:document.querySelector("form[data-baf-form=\""+index+"\"]") as HTMLFormElement|null;
+    const forms=form?[form]:Array.from(document.forms);
+    for(const target of forms){
+      const action=target.getAttribute("action")||"";
+      const type=(target.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
+      const shopify=/\/contact(?:#|$)/i.test(action)||type==="contact";
+      if(!shopify)continue;
+      if(target.getAttribute("data-shopify-captcha")==="true")add("Shopify hCaptcha wired to contact form");
+      if(target.querySelector(".h-captcha,iframe[src*='hcaptcha' i],iframe[src*='recaptcha' i],textarea[name='h-captcha-response'],textarea[name='g-recaptcha-response']"))add("CAPTCHA widget or response field attached to contact form");
+      if(target.querySelector(".cf-turnstile,iframe[src*='challenges.cloudflare.com' i],input[name='cf-turnstile-response']"))add("Cloudflare Turnstile attached to contact form");
+      if(typeof (window as any).Shopify?.captcha?.protect==="function")add("Shopify CAPTCHA service active for contact form");
+    }
+    for(const el of Array.from(document.querySelectorAll(".h-captcha,.g-recaptcha,.cf-turnstile,iframe[src*='hcaptcha' i],iframe[src*='recaptcha' i],iframe[src*='challenges.cloudflare.com' i]"))){
+      if(!visible(el))continue;
+      const hay=[el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("aria-label")||"",String((el as HTMLElement).className||"")].join(" ");
+      if(/hcaptcha|recaptcha/i.test(hay))add("Visible CAPTCHA widget detected");
+      if(/turnstile|challenges\.cloudflare\.com/i.test(hay))add("Visible Cloudflare Turnstile detected");
+    }
+    if(/\/challenge(?:[/?#]|$)|cf-chl-|challenge-platform|cdn-cgi\/challenge/i.test(location.href))add("Browser challenge page detected");
+    if(/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|human verification|this site is protected by hcaptcha|protected by hcaptcha|hcaptcha protection|checking your browser/i.test(document.body?.innerText||""))add("Visible challenge text detected");
+    return evidence;
+  },formIndex);
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
   const handle=await page.$(`form[data-baf-form="${formIndex}"] [data-baf-control="${controlIndex}"]`);
@@ -214,7 +207,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
       if(value)await fillField(page,best.formIndex,item.controlIndex,value);
     }
     if(dryRun)return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields};
-    if(await detectChallenge(page)||await detectShopifyCaptcha(page))return{url,status:"captcha_required",message:"An anti-bot challenge or Shopify hCaptcha protection was detected before submission. Submission skipped and added to the CAPTCHA queue.",detectedFields};
+    const afterFillProtection=await detectProtection(page,best.formIndex);\n    if(afterFillProtection.length)return{url,status:"captcha_required",message:"Explicit anti-bot protection detected before submission: "+afterFillProtection.join(" • "),detectedFields,evidence:afterFillProtection};
     const validity=await validateForm(page,best.formIndex);
     if(!validity.valid)return{url,status:"failed",message:"Form validation blocked submission. Missing or invalid field: "+validity.missing.join(", ")+".",detectedFields};
     const beforeUrl=page.url();
