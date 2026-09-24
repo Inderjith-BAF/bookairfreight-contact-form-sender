@@ -52,9 +52,20 @@ export async function POST(request:Request){
       });
     }
   }
+  const summary={
+    total:results.length,
+    success:results.filter(r=>r.status==="success").length,
+    submitted_unverified:results.filter(r=>r.status==="submitted_unverified").length,
+    captcha_required:results.filter(r=>r.status==="captcha_required").length,
+    unsupported:results.filter(r=>r.status==="unsupported").length,
+    failed:results.filter(r=>r.status==="failed").length,
+    preview:results.filter(r=>r.status==="preview").length
+  };
   if(supabase&&batchId){
-    const sent=results.filter(r=>["success","submitted_unverified"].includes(r.status)).length;
-    await supabase.from("submission_batches").update({status:sent+results.filter(r=>r.status==="captcha_required").length===results.length?"completed":"completed_with_issues"}).eq("id",batchId);
+    const hasIssues=summary.failed>0||summary.unsupported>0;
+    await supabase.from("submission_batches").update({
+      status:hasIssues?"completed_with_issues":"completed"
+    }).eq("id",batchId);
   }
-  return NextResponse.json({batchId,dryRun,results});
+  return NextResponse.json({batchId,dryRun,summary,results});
 }
