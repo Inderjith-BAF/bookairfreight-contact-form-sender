@@ -199,7 +199,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
       if(value)await fillField(page,best.form.formIndex,item.controlIndex,value);
     }
     if(dryRun)return{url,status:"preview",message:"Form loaded and fields were mapped without submitting.",detectedFields,evidence:["Form mapping verified","Submission not attempted"]};
-    const afterFillProtection=await detectProtection(page,best.formIndex);
+    const afterFillProtection=await detectProtection(page,best.form.formIndex);
     if(afterFillProtection.length)return{url,status:"captcha_required",message:"Explicit anti-bot protection detected before submission: "+afterFillProtection.join(" • "),detectedFields,evidence:afterFillProtection};
     const validity=await validateForm(page,best.form.formIndex);
     if(!validity.valid)return{url,status:"failed",message:"Form validation blocked submission. Missing or invalid field: "+validity.missing.join(", ")+".",detectedFields};
