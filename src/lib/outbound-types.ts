@@ -8,7 +8,7 @@ export type Sequence = {
 export type OutboundProfile = { id: string; full_name: string; role: Role; active: boolean };
 export type OutboundActivity = {
   id?: string; activity_date: string; employee_id?: string | null; employee_name?: string;
-  email_account_id?: string | null; email_account?: string; prospect_email: string;
+  email_account_id?: string | null; email_account?: string; email_account_text?: string; prospect_email: string;
   company?: string; industry?: string; region?: string; lead_source?: string;
   campaign?: string; sequence_id?: string | null; sequence_name?: string; stage?: string;
   subject?: string; content?: string; content_link?: string; content_creator?: string;
