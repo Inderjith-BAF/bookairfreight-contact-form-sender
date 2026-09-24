@@ -86,16 +86,17 @@ async function submitForm(page:Page,formIndex:number){
     if(submitter){try{await submitter.click({delay:30});}catch{await form.evaluate((el:any)=>el.requestSubmit());}}
     else await form.evaluate((el:any)=>el.requestSubmit());
     await Promise.race([navigation,new Promise(resolve=>setTimeout(resolve,5000))]);
-    const sameOriginRequest=requests.find(item=>{try{const actual=new URL(item.url);return actual.origin===expectedAction.origin&&item.method===submission.method;}catch{return false;}});
+    const sameOriginRequest=requests.find(item=>{try{const actual=new URL(item.url);const expectedPath=expectedAction.pathname;return actual.origin===expectedAction.origin&&actual.pathname===expectedPath&&item.method===submission.method;}catch{return false;}});
     const responseForRequest=sameOriginRequest?responses.find(item=>item.url===sameOriginRequest.url&&item.method===sameOriginRequest.method):undefined;
     const postLike=requests.find(item=>item.method==="POST");
     const responseStatus=responseForRequest?.status;
+    const responseAccepted=typeof responseStatus==="number"&&responseStatus>=200&&responseStatus<400;
     const diagnostic=sameOriginRequest
-      ? "Submission request observed: "+sameOriginRequest.method+" "+sameOriginRequest.url+(responseStatus?" (HTTP "+responseStatus+")":"")+"."
+      ? "Submission request observed: "+sameOriginRequest.method+" "+sameOriginRequest.url+(typeof responseStatus==="number"?" (HTTP "+responseStatus+")":"")+"."
       : postLike
-        ? "A POST request occurred, but not to the form action: "+postLike.url+"."
-        : "No POST or matching "+submission.method+" request was observed. "+requests.length+" HTTP request(s) occurred during submission.";
-    return {observed:Boolean(sameOriginRequest),request:sameOriginRequest||null,requests,responses,diagnostic};
+        ? "A POST request occurred, but not to the expected form endpoint: "+postLike.url+"."
+        : "No matching "+submission.method+" request was observed. "+requests.length+" HTTP request(s) occurred during submission.";
+    return {observed:Boolean(sameOriginRequest),accepted:responseAccepted,request:sameOriginRequest||null,requests,responses,diagnostic};
   }finally{
     page.off("request",onRequest);
     page.off("response",onResponse);
@@ -154,11 +155,17 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     const submission=await submitForm(page,best.form.formIndex);
     const success=await successSignal(page,beforeUrl,best.form.formIndex);
     if(success.challengeText)return{url,status:"captcha_required",message:"An anti-bot or spam-protection signal appeared during submission. Submission could not be safely verified and was added to the CAPTCHA queue.",detectedFields};
-    if(submission.observed){
-      return{url,status:success.confirmed?"success":"submitted_unverified",message:success.confirmed?"Submission request was observed and the page returned a success signal. "+submission.diagnostic:"Submission request was observed, but the page did not return a success confirmation. "+submission.diagnostic,detectedFields};
+    if(submission.observed&&submission.accepted&&success.confirmed){
+      return{url,status:"success",message:"Submission request was observed, received an HTTP "+(submission.responses.find(r=>r.url===submission.request?.url)?.status??"2xx/3xx")+" response, and the page returned a success signal.",detectedFields,evidence:["Submission request observed","Success confirmation detected"]};
     }
-    if(success.confirmed)return{url,status:"submitted_unverified",message:"The form changed state after submission, but the expected submission request could not be directly observed. "+submission.diagnostic+" Treat as sent and review if needed.",detectedFields};
-    return{url,status:"failed",message:"No submission request or success signal was observed after clicking the form submit control. "+submission.diagnostic,detectedFields};
+    if(submission.observed&&submission.accepted){
+      return{url,status:"submitted_unverified",message:"Submission request was observed and the target returned an HTTP "+(submission.responses.find(r=>r.url===submission.request?.url)?.status??"success")+" response, but no explicit success confirmation was detected.",detectedFields,evidence:["Submission request observed","No success confirmation"]};
+    }
+    if(submission.observed&&!submission.accepted){
+      return{url,status:"failed",message:"Submission request was observed, but the target returned an HTTP "+(submission.responses.find(r=>r.url===submission.request?.url)?.status??"error")+" response. "+submission.diagnostic,detectedFields,evidence:["Submission request observed","Target page reported an error"]};
+    }
+    if(success.confirmed)return{url,status:"submitted_unverified",message:"The form changed state, but the expected submission request could not be directly observed. "+submission.diagnostic,detectedFields,evidence:["No matching submission request","No success confirmation"]};
+    return{url,status:"failed",message:"No matching submission request or success signal was observed after submission. "+submission.diagnostic,detectedFields,evidence:["No matching submission request","No success confirmation"]};
   }catch(error){
     const raw=error instanceof Error?error.message:"Browser automation failed.";
     const browserTargetError=/target closed|targetclose|execution context was destroyed|session closed|protocol error/i.test(raw);
