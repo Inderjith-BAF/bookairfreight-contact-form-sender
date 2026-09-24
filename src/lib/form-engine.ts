@@ -1,7 +1,7 @@
 import type { Page } from "puppeteer-core";
 import { launchBrowser } from "@/lib/browser";
 import { assertSafeTargetUrl } from "@/lib/url-safety";
-import type { SenderDetails, SubmissionResult } from "@/types/submission";
+import type { SenderDetails, SubmissionEvidence, SubmissionResult } from "@/types/submission";
 import { chooseBestContactForm } from "@/lib/form-mapper";
 
 async function detectProtection(page:Page,formIndex:number|null):Promise<SubmissionEvidence[]>{
@@ -30,6 +30,54 @@ async function detectProtection(page:Page,formIndex:number|null):Promise<Submiss
     if(/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|human verification|this site is protected by hcaptcha|protected by hcaptcha|hcaptcha protection|checking your browser/i.test(document.body?.innerText||""))add("Visible challenge text detected");
     return evidence;
   },formIndex);
+}
+async function inspect(page:Page){
+  return page.evaluate(()=>{
+    const forms=Array.from(document.forms);
+    forms.forEach((form,i)=>form.setAttribute("data-baf-form",String(i)));
+    return forms.map((form,formIndex)=>{
+      const controls=Array.from(form.querySelectorAll("input,textarea,select")).filter((el:any)=>{
+        const type=(el.type||"").toLowerCase();
+        return !el.disabled&&!["hidden","submit","button","reset","file","image","checkbox","radio"].includes(type);
+      }).map((el:any,index)=>{
+        el.setAttribute("data-baf-control",String(index));
+        return {tag:el.tagName.toLowerCase(),type:(el.type||"").toLowerCase(),name:el.name||"",id:el.id||"",placeholder:el.placeholder||"",autocomplete:el.autocomplete||"",label:el.labels?.[0]?.textContent?.trim()||"",required:Boolean(el.required)};
+      });
+      const action=form.getAttribute("action")||"";
+      const method=(form.getAttribute("method")||"get").toUpperCase();
+      const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
+      const shopifyContact=/\/contact(?:#|$)/i.test(action)||formType==="contact";
+      return {formIndex,controls,action,method,formType,shopifyContact};
+    });
+  });
+}
+async function detectShopifyCaptcha(page:Page){
+  return page.evaluate(()=>{
+    return Array.from(document.forms).some(form=>{
+      const action=form.getAttribute("action")||"";
+      const formType=(form.querySelector('input[name="form_type"]') as HTMLInputElement|null)?.value||"";
+      const isContact=/\/contact(?:#|$)/i.test(action)||formType==="contact";
+      if(!isContact)return false;
+      return form.getAttribute("data-shopify-captcha")==="true" ||
+        Boolean(form.querySelector('[data-sitekey], .h-captcha, iframe[src*="hcaptcha"], iframe[src*="recaptcha"], textarea[name*="captcha" i], input[name*="captcha" i]'));
+    });
+  });
+}
+async function detectChallenge(page:Page){
+  return page.evaluate(()=>{
+    const visible=(el:Element)=>{
+      const node=el as HTMLElement,style=getComputedStyle(node),rect=node.getBoundingClientRect();
+      return style.display!=="none"&&style.visibility!=="hidden"&&Number(style.opacity||1)>0&&rect.width>0&&rect.height>0;
+    };
+    const elements=Array.from(document.querySelectorAll("iframe,[data-sitekey],[aria-label],[role='checkbox']"));
+    const elementChallenge=elements.some(el=>{
+      if(!visible(el))return false;
+      const text=[el.textContent||"",el.getAttribute("src")||"",el.getAttribute("title")||"",el.getAttribute("aria-label")||"",el.getAttribute("data-sitekey")||""].join(" ");
+      return /captcha|recaptcha|hcaptcha|turnstile|challenge-platform|cf-chl-|i am not a robot|verify (that )?you are human/i.test(text);
+    });
+    const pageChallenge=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|human verification|this site is protected by hcaptcha|protected by hcaptcha|hcaptcha protection|checking your browser/i.test(document.body?.innerText||"");
+    return elementChallenge||pageChallenge;
+  });
 }
 async function fillField(page:Page,formIndex:number,controlIndex:number,value:string){
   const handle=await page.$(`form[data-baf-form="${formIndex}"] [data-baf-control="${controlIndex}"]`);
