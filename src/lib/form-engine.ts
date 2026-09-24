@@ -122,7 +122,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
   try{
     const page=await browser.newPage();
     await page.setUserAgent("BookAirfreightContactFormSender/1.0");
-    await page.setDefaultNavigationTimeout(20000);
+    await page.setDefaultNavigationTimeout(15000);\n    page.setDefaultTimeout(10000);
     await page.setRequestInterception(true);
     page.on("request",async request=>{
       if(request.isInterceptResolutionHandled())return;
@@ -133,7 +133,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
       try{await assertSafeTargetUrl(request.url());request.continue().catch(()=>undefined);}
       catch{request.abort("blockedbyclient").catch(()=>undefined);}
     });
-    await page.goto(safeUrl,{waitUntil:"domcontentloaded",timeout:20000});
+    await page.goto(safeUrl,{waitUntil:"domcontentloaded",timeout:15000});
     const forms=await inspect(page);
     if(!forms.length)return{url,status:"unsupported",message:"No HTML contact form was detected on this page."};
     const challenge=await detectChallenge(page);
