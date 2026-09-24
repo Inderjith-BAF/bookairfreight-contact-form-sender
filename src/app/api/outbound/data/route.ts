@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     auto_responses: num(row.auto_responses), clicks: num(row.clicks), bounce_rate: num(row.bounce_rate), qualified_leads: num(row.qualified_leads), follow_ups: num(row.follow_ups),
     freshness: row.freshness === "recycled" ? "recycled" : "fresh", channel: row.channel === "contact_form" ? "contact_form" : "cold_email",
   }));
-  const invalid = normalized.findIndex(r => !r.prospect_email);
+  const invalid = normalized.findIndex((r: { prospect_email: string }) => !r.prospect_email);
   if (invalid >= 0) return NextResponse.json({ error: "Row " + (invalid + 1) + " is missing an account/prospect email." }, { status: 400 });
   const { data, error } = await admin.from("outbound_activities").insert(normalized).select("*");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
