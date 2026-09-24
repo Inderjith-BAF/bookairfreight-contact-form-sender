@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   if (profile.role === "member" && existingIds.length) {
     const ids: string[] = existingIds.map((r: { id: string }) => r.id);
     const { data: owned, error: ownershipError } = await admin.from("outbound_activities").select("id").eq("employee_id", profile.id).in("id", ids);
-    if (ownershipError) return NextResponse.json({ error: ownershipError.message }, { status: 500 });
+    if (ownershipError) { console.error("[outbound/data] ownership check failed:", ownershipError); return NextResponse.json({ error: ownershipError.message }, { status: 500 }); }
     const ownedIds = new Set((owned ?? []).map((r: {id:string}) => r.id));
     const foreign = ids.find(id => !ownedIds.has(id));
     if (foreign) return NextResponse.json({ error: "One or more rows cannot be updated by this account." }, { status: 403 });
@@ -69,12 +69,12 @@ export async function POST(request: Request) {
       const result = await query;
       return result.error;
     })).then(errors => ({ error: errors.find(Boolean) ?? null }));
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) { console.error("[outbound/data] update failed:", error); return NextResponse.json({ error: error.message }, { status: 500 }); }
   }
   let inserted = 0;
   if (inserts.length) {
     const { data, error } = await admin.from("outbound_activities").insert(inserts).select("id");
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) { console.error("[outbound/data] insert failed:", error); return NextResponse.json({ error: error.message }, { status: 500 }); }
     inserted = data?.length ?? 0;
   }
   return NextResponse.json({ saved: normalized.length, inserted, updated: updates.length });
