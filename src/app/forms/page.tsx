@@ -1,2 +1,2 @@
-import { SenderWorkspace } from "@/components/sender-workspace";
-export default function FormsPage(){ return <SenderWorkspace/>; }
+import { FormsGate } from "@/components/forms-gate";
+export default function FormsPage(){ return <FormsGate/>; }
