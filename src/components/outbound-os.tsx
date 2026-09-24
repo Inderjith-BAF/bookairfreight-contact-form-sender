@@ -5,7 +5,7 @@ import { BarChart3, CalendarDays, ChevronDown, CircleHelp, FileSpreadsheet, Gaug
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import type { OutboundActivity, OutboundProfile, Sequence } from "@/lib/outbound-types";
 
-type Tab="command"|"daily"|"weekly"|"monthly"|"my"|"import"|"team";
+type Tab="command"|"daily"|"weekly"|"monthly"|"my"|"forms"|"import"|"team";
 type Row=Partial<OutboundActivity>&{account:string; subject:string; content:string; email_account_text:string};
 
 const today=new Date().toISOString().slice(0,10);
@@ -72,7 +72,7 @@ export function OutboundOS(){
 
  const filtered=activities; const stats=aggregate(filtered); const openRate=pct(stats.open,stats.outreach),replyRate=pct(stats.positive+stats.neutral+stats.negative,stats.outreach),bounceRate=pct(stats.bounce,stats.outreach);
  const employeeStats=team.map(p=>({p,...aggregate(activities.filter(a=>a.employee_id===p.id))}));
- const nav=[["command","Command Center",Gauge],["daily","Daily Report",CalendarDays],["weekly","Weekly Report",BarChart3],["monthly","Monthly Report",History],["my","My Outbound",Send],["forms","Contact Forms",Mail],...(profile?.role!=="member"?[["import","Historical Data",FileSpreadsheet]] as any:[]),...(profile?.role==="admin"?[["team","Team & Access",Users]] as any:[])] as any[];
+ function selectTab(id:Tab){const now=new Date();const fmt=(d:Date)=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return y+"-"+m+"-"+day};if(id==="weekly"){const d=new Date(now);const day=d.getDay();const diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);setDateFrom(fmt(d));setDateTo(fmt(now));}else if(id==="monthly"){setDateFrom(fmt(new Date(now.getFullYear(),now.getMonth(),1)));setDateTo(fmt(now));}else if(id==="daily"||id==="command"||id==="my"){setDateFrom(fmt(now));setDateTo(fmt(now));}setTab(id)}\n const nav=[["command","Command Center",Gauge],["daily","Daily Report",CalendarDays],["weekly","Weekly Report",BarChart3],["monthly","Monthly Report",History],["my","My Outbound",Send],["forms","Contact Forms",Mail],...(profile?.role!=="member"?[["import","Historical Data",FileSpreadsheet]] as any:[]),...(profile?.role==="admin"?[["team","Team & Access",Users]] as any:[])] as any[];
  if(loading)return <div className="min-h-screen bg-[#050810] grid place-items-center text-slate-400"><div className="animate-pulse font-black tracking-[.3em]">LOADING OUTBOUND OS</div></div>;
  if(!session||!profile)return <Login email={email} password={password} setEmail={setEmail} setPassword={setPassword} error={authError} onLogin={signIn}/>;
 
@@ -81,13 +81,13 @@ export function OutboundOS(){
   <div className="relative flex min-h-screen">
    <aside className={(mobileOpen?"translate-x-0":"-translate-x-full")+" fixed inset-y-0 left-0 z-50 w-72 border-r border-white/10 bg-[#070b14]/95 p-5 backdrop-blur-2xl transition-transform lg:static lg:translate-x-0"}>
     <div className="flex items-center justify-between"><div><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-lime-300 font-black text-slate-950">BAF</div><div className="font-black tracking-tight">OUTBOUND OS</div></div><p className="mt-2 text-[9px] font-black uppercase tracking-[.3em] text-slate-600">Freight intelligence</p></div><button className="lg:hidden" onClick={()=>setMobileOpen(false)}><X/></button></div>
-    <div className="mt-8 space-y-1">{nav.map(([id,label,Icon]:any)=><button key={id} onClick={()=>{setTab(id);setMobileOpen(false)}} className={"flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition "+(tab===id?"bg-lime-300 text-slate-950":"text-slate-500 hover:bg-white/5 hover:text-white")}><Icon size={17}/>{label}</button>)}</div>
+    <div className="mt-8 space-y-1">{nav.map(([id,label,Icon]:any)=><button key={id} onClick={()=>{selectTab(id);setMobileOpen(false)}} className={"flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition "+(tab===id?"bg-lime-300 text-slate-950":"text-slate-500 hover:bg-white/5 hover:text-white")}><Icon size={17}/>{label}</button>)}</div>
     <div className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/10 bg-white/[.03] p-3"><div className="flex items-center gap-2"><span className="pulse-dot h-2 w-2 rounded-full bg-lime-300"/><span className="text-xs font-bold">{profile.full_name}</span></div><p className="mt-1 text-[9px] uppercase tracking-widest text-slate-600">{profile.role}</p><button onClick={signOut} className="mt-3 flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-white"><LogOut size={13}/> Sign out</button></div>
    </aside>
    <button onClick={()=>setMobileOpen(true)} className="fixed left-4 top-4 z-40 rounded-xl border border-white/10 bg-black/30 p-2 lg:hidden"><Menu size={18}/></button>
    <section className="min-w-0 flex-1 p-4 pt-16 sm:p-6 lg:p-10 lg:pt-8">
     <header className="mb-8 flex flex-wrap items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[.35em] text-cyan-300">BOOKAIRFREIGHT / OUTBOUND</p><h1 className="mt-2 text-3xl font-black tracking-[-.04em] sm:text-5xl">{nav.find((x:any)=>x[0]===tab)?.[1]}</h1></div><div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[.03] px-3 py-2 text-xs text-slate-400"><span className="pulse-dot h-2 w-2 rounded-full bg-lime-300"/> {new Date().toLocaleDateString("en-US",{day:"2-digit",month:"short",year:"numeric"})}</div></header>
-    {tab==="command"&&<Command stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities} employeeStats={employeeStats} onDaily={()=>setTab("daily")}/>}
+    {tab==="command"&&<Command stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities} employeeStats={employeeStats} onDaily={()=>selectTab("daily")}/>}
     {tab==="daily"&&<Report title="Daily Consolidated" subtitle="Today's operating picture for the team meeting." stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities}/>}
     {tab==="weekly"&&<Report title="Weekly Report" subtitle="Week-level patterns, response mix and decision signals." stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities}/>}
     {tab==="monthly"&&<Report title="Monthly Report" subtitle="Monthly performance with historical context." stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities}/>}
