@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, CheckCircle2, FileUp, Loader2, Radar, Send, Sparkles, TriangleAlert, XCircle } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, ChevronDown, FileUp, Loader2, Radar, Send, Sparkles, TriangleAlert, XCircle } from "lucide-react";
 import { FreightVisual } from "./freight-visual";
 import type { SenderDetails, SubmissionResult } from "@/types/submission";
 
@@ -9,7 +9,7 @@ const initial:SenderDetails={firstName:"",lastName:"",company:"",email:"",phone:
 
 export function SenderWorkspace(){
  const [urls,setUrls]=useState(""); const [details,setDetails]=useState(initial); const [results,setResults]=useState<SubmissionResult[]>([]);
- const [sending,setSending]=useState(false); const [dryRun,setDryRun]=useState(true); const [filter,setFilter]=useState<"all"|"success"|"captcha_required"|"unsupported"|"failed"|"submitted_unverified">("all");
+ const [sending,setSending]=useState(false); const [dryRun,setDryRun]=useState(true); const [expandedEvidence,setExpandedEvidence]=useState<Record<string,boolean>>({}); const [filter,setFilter]=useState<"all"|"success"|"captcha_required"|"unsupported"|"failed"|"submitted_unverified">("all");
  useEffect(()=>{try{const saved=localStorage.getItem("baf-sender-details");if(saved)setDetails({...initial,...JSON.parse(saved)})}catch{}},[]);
  useEffect(()=>{localStorage.setItem("baf-sender-details",JSON.stringify(details))},[details]);
  const update=(key:keyof SenderDetails,value:string)=>setDetails(p=>({...p,[key]:value}));
@@ -61,6 +61,14 @@ export function SenderWorkspace(){
           {r.detectedFields?.length ? (
            <div className="mt-2 flex flex-wrap gap-1.5">
             {r.detectedFields.map(f => <span key={f} className="rounded-full bg-white/5 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-500">{f}</span>)}
+           </div>
+          ) : null}
+          {r.evidence?.length ? (
+           <div className="mt-3 border-t border-white/5 pt-3">
+            <button onClick={() => setExpandedEvidence(p => ({...p,[r.url+"-"+i]:!p[r.url+"-"+i]}))} className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-300">
+             <ChevronDown size={13} className={expandedEvidence[r.url+"-"+i] ? "rotate-180 transition-transform" : "transition-transform"} /> Evidence
+            </button>
+            {expandedEvidence[r.url+"-"+i] ? <div className="mt-2 space-y-1">{r.evidence.map((item,j) => <div key={item+"-"+j} className="rounded-lg bg-white/[.03] px-2.5 py-1.5 text-[11px] text-slate-500">{item}</div>)}</div> : null}
            </div>
           ) : null}
          </div>
