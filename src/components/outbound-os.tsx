@@ -181,7 +181,7 @@ function contentSequenceNumber(a:OutboundActivity,sequences:Sequence[]){
  if(draft)return Math.max(1,Math.min(200,Number(draft[1])));
  const idx=sequences.findIndex((s:Sequence)=>s.id===a.sequence_id);
  if(idx>=0)return Math.min(200,idx+1);
- const legacy={"Email 1":1,"Email 2":2,"Follow-up 1":3,"Follow-up 2":4,"Follow-up 3":5,"Fresh Outreach":1,"Follow-Up 2":2,"Follow-Up 3":3,"Follow-Up 4":4,"Follow-Up 5":5};
+ const legacy:Record<string,number>={"Email 1":1,"Email 2":2,"Follow-up 1":3,"Follow-up 2":4,"Follow-up 3":5,"Fresh Outreach":1,"Follow-Up 2":2,"Follow-Up 3":3,"Follow-Up 4":4,"Follow-Up 5":5};
  return Math.max(1,Math.min(200,legacy[String(a.stage||"")]||1));
 }
 function activityToRow(a:OutboundActivity,sequences:Sequence[]):Row{
