@@ -161,7 +161,7 @@ async function successSignal(page:Page,beforeUrl:string,formIndex:number){
     const form=document.querySelector('form[data-baf-form="'+index+'"]') as HTMLFormElement|null;
     const text=document.body?.innerText?.slice(0,50000)||"";
     const visibleText=/thank you|thanks for|message sent|successfully sent|submission received|we'll be in touch|we will be in touch/i.test(text);
-    const challengeText=/captcha|hcaptcha|recaptcha|verify you are human|security check|spam/i.test(text);
+    const challengeText=/captcha|hcaptcha|recaptcha|verify you are human|security check/i.test(text);
     const formState=form?{exists:true,visible:!!(form as HTMLElement).offsetParent,submitDisabled:Boolean(form.querySelector('button[type="submit"]:disabled,input[type="submit"]:disabled')),values:Array.from(form.elements).filter((el:any)=>"value" in el).map((el:any)=>String(el.value||"")).join("|")}:{exists:false,visible:false,submitDisabled:false,values:""};
     return {visibleText,challengeText,formState};
   },formIndex);
