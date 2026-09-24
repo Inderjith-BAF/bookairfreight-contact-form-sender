@@ -20,6 +20,8 @@ export type FormDescriptor={
   shopifyContact:boolean;
 };
 
+export type MappingConfidence="high"|"medium"|"low";
+
 export type FieldMatch={
   key:FormFieldKey;
   controlIndex:number;
@@ -80,8 +82,16 @@ export function mapContactForm(form:FormDescriptor){
   const hasName=keys.has("firstName")||keys.has("lastName")||keys.has("fullName");
   const contactLike=(keys.has("email")&&keys.has("message"))||(hasName&&keys.has("email"))||(hasName&&keys.has("message")&&matches.length>=3);
 
+  const email=matches.find(match=>match.key==="email");
+  const message=matches.find(match=>match.key==="message");
+  const name=matches.find(match=>match.key==="fullName"||match.key==="firstName"||match.key==="lastName");
+  const coreScores=[email?.score||0,message?.score||0,name?.score||0].filter(Boolean);
+  const weakestCore=coreScores.length?Math.min(...coreScores):0;
+  const confidence:MappingConfidence=weakestCore>=100?"high":weakestCore>=60?"medium":"low";
+
   return {
-    supported:contactLike,
+    supported:contactLike&&confidence!=="low",
+    confidence,
     matches,
     detectedFields:matches.map(match=>match.key),
     score:matches.reduce((sum,match)=>sum+match.score,0)
