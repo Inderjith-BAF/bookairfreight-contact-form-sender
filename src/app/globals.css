@@ -1,5 +1,5 @@
 @import "tailwindcss";
-:root { --background:#f5f9ff; --foreground:#10233f; --ink:#10233f; --muted:#64748b; --sky:#18b6ff; --lime:#b7f34a; --orange:#ff9f43; --pink:#ff5ca8; }
+:root { --background:#f5f9ff; --foreground:#10233f; --ink:#10233f; --muted:#64748b; --sky:#18b6ff; --lime:#4d5cff; --orange:#ff9f43; --pink:#ff5ca8; }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:#f5f9ff;color:var(--ink);font-family:Arial,Helvetica,sans-serif;overflow-x:hidden}
@@ -10,12 +10,12 @@ input,textarea,select{color:#10233f;background:rgba(255,255,255,.82);border-colo
 input::placeholder,textarea::placeholder{color:#94a3b8}
 option{color:#10233f;background:#fff}
 .freight-grid{background-image:linear-gradient(rgba(16,35,63,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(16,35,63,.045) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(to bottom,black,transparent 88%)}
-.glow{box-shadow:0 24px 80px rgba(24,182,255,.12),0 12px 34px rgba(183,243,74,.12)}
+.glow{box-shadow:0 24px 80px rgba(24,182,255,.12),0 12px 34px rgba(77,92,255,.12)}
 .glass{background:rgba(255,255,255,.78);border:1px solid rgba(15,35,63,.10);box-shadow:0 14px 45px rgba(35,72,110,.08);backdrop-filter:blur(18px)}
 .freight-sidebar{background:rgba(255,255,255,.88);border-color:rgba(15,35,63,.10)!important;box-shadow:14px 0 50px rgba(35,72,110,.08)}
 .freight-header{background:rgba(245,249,255,.78);backdrop-filter:blur(14px)}
-.freight-shell{background:linear-gradient(135deg,#f8fbff 0%,#eef7ff 48%,#f8fff0 100%)}
-.neon-button{box-shadow:0 8px 24px rgba(183,243,74,.28)}
+.freight-shell{background:linear-gradient(135deg,#f8fbff 0%,#eef7ff 48%,#f4f5ff 100%)}
+.neon-button{box-shadow:0 8px 24px rgba(77,92,255,.28)}
 .lift{transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease}
 .lift:hover{transform:translateY(-5px);box-shadow:0 20px 55px rgba(35,72,110,.13);border-color:rgba(24,182,255,.28)}
 .route-line{stroke-dasharray:8 10;animation:routeDash 2.8s linear infinite}
