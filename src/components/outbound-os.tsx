@@ -119,10 +119,9 @@ function Command({stats,openRate,replyRate,bounceRate,activities,employeeStats,o
 
 function Report({title,subtitle,stats,openRate,replyRate,bounceRate,activities,showPreviousCampaign=false,dateFrom,dateTo,setDateFrom,setDateTo}:any){
  const [rangeOpen,setRangeOpen]=useState(false);
- const total=Math.max(1,stats.outreach);
  const responseTotal=stats.positive+stats.neutral+stats.negative;
  const pctOf=(v:number,d:number)=>d?Math.round(v/d*100):0;
- const group=(key:string,metric:string="outreach_volume")=>{
+ const group=(key:string)=>{
    const m=new Map<string,any>();
    activities.forEach((a:any)=>{const k=(a[key]||"Unspecified").toString().trim()||"Unspecified";const x=m.get(k)||{name:k,outreach:0,open:0,pos:0,neutral:0,negative:0,bounce:0,clicks:0,leads:0};x.outreach+=n(a.outreach_volume);x.open+=n(a.open_count);x.pos+=n(a.positive_replies);x.neutral+=n(a.neutral_replies);x.negative+=n(a.negative_replies);x.bounce+=n(a.bounced);x.clicks+=n(a.clicks);x.leads+=n(a.qualified_leads);m.set(k,x)});return [...m.values()].sort((a,b)=>b.outreach-a.outreach);
  };
