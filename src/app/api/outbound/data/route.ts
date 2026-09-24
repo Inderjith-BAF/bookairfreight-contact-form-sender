@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     typeof r.id === "string" && r.id.length > 0;
   const existingIds = normalized.filter(hasId);
   if (profile.role === "member" && existingIds.length) {
-    const ids = existingIds.map(r => r.id);
+    const ids: string[] = existingIds.map((r: { id: string }) => r.id);
     const { data: owned, error: ownershipError } = await admin.from("outbound_activities").select("id").eq("employee_id", profile.id).in("id", ids);
     if (ownershipError) return NextResponse.json({ error: ownershipError.message }, { status: 500 });
     const ownedIds = new Set((owned ?? []).map((r: {id:string}) => r.id));
