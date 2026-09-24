@@ -61,8 +61,8 @@ async function detectShopifyCaptcha(page:Page){
       if(!isContact)return false;
       const protectedByAttribute=form.getAttribute("data-shopify-captcha")==="true";
       const hasCaptchaMarkup=Boolean(form.querySelector('[data-sitekey], .h-captcha, iframe[src*="hcaptcha"], iframe[src*="recaptcha"]'));
-      const shopifyCaptcha=typeof (window as any).Shopify?.captcha?.protect==="function";
-      return protectedByAttribute||hasCaptchaMarkup||shopifyCaptcha;
+      const responseFields=Boolean(form.querySelector('textarea[name*="captcha" i], input[name*="captcha" i], textarea[name="g-recaptcha-response"], textarea[name="h-captcha-response"]'));
+      return protectedByAttribute||hasCaptchaMarkup||responseFields;
     });
   });
 }
