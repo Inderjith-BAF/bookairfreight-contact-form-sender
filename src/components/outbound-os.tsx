@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import { BarChart3, CalendarDays, ChevronDown, CircleHelp, FileSpreadsheet, Gauge, History, LogOut, Mail, Menu, Plus, RefreshCw, Send, Shield, Sparkles, Target, Users, X } from "lucide-react";
@@ -7,7 +7,7 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import type { OutboundActivity, OutboundProfile, Sequence } from "@/lib/outbound-types";
 
 type Tab="command"|"daily"|"weekly"|"monthly"|"my"|"forms"|"import"|"team";
-type Row=Partial<OutboundActivity>&{account:string; subject:string; content:string; email_account_text:string; sequence_id:string; freshness:"fresh"|"recycled"; country:string; positive_entry:string; neutral_entry:string; negative_entry:string};
+type Row=Partial<OutboundActivity>&{account:string; subject:string; content:string; email_account_text:string; sequence_id:string; content_sequence:number; freshness:"fresh"|"recycled"; country:string; positive_entry:string; neutral_entry:string; negative_entry:string};
 
 const localToday=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
 const today=localToday();
@@ -20,7 +20,7 @@ function allowedSequences(list:Sequence[]){return list.filter(s=>["Fresh Outreac
 function responseCount(v:string){return n(v.replace(/pc$/i,""))}
 function isPC(v:string){return /pc$/i.test(v)}
 function responseMeta(note:string){try{const x=JSON.parse(note||"{}");return {positive:n(x.positive),neutral:n(x.neutral),negative:n(x.negative)}}catch{return {positive:0,neutral:0,negative:0}}}
-const blankRow=():Row=>({account:"",subject:"",content:"",email_account_text:"",outreach_volume:0,open_count:0,open_rate:0,positive_replies:0,neutral_replies:0,negative_replies:0,unsubscribes:0,bounced:0,auto_responses:0,clicks:0,qualified_leads:0,follow_ups:0,bounce_rate:0,channel:"cold_email",activity_date:localToday(),freshness:"fresh",sequence_id:"",country:"",positive_entry:"0",neutral_entry:"0",negative_entry:"0",response_note:""});
+const blankRow=():Row=>({account:"",subject:"",content:"",email_account_text:"",outreach_volume:0,open_count:0,open_rate:0,positive_replies:0,neutral_replies:0,negative_replies:0,unsubscribes:0,bounced:0,auto_responses:0,clicks:0,qualified_leads:0,follow_ups:0,bounce_rate:0,channel:"cold_email",activity_date:localToday(),freshness:"fresh",sequence_id:"",content_sequence:1,country:"",positive_entry:"0",neutral_entry:"0",negative_entry:"0",response_note:""});
 
 function n(v:unknown){if(v===null||v===undefined||v==="")return 0;const x=Number(String(v).replace(/[%,$,]/g,""));return Number.isFinite(x)?x:0}
 function normalizeHeader(v:string){return v.toLowerCase().replace(/[^a-z0-9]/g,"")}
@@ -71,7 +71,7 @@ export function OutboundOS(){
  },[dateFrom,dateTo]);
  useEffect(()=>{const saved=typeof window!=="undefined"?window.localStorage.getItem("baf-outbound-theme"):"";if(saved==="night"||saved==="baf")setTheme(saved);let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setSession(data.session);if(data.session){try{await load(data.session.access_token)}catch(e){setAuthError(e instanceof Error?e.message:"Unable to load.")}}setLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,s)=>{setSession(s);if(s)load(s.access_token).catch(e=>setAuthError(e instanceof Error?e.message:"Unable to load."))});return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase,load]);
  const visibleSequences=allowedSequences(sequences); const selected=visibleSequences.find(s=>s.id===selectedSequence);
- async function saveRows(country:string,tileRows:Row[]){if(!session)throw new Error("Not signed in");const payload=tileRows.filter((r:Row)=>r.account.trim()).map((r:Row)=>{const seq=visibleSequences.find((s:Sequence)=>s.id===(r.sequence_id||selectedSequence));const pc={positive:isPC(r.positive_entry)?responseCount(r.positive_entry):0,neutral:isPC(r.neutral_entry)?responseCount(r.neutral_entry):0,negative:isPC(r.negative_entry)?responseCount(r.negative_entry):0};return {...r,prospect_email:r.account,email_account_text:r.account,sequence_id:r.sequence_id||selectedSequence||null,stage:seq?sequenceLabel(seq):r.stage||"",content_link:r.content_link||"",content_creator:r.content_creator||"",region:country,positive_replies:responseCount(r.positive_entry),neutral_replies:responseCount(r.neutral_entry),negative_replies:responseCount(r.negative_entry),response_note:JSON.stringify(pc),activity_date:r.activity_date||localToday()};});if(!payload.length)throw new Error("Add at least one account before saving.");const res=await fetch("/api/outbound/data",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},body:JSON.stringify({rows:payload})});const data=await res.json();if(!res.ok)throw new Error(data.error||"Save failed");await load(session.access_token);return data.inserted as number}
+ async function saveRows(country:string,tileRows:Row[]){if(!session)throw new Error("Not signed in");const payload=tileRows.filter((r:Row)=>r.account.trim()).map((r:Row)=>{const seq=visibleSequences.find((s:Sequence)=>s.id===(r.sequence_id||selectedSequence));const pc={positive:isPC(r.positive_entry)?responseCount(r.positive_entry):0,neutral:isPC(r.neutral_entry)?responseCount(r.neutral_entry):0,negative:isPC(r.negative_entry)?responseCount(r.negative_entry):0};return {...r,prospect_email:r.account,email_account_text:r.account,sequence_id:r.sequence_id||null,stage:"Draft "+String(Math.max(1,Math.min(200,r.content_sequence||1))),content_link:r.content_link||"",content_creator:r.content_creator||"",region:country,positive_replies:responseCount(r.positive_entry),neutral_replies:responseCount(r.neutral_entry),negative_replies:responseCount(r.negative_entry),response_note:JSON.stringify(pc),activity_date:r.activity_date||localToday()};});if(!payload.length)throw new Error("Add at least one account before saving.");const res=await fetch("/api/outbound/data",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},body:JSON.stringify({rows:payload})});const data=await res.json();if(!res.ok)throw new Error(data.error||"Save failed");await load(session.access_token);return data.inserted as number}
  async function parseWorkbook(file:File){setImportFile(file.name);setImportMessage("");setImportPreview([]);const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:"array",cellDates:true});const parsed:any[]=[];for(const sheet of wb.SheetNames){const ws=wb.Sheets[sheet];const raw=XLSX.utils.sheet_to_json<Record<string,unknown>>(ws,{defval:""});raw.forEach((row,idx)=>{const mapped=mapHistoricalRow(row,sheet,importYear,idx+2,file.name);if(mapped)parsed.push(mapped)})}setImportPreview(parsed.slice(0,200));setImportMessage(parsed.length+" usable historical rows detected across "+wb.SheetNames.length+" sheets. Preview capped at 200 rows.");(window as any).__bafHistoricalRows=parsed}
  async function importHistorical(){const all=(window as any).__bafHistoricalRows||[];if(!session||!all.length)return;setImporting(true);setImportMessage("");try{for(let i=0;i<all.length;i+=1000){const chunk=all.slice(i,i+1000);const res=await fetch("/api/outbound/import",{method:"POST",headers:{Authorization:"Bearer "+session.access_token,"Content-Type":"application/json"},body:JSON.stringify({rows:chunk,meta:{file_name:importFile}})});const data=await res.json();if(!res.ok)throw new Error(data.error)}setImportMessage("Imported "+all.length+" historical rows. Original activity dates were preserved.");await load(session.access_token)}catch(e){setImportMessage(e instanceof Error?e.message:"Import failed")}finally{setImporting(false)}}
  
@@ -168,7 +168,7 @@ function Report({title,subtitle,stats,openRate,replyRate,bounceRate,activities,s
 }
 function rowSignature(r:Row){
  return JSON.stringify({
-  id:r.id||null,account:r.account,subject:r.subject,content:r.content,email_account_text:r.email_account_text,
+  id:r.id||null,account:r.account,subject:r.subject,content:r.content,email_account_text:r.email_account_text,content_sequence:r.content_sequence||1,
   campaign:r.campaign||"",lead_source:r.lead_source||"",sequence_id:r.sequence_id||null,stage:r.stage||"",
   content_link:r.content_link||"",content_creator:r.content_creator||"",outreach_volume:n(r.outreach_volume),
   open_rate:n(r.open_rate),positive_entry:r.positive_entry,neutral_entry:r.neutral_entry,negative_entry:r.negative_entry,
@@ -176,35 +176,98 @@ function rowSignature(r:Row){
  });
 }
 function tileSignature(rows:Row[]){return JSON.stringify(rows.filter(r=>r.account.trim()).map(rowSignature))}
-function activityToRow(a:OutboundActivity):Row{
+function contentSequenceNumber(a:OutboundActivity,sequences:Sequence[]){
+ const draft=String(a.stage||"").match(/draft\\s*(\\d+)/i);
+ if(draft)return Math.max(1,Math.min(200,Number(draft[1])));
+ const idx=sequences.findIndex((s:Sequence)=>s.id===a.sequence_id);
+ if(idx>=0)return Math.min(200,idx+1);
+ const legacy={"Email 1":1,"Email 2":2,"Follow-up 1":3,"Follow-up 2":4,"Follow-up 3":5,"Fresh Outreach":1,"Follow-Up 2":2,"Follow-Up 3":3,"Follow-Up 4":4,"Follow-Up 5":5};
+ return Math.max(1,Math.min(200,legacy[String(a.stage||"")]||1));
+}
+function activityToRow(a:OutboundActivity,sequences:Sequence[]):Row{
  const pc=responseMeta(a.response_note||"");
  return {...blankRow(),id:a.id,account:a.prospect_email||a.email_account_text||"",email_account_text:a.email_account_text||"",subject:a.subject||"",content:a.content||"",
-  campaign:a.campaign||"",lead_source:a.lead_source||"",sequence_id:a.sequence_id||"",stage:a.stage||"",content_link:a.content_link||"",content_creator:a.content_creator||"",
+  campaign:a.campaign||"",lead_source:a.lead_source||"",sequence_id:a.sequence_id||"",content_sequence:contentSequenceNumber(a,sequences),stage:a.stage||"",content_link:a.content_link||"",content_creator:a.content_creator||"",
   outreach_volume:n(a.outreach_volume),open_count:n(a.open_count),open_rate:n(a.open_rate),positive_replies:n(a.positive_replies),neutral_replies:n(a.neutral_replies),negative_replies:n(a.negative_replies),
   unsubscribes:n(a.unsubscribes),bounced:n(a.bounced),clicks:n(a.clicks),qualified_leads:n(a.qualified_leads),activity_date:a.activity_date,
   region:a.region||"",country:a.region||"",channel:a.channel||"cold_email",positive_entry:pc.positive?pc.positive+"pc":String(n(a.positive_replies)),neutral_entry:pc.neutral?pc.neutral+"pc":String(n(a.neutral_replies)),negative_entry:pc.negative?pc.negative+"pc":String(n(a.negative_replies))
  };
 }
-function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows,activities,viewDate,setViewDate}:any){
+function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows,activities,viewDate,setViewDate,profileId,refresh}:any){
  const [tiles,setTiles]=useState<{country:string;rows:Row[]}[]>([]);
  const [newCountry,setNewCountry]=useState("");
  const [savingCountry,setSavingCountry]=useState("");
  const [messages,setMessages]=useState<Record<string,string>>({});
  const [savedSignatures,setSavedSignatures]=useState<Record<string,string>>({});
- const hydrate=useCallback(()=>{const grouped=new Map<string,Row[]>();(activities||[]).filter((a:OutboundActivity)=>a.activity_date===viewDate).forEach((a:OutboundActivity)=>{const country=a.region||"Unspecified";const rows=grouped.get(country)||[];rows.push(activityToRow(a));grouped.set(country,rows)});const next=[...grouped.entries()].map(([country,rows])=>({country,rows}));setTiles(next);setSavedSignatures(Object.fromEntries(next.map(tile=>[tile.country,tileSignature(tile.rows)])));setMessages({});},[activities,viewDate]);
+ const hydratedRef=useRef(false);
+ const draftKey=`baf-outbound-draft:${profileId}:${viewDate}`;
+
+ const serverTiles=useCallback(()=>{
+  const grouped=new Map<string,Row[]>();
+  (activities||[]).filter((a:OutboundActivity)=>a.activity_date===viewDate).forEach((a:OutboundActivity)=>{
+   const country=a.region||"Unspecified";
+   const rows=grouped.get(country)||[];
+   rows.push(activityToRow(a,sequences));
+   grouped.set(country,rows);
+  });
+  return [...grouped.entries()].map(([country,rows])=>({country,rows}));
+ },[activities,viewDate,sequences]);
+
+ const hydrate=useCallback(()=>{
+  const saved=serverTiles();
+  const savedMap=Object.fromEntries(saved.map(tile=>[tile.country,tileSignature(tile.rows)]));
+  let restored: {country:string;rows:Row[]}[]|null=null;
+  try{
+   const raw=window.localStorage.getItem(draftKey);
+   if(raw){
+    const parsed=JSON.parse(raw);
+    if(Array.isArray(parsed))restored=parsed;
+   }
+  }catch{}
+  const next=restored||saved;
+  setTiles(next);
+  setSavedSignatures(savedMap);
+  setMessages({});
+  hydratedRef.current=true;
+ },[serverTiles,draftKey]);
+
  useEffect(()=>{hydrate()},[hydrate]);
+
+ useEffect(()=>{
+  if(!hydratedRef.current)return;
+  try{window.localStorage.setItem(draftKey,JSON.stringify(tiles))}catch{}
+ },[tiles,draftKey]);
+
  const addCountry=()=>{if(!newCountry||tiles.some(t=>t.country===newCountry))return;setTiles(t=>[...t,{country:newCountry,rows:[blankRow()]}]);setNewCountry("")};
  const removeCountry=(country:string)=>setTiles(t=>t.filter(x=>x.country!==country));
  const patch=(country:string,i:number,key:string,value:unknown)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:tile.rows.map((r,idx)=>idx===i?{...r,[key]:value}:r)}:tile));
- const paste=(country:string,text:string,key:keyof Row)=>{const values=text.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);setTiles(t=>t.map(tile=>{if(tile.country!==country)return tile;const next=[...tile.rows];while(next.length<values.length)next.push(blankRow());values.forEach((v,j)=>{next[j]={...next[j],[key]:v}});return {...tile,rows:next}}))};
+ const paste=(country:string,text:string,key:keyof Row)=>{const values=text.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);setTiles(t=>t.map(tile=>{if(tile.country!==country)return tile;const next=[...tile.rows];while(next.length<values.length)next.push(blankRow());values.forEach((v,j)=>{next[j]={...next[j],[key]:v}});return {...tile,rows:next}}))};
  const addRows=(country:string,count:number)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:[...tile.rows,...Array.from({length:count},blankRow)]}:tile));
- const saveCountry=async(country:string)=>{const tile=tiles.find(t=>t.country===country);if(!tile)return;setSavingCountry(country);setMessages(m=>({...m,[country]:""}));try{const count=await saveRows(country,tile.rows);setSavedSignatures(m=>({...m,[country]:tileSignature(tile.rows)}));setMessages(m=>({...m,[country]:count+" rows saved."}))}catch(e){setMessages(m=>({...m,[country]:e instanceof Error?e.message:"Save failed"}))}finally{setSavingCountry("")}};
+ const saveCountry=async(country:string)=>{
+  const tile=tiles.find(t=>t.country===country);if(!tile)return;
+  setSavingCountry(country);setMessages(m=>({...m,[country]:""}));
+  try{
+   const count=await saveRows(country,tile.rows);
+   setSavedSignatures(m=>({...m,[country]:tileSignature(tile.rows)}));
+   setMessages(m=>({...m,[country]:count+" rows saved."}));
+   try{
+    const raw=window.localStorage.getItem(draftKey);
+    const drafts=raw?JSON.parse(raw):[];
+    if(Array.isArray(drafts)){
+     const remaining=drafts.filter((x:any)=>x?.country!==country);
+     if(remaining.length)window.localStorage.setItem(draftKey,JSON.stringify(remaining));else window.localStorage.removeItem(draftKey);
+    }
+   }catch{}
+   await refresh();
+  }catch(e){setMessages(m=>({...m,[country]:e instanceof Error?e.message:"Save failed"}))}
+  finally{setSavingCountry("")}
+ };
  const moveDate=(delta:number)=>{const d=new Date(viewDate+"T12:00:00");d.setDate(d.getDate()+delta);const next=localDateFor(d);if(next<=localToday()||delta<0)setViewDate(next)};
  const localDateFor=(d:Date)=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
  return <div className="space-y-5">
   <div className="glass rounded-3xl p-6">
    <div className="flex flex-wrap items-center justify-between gap-4">
-    <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-lime-300">Daily entry</p><h2 className="mt-2 text-2xl font-black">Build by country.</h2><p className="mt-2 max-w-2xl text-sm text-slate-500">Each date has its own outbound workspace. Today&apos;s page starts blank until you create and save rows.</p></div>
+    <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-lime-300">Daily entry</p><h2 className="mt-2 text-2xl font-black">Build by country.</h2><p className="mt-2 max-w-2xl text-sm text-slate-500">Each date has its own outbound workspace. Your unsaved work is kept when you switch tabs or return later.</p></div>
     <div className="flex flex-wrap items-center gap-2"><button onClick={()=>moveDate(-1)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black">← Previous day</button><label className="flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-black text-[#29458f]"><CalendarDays size={15}/><input type="date" value={viewDate} max={localToday()} onChange={e=>setViewDate(e.target.value)} className="bg-transparent outline-none"/></label><button onClick={()=>setViewDate(localToday())} disabled={viewDate===localToday()} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black disabled:opacity-40">Today</button><button onClick={()=>setNewCountry(COUNTRIES.find(x=>!tiles.some(t=>t.country===x))||"")} className="inline-flex items-center gap-2 rounded-xl bg-lime-300 px-4 py-3 text-sm font-black text-slate-950"><Plus size={16}/> Add Country</button></div>
    </div>
    {selected&&<div className="mt-5 grid gap-3 md:grid-cols-2"><Info label="Default campaign" value="Independent per row"/><Info label="Viewing date" value={new Date(viewDate+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}/></div>}
@@ -215,17 +278,19 @@ function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows
  </div>
 }
 function CountryTile({tile,sequences,selectedSequence,patch,paste,addRows,saveCountry,saving,message,onRemove,dirty}:any){
- const [accountPaste,setAccountPaste]=useState(""); const [subjectPaste,setSubjectPaste]=useState(""); const [contentPaste,setContentPaste]=useState(""); const [sequenceDrag,setSequenceDrag]=useState<{source:number;sequenceIndex:number}|null>(null); const [columnDrag,setColumnDrag]=useState<{source:number;field:"lead_source"|"content_link"|"content_creator"}|null>(null);
+ const [accountPaste,setAccountPaste]=useState(""); const [subjectPaste,setSubjectPaste]=useState(""); const [contentPaste,setContentPaste]=useState("");
+ const [sequenceDrag,setSequenceDrag]=useState<{source:number;value:number}|null>(null); const [columnDrag,setColumnDrag]=useState<{source:number;field:"lead_source"|"content_link"|"content_creator"}|null>(null);
  const rowCount=tile.rows.filter((r:Row)=>r.account).length;
- const applySequence=(index:number,sequenceIndex:number)=>{const s=sequences[sequenceIndex];if(!s)return;patch(tile.country,index,"sequence_id",s.id);patch(tile.country,index,"stage",sequenceLabel(s));};
- const startSequenceDrag=(index:number)=>{const currentId=tile.rows[index]?.sequence_id||selectedSequence;if(!currentId)return;const sequenceIndex=sequences.findIndex((s:Sequence)=>s.id===currentId);if(sequenceIndex>=0)setSequenceDrag({source:index,sequenceIndex});};
- const dragSequenceOver=(index:number)=>{if(!sequenceDrag||index<sequenceDrag.source)return;const nextIndex=Math.max(0,Math.min(sequences.length-1,sequenceDrag.sequenceIndex+(index-sequenceDrag.source)));applySequence(index,nextIndex);};
+ const applySequence=(index:number,value:number)=>patch(tile.country,index,"content_sequence",Math.max(1,Math.min(200,value)));
+ const startSequenceDrag=(index:number)=>{const value=Math.max(1,Math.min(200,n(tile.rows[index]?.content_sequence)||1));setSequenceDrag({source:index,value})};
+ const dragSequenceOver=(index:number)=>{if(!sequenceDrag||index<sequenceDrag.source)return;applySequence(index,Math.min(200,sequenceDrag.value+(index-sequenceDrag.source)))};
  const startColumnDrag=(index:number,field:"lead_source"|"content_link"|"content_creator")=>setColumnDrag({source:index,field});
- const dragColumnOver=(index:number)=>{if(!columnDrag||index<columnDrag.source)return;const value=tile.rows[columnDrag.source]?.[columnDrag.field]||"";patch(tile.country,index,columnDrag.field,value);};
+ const dragColumnOver=(index:number)=>{if(!columnDrag||index<columnDrag.source)return;const value=tile.rows[columnDrag.source]?.[columnDrag.field]||"";patch(tile.country,index,columnDrag.field,value)};
+ const campaignOptions=sequences.map((s:Sequence)=>sequenceLabel(s));
  return <div className="glass overflow-hidden rounded-3xl">
   <div className="border-b border-white/10 bg-white/[.025] p-5">
    <div className="flex flex-wrap items-center justify-between gap-3">
-    <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-300">Country workspace</p><h3 className="mt-1 text-2xl font-black">{tile.country}</h3><p className="mt-1 text-xs text-slate-500">{rowCount} accounts loaded · {dirty?"Unsaved changes":"Saved"} · {tile.rows.filter((r:Row)=>r.account.trim()).reduce((sum:number,r:Row)=>sum+n(r.outreach_volume),0).toLocaleString()} outreach</p><p className="mt-1 text-[10px] font-bold text-slate-600">Campaign and Content Sequence are independent. Content Sequence controls only the numbered content progression.</p></div>
+    <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-300">Country workspace</p><h3 className="mt-1 text-2xl font-black">{tile.country}</h3><p className="mt-1 text-xs text-slate-500">{rowCount} accounts loaded · {dirty?"Unsaved changes":"Saved"} · {tile.rows.filter((r:Row)=>r.account.trim()).reduce((sum:number,r:Row)=>sum+n(r.outreach_volume),0).toLocaleString()} outreach</p><p className="mt-1 text-[10px] font-bold text-slate-600">Campaign is selected independently. Content Sequence is the draft number and can run from 1–200.</p></div>
     <div className="flex gap-2"><button onClick={()=>addRows(tile.country,10)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black"><Plus size={14} className="mr-1 inline"/>10 rows</button><button onClick={()=>saveCountry(tile.country)} disabled={saving||!dirty} className={"rounded-xl px-4 py-2 text-xs font-black "+(dirty?"bg-lime-300 text-slate-950":"border border-white/10 bg-white/5 text-slate-500 cursor-not-allowed")}>{saving?"Saving…":dirty?"Save "+tile.country+" results":"Saved"}</button><button onClick={onRemove} className="rounded-xl border border-red-400/20 px-3 py-2 text-xs font-black text-red-300">Remove</button></div>
    </div>
   </div>
@@ -236,10 +301,10 @@ function CountryTile({tile,sequences,selectedSequence,patch,paste,addRows,saveCo
   </div>
   <div className="country-population-area overflow-auto"><table className="w-full min-w-[3000px] text-left text-xs"><thead className="bg-[#111827] text-[11px] uppercase tracking-widest text-slate-600"><tr>{["Email Account","Campaign","Leads Source","Subject Line","Content Sequence","Content Link","Content Creator","No. of Outreach","Open Rate","Positive Replies","Neutral Replies","Negative Replies","Unsubscribe","Bounced","Clicks"].map((h,idx)=><th key={h} className={"px-3 py-3 "+(idx===0?"sticky left-0 z-30 bg-[#111827] shadow-[8px_0_12px_-10px_rgba(0,0,0,.9)]":"")}>{h}</th>)}</tr></thead><tbody>{tile.rows.map((r:Row,i:number)=><tr key={i} onDragEnter={()=>{if(sequenceDrag)dragSequenceOver(i);if(columnDrag)dragColumnOver(i)}} onDragOver={e=>{if(sequenceDrag||columnDrag)e.preventDefault()}} className={"border-t border-white/5 hover:bg-white/[.02] "+(sequenceDrag?.source===i||columnDrag?.source===i?"bg-lime-300/[.04]":"")}>
    <td className="sticky left-0 z-20 bg-[#0b1220] px-3 py-2 shadow-[8px_0_12px_-10px_rgba(0,0,0,.9)]"><input value={r.account} onChange={e=>patch(tile.country,i,"account",e.target.value)} className="w-72 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
-   <td className="px-3 py-2"><input value={r.campaign||""} onChange={e=>patch(tile.country,i,"campaign",e.target.value)} placeholder="Campaign" className="w-56 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
+   <td className="px-3 py-2"><select value={r.campaign||""} onChange={e=>patch(tile.country,i,"campaign",e.target.value)} className="w-56 rounded-lg bg-white/5 px-2 py-2 outline-none"><option value="">Campaign</option>{campaignOptions.map((x:string)=><option key={x} value={x}>{x}</option>)}</select></td>
    <td className="px-3 py-2"><div className="flex items-center gap-1"><input value={r.lead_source||""} onChange={e=>patch(tile.country,i,"lead_source",e.target.value)} placeholder="Lead source" className="w-48 rounded-lg bg-white/5 px-2 py-2 outline-none"/><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startColumnDrag(i,"lead_source")}} onDragEnd={()=>setColumnDrag(null)} title="Drag down to copy Leads Source" className="flex h-8 w-5 cursor-grab items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
-   <td className="px-3 py-2"><input value={r.subject} onChange={e=>patch(tile.country,i,"subject",e.target.value)} className="w-72 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
-   <td className="px-3 py-2"><div className="flex items-center gap-1"><span className="inline-flex min-w-10 justify-center rounded-lg bg-white/5 px-2 py-2 font-black">{(()=>{const idx=sequences.findIndex((s:Sequence)=>s.id===(r.sequence_id||selectedSequence));return idx>=0?idx+1:"—"})()}</span><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startSequenceDrag(i)}} onDragEnd={()=>setSequenceDrag(null)} title="Drag down to auto-fill ascending sequence only" className="flex h-8 w-5 cursor-grab items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
+   <td className="px-3 py-2"><input value={r.subject} onChange={e=>patch(tile.country,i,"subject",e.target.value)} placeholder="Subject line" className="w-72 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
+   <td className="px-3 py-2"><div className="flex items-center gap-1"><input type="number" min="1" max="200" step="1" value={Math.max(1,Math.min(200,n(r.content_sequence)||1))} onChange={e=>applySequence(i,n(e.target.value))} className="w-20 rounded-lg bg-white/5 px-2 py-2 text-center font-black outline-none"/><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startSequenceDrag(i)}} onDragEnd={()=>setSequenceDrag(null)} title="Drag down to increment Content Sequence" className="flex h-8 w-5 cursor-grab items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
    <td className="px-3 py-2"><div className="flex items-center gap-1"><input value={r.content_link||""} onChange={e=>patch(tile.country,i,"content_link",e.target.value)} placeholder="Link" className="w-52 rounded-lg bg-white/5 px-2 py-2 outline-none"/><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startColumnDrag(i,"content_link")}} onDragEnd={()=>setColumnDrag(null)} title="Drag down to copy Content Link" className="flex h-8 w-5 cursor-grab items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
    <td className="px-3 py-2"><div className="flex items-center gap-1"><input value={r.content_creator||""} onChange={e=>patch(tile.country,i,"content_creator",e.target.value)} placeholder="Creator" className="w-52 rounded-lg bg-white/5 px-2 py-2 outline-none"/><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startColumnDrag(i,"content_creator")}} onDragEnd={()=>setColumnDrag(null)} title="Drag down to copy Content Creator" className="flex h-8 w-5 cursor-grab items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
    <td className="px-3 py-2"><input type="number" min="0" value={r.outreach_volume??0} onChange={e=>patch(tile.country,i,"outreach_volume",n(e.target.value))} className="w-32 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
