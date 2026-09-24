@@ -67,3 +67,100 @@ option{color:#10233f;background:#fff}
 .theme-night .bg-lime-100{background-color:rgba(77,92,255,.16)!important}
 .theme-night .border-lime-300,.theme-night .border-lime-400{border-color:rgba(94,231,255,.35)!important}
 .country-population-area{min-height:430px;border-radius:0 0 1.5rem 1.5rem}
+
+
+/* BAF Mode — soft pastel-blue interface */
+.theme-baf{
+  --baf-blue:#4d5cff;
+  --baf-blue-dark:#29458f;
+  --baf-pastel:#dcecff;
+  --baf-pastel-2:#e9f3ff;
+  --baf-pastel-3:#f3f8ff;
+  --baf-border:#c9ddf4;
+  --baf-surface:#f7fbff;
+  --baf-surface-2:#edf6ff;
+}
+.theme-baf .freight-shell{
+  background:linear-gradient(135deg,#eef6ff 0%,#eaf4ff 48%,#f4f8ff 100%)!important;
+}
+.theme-baf .freight-header{
+  background:rgba(247,251,255,.88)!important;
+  border-color:#c9ddf4!important;
+  box-shadow:0 12px 35px rgba(77,92,255,.06);
+}
+.theme-baf .freight-sidebar{
+  background:rgba(247,251,255,.94)!important;
+  border-color:#c9ddf4!important;
+}
+.theme-baf .glass{
+  background:linear-gradient(145deg,rgba(248,252,255,.94),rgba(235,245,255,.88))!important;
+  border-color:#c9ddf4!important;
+  box-shadow:0 14px 45px rgba(58,101,155,.08);
+}
+.theme-baf input,
+.theme-baf textarea,
+.theme-baf select{
+  background:#edf6ff!important;
+  border-color:#c5daf1!important;
+  color:#19345a!important;
+  box-shadow:inset 0 1px 2px rgba(65,105,150,.04);
+}
+.theme-baf option{background:#edf6ff;color:#19345a}
+.theme-baf .bg-white,
+.theme-baf .bg-white\/5,
+.theme-baf .bg-white\/10,
+.theme-baf .bg-white\/\[\.02\],
+.theme-baf .bg-white\/\[\.025\],
+.theme-baf .bg-white\/\[\.03\]{
+  background-color:#eaf4ff!important;
+}
+.theme-baf .border-white\/10{
+  border-color:#c9ddf4!important;
+}
+.theme-baf .bg-lime-300,
+.theme-baf .bg-lime-400,
+.theme-baf .bg-lime-500{
+  background:#cfe3ff!important;
+  color:#244a82!important;
+  border:1px solid #b8d3f2!important;
+  box-shadow:0 6px 18px rgba(77,92,255,.10);
+}
+.theme-baf .bg-lime-100{background:#e3f0ff!important}
+.theme-baf .text-lime-300,
+.theme-baf .text-lime-400,
+.theme-baf .text-lime-500,
+.theme-baf .text-lime-600,
+.theme-baf .text-lime-700{color:#4d5cff!important}
+.theme-baf .border-lime-300,
+.theme-baf .border-lime-400{border-color:#b8d3f2!important}
+.theme-baf .pulse-dot{background:#4d5cff!important}
+.theme-baf .freight-grid{
+  background-image:linear-gradient(rgba(77,92,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(77,92,255,.055) 1px,transparent 1px);
+}
+.theme-baf .route-line{
+  background:linear-gradient(90deg,#4dc7ff,#4d5cff,#9bbcff)!important;
+}
+.theme-baf .hover\:bg-white\/5:hover{background:#e4f0ff!important}
+.theme-baf .hover\:text-white:hover{color:#29458f!important}
+.theme-baf .text-slate-950{color:#18345d!important}
+.theme-baf .text-slate-900{color:#19345a!important}
+.theme-baf .bg-cyan-50{background:#e2f5ff!important}
+.theme-baf .bg-blue-50{background:#e5edff!important}
+.theme-baf .bg-lime-100{background:#e3f0ff!important}
+
+/* Make the primary data-entry surface feel like a dedicated workspace. */
+.theme-baf .country-population-area{
+  background:rgba(235,245,255,.42);
+  border-top:1px solid #c9ddf4;
+}
+.theme-baf table thead{
+  background:#dfeeff!important;
+  color:#57718f!important;
+}
+.theme-baf table tbody tr{
+  border-color:#d7e6f5!important;
+}
+.theme-baf table tbody tr:hover{background:#e7f2ff!important}
+.theme-baf table td.sticky{
+  background:#e5f0ff!important;
+}
