@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       open_rate:num(row.open_rate), positive_replies:num(row.positive_replies), neutral_replies:num(row.neutral_replies), negative_replies:num(row.negative_replies),
       unsubscribes:num(row.unsubscribes), bounced:num(row.bounced), auto_responses:num(row.auto_responses), clicks:num(row.clicks), bounce_rate:num(row.bounce_rate),
       qualified_leads:num(row.qualified_leads), follow_ups:num(row.follow_ups), freshness:row.freshness==="recycled"?"recycled":"fresh",
-      response_origin:row.response_origin==="previous_outreach"?"previous_outreach":"current_outreach", response_sequence_id:typeof row.response_sequence_id==="string"?row.response_sequence_id:null, response_note:String(row.response_note??""),
+      response_note:String(row.response_note??""),
       channel:row.channel==="contact_form"?"contact_form":"cold_email", source_file:String(meta.file_name??""), source_sheet:String(row.source_sheet??meta.sheet_name??""),
       source_row:num(row.source_row), imported_at:new Date().toISOString(), import_batch_id:importBatchId
     };
