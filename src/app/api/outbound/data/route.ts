@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   }
 
   const updates = normalized.filter(hasId);
-  const inserts = normalized.filter((r: (typeof normalized)[number]) => !r.id).map(({ id: _id, ...values }) => values);
+  const inserts = normalized.filter((r: (typeof normalized)[number]) => !r.id).map(({ id: _id, ...values }: (typeof normalized)[number]) => values);
   if (updates.length) {
     const { error } = await Promise.all(updates.map(async (row: (typeof updates)[number]) => {
       const { id, ...values } = row;
