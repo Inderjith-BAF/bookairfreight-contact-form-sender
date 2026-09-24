@@ -3,6 +3,7 @@ import { z } from "zod";
 import { submitContactForm } from "@/lib/form-engine";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { SenderDetails } from "@/types/submission";
+import { requireOutboundUser } from "@/lib/outbound-auth";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
