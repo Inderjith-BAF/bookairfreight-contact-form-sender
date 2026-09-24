@@ -37,3 +37,20 @@ option{color:#10233f;background:#fff}
 @keyframes pulseDot{0%,100%{transform:scale(.8);opacity:.5}50%{transform:scale(1.15);opacity:1}}
 ::selection{background:rgba(24,182,255,.18)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+.brand-mark{display:inline-flex;align-items:baseline;font-size:18px;font-weight:900;letter-spacing:-.06em;white-space:nowrap}
+.brand-mark span{color:#101828;font-style:italic}.brand-mark b{color:#4d5cff;font-style:italic}
+.brand-divider{height:24px;width:1px;background:#dbe4ef}
+.theme-night{background:#050810!important;color:#f8fafc!important}
+.theme-night .freight-shell{background:linear-gradient(135deg,#050810 0%,#07111f 52%,#0b1018 100%)}
+.theme-night .freight-header{background:rgba(5,8,16,.76);border-color:rgba(255,255,255,.08);color:#f8fafc}
+.theme-night .freight-sidebar{background:rgba(7,11,20,.96);border-color:rgba(255,255,255,.1)!important}
+.theme-night .glass{background:linear-gradient(145deg,rgba(15,23,42,.88),rgba(15,23,42,.62));border-color:rgba(148,163,184,.16);box-shadow:0 18px 60px rgba(0,0,0,.18)}
+.theme-night .brand-mark span{color:#fff}.theme-night .brand-mark b{color:#5ee7ff}.theme-night .brand-divider{background:rgba(255,255,255,.14)}
+.theme-night .text-slate-100,.theme-night .text-white{color:#f8fafc!important}
+.theme-night .text-slate-200{color:#e2e8f0!important}.theme-night .text-slate-300{color:#cbd5e1!important}.theme-night .text-slate-400{color:#94a3b8!important}.theme-night .text-slate-500{color:#64748b!important}.theme-night .text-slate-600{color:#475569!important}
+.theme-night input,.theme-night textarea,.theme-night select{color:#f8fafc;background:rgba(2,6,23,.7);border-color:rgba(148,163,184,.16)!important}
+.theme-night input::placeholder,.theme-night textarea::placeholder{color:#64748b}.theme-night option{color:#f8fafc;background:#0f172a}
+.theme-night .freight-grid{background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px)}
+.theme-night .brand-mark{color:#fff}
+.theme-night .bg-white\/\[\.03\]{background-color:rgba(255,255,255,.03)!important}
