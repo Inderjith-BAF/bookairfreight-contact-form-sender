@@ -22,9 +22,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireOutboundUser(request);
   if ("error" in auth) return auth.error;
-  const { admin, profile } = auth; const body = await request.json().catch(() => null); const rows = Array.isArray(body?.rows) ? body.rows : [];
+  const { admin, profile } = auth;
+  const body = await request.json().catch(() => null);
+  const rows = Array.isArray(body?.rows) ? body.rows : [];
   if (!rows.length || rows.length > 2000) return NextResponse.json({ error: "Provide 1–2,000 activity rows." }, { status: 400 });
+
   const normalized = rows.map((row: Record<string, unknown>) => ({
+    id: typeof row.id === "string" && row.id ? row.id : undefined,
     activity_date: String(row.activity_date ?? new Date().toISOString().slice(0, 10)).slice(0,10),
     employee_id: profile.role === "member" ? profile.id : (typeof row.employee_id === "string" ? row.employee_id : null),
     employee_name: profile.role === "member" ? profile.full_name : String(row.employee_name ?? ""),
@@ -32,16 +36,44 @@ export async function POST(request: Request) {
     email_account_text: String(row.email_account_text ?? row.account ?? "").trim(),
     prospect_email: String(row.prospect_email ?? row.account ?? "").trim(),
     company: String(row.company ?? ""), industry: String(row.industry ?? ""), region: String(row.region ?? ""), lead_source: String(row.lead_source ?? ""),
-    campaign: String(row.campaign ?? ""), sequence_id: typeof row.sequence_id === "string" ? row.sequence_id : null, stage: String(row.stage ?? ""),
+    campaign: String(row.campaign ?? ""), sequence_id: typeof row.sequence_id === "string" && row.sequence_id ? row.sequence_id : null, stage: String(row.stage ?? ""),
     subject: String(row.subject ?? ""), content: String(row.content ?? ""), content_link: String(row.content_link ?? ""), content_creator: String(row.content_creator ?? ""),
     outreach_volume: num(row.outreach_volume), open_count: num(row.open_count), open_rate: num(row.open_rate), positive_replies: num(row.positive_replies),
     neutral_replies: num(row.neutral_replies), negative_replies: num(row.negative_replies), unsubscribes: num(row.unsubscribes), bounced: num(row.bounced),
     auto_responses: num(row.auto_responses), clicks: num(row.clicks), bounce_rate: num(row.bounce_rate), qualified_leads: num(row.qualified_leads), follow_ups: num(row.follow_ups),
     freshness: row.freshness === "recycled" ? "recycled" : "fresh", response_note: String(row.response_note ?? ""), channel: row.channel === "contact_form" ? "contact_form" : "cold_email",
   }));
+
   const invalid = normalized.findIndex((r: { prospect_email: string }) => !r.prospect_email);
   if (invalid >= 0) return NextResponse.json({ error: "Row " + (invalid + 1) + " is missing an account/prospect email." }, { status: 400 });
-  const { data, error } = await admin.from("outbound_activities").insert(normalized).select("*");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ inserted: data?.length ?? 0 });
+
+  const existingIds = normalized.filter((r): r is typeof r & { id: string } => Boolean(r.id));
+  if (profile.role === "member" && existingIds.length) {
+    const ids = existingIds.map(r => r.id);
+    const { data: owned, error: ownershipError } = await admin.from("outbound_activities").select("id").eq("employee_id", profile.id).in("id", ids);
+    if (ownershipError) return NextResponse.json({ error: ownershipError.message }, { status: 500 });
+    const ownedIds = new Set((owned ?? []).map((r: {id:string}) => r.id));
+    const foreign = ids.find(id => !ownedIds.has(id));
+    if (foreign) return NextResponse.json({ error: "One or more rows cannot be updated by this account." }, { status: 403 });
+  }
+
+  const updates = normalized.filter((r): r is typeof r & { id: string } => Boolean(r.id));
+  const inserts = normalized.filter(r => !r.id);
+  if (updates.length) {
+    const { error } = await Promise.all(updates.map(async row => {
+      const { id, ...values } = row;
+      let query = admin.from("outbound_activities").update(values).eq("id", id);
+      if (profile.role === "member") query = query.eq("employee_id", profile.id);
+      const result = await query;
+      return result.error;
+    })).then(errors => ({ error: errors.find(Boolean) ?? null }));
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  let inserted = 0;
+  if (inserts.length) {
+    const { data, error } = await admin.from("outbound_activities").insert(inserts).select("id");
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    inserted = data?.length ?? 0;
+  }
+  return NextResponse.json({ saved: normalized.length, inserted, updated: updates.length });
 }
