@@ -154,10 +154,11 @@ async function successSignal(page:Page,beforeUrl:string,formIndex:number){
   const currentUrl=page.url();
   const state=await page.evaluate((index)=>{
     const form=document.querySelector('form[data-baf-form="'+index+'"]') as HTMLFormElement|null;
-    const text=document.body?.innerText?.slice(0,50000)||"";
-    const visibleText=/thank you|thanks for|message sent|successfully sent|submission received|we'll be in touch|we will be in touch|your message has been sent|form submitted/i.test(text);
-    const challengeText=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|human verification|this site is protected by hcaptcha|protected by hcaptcha|hcaptcha protection|checking your browser/i.test(text);
-    const errorText=/something went wrong|an error occurred|error submitting|unable to submit|could not submit|submission failed|please try again|invalid email|invalid phone|required field|field is required|there was a problem/i.test(text);
+    const bodyText=document.body?.innerText?.slice(0,50000)||"";
+    const formText=form?.innerText?.slice(0,20000)||"";
+    const visibleText=/thank you|thanks for|message sent|successfully sent|submission received|we'll be in touch|we will be in touch|your message has been sent|form submitted/i.test(bodyText);
+    const challengeText=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|human verification|this site is protected by hcaptcha|protected by hcaptcha|hcaptcha protection|checking your browser/i.test(formText);
+    const errorText=/something went wrong|an error occurred|error submitting|unable to submit|could not submit|submission failed|please try again|invalid email|invalid phone|required field|field is required|there was a problem/i.test(formText);
     const formState=form?{exists:true,visible:!!(form as HTMLElement).offsetParent,submitDisabled:Boolean(form.querySelector('button[type="submit"]:disabled,input[type="submit"]:disabled')),values:Array.from(form.elements).filter((el:any)=>"value" in el).map((el:any)=>String(el.value||"")).join("|")}:{exists:false,visible:false,submitDisabled:false,values:""};
     return {visibleText,challengeText,errorText,formState};
   },formIndex);
@@ -203,7 +204,7 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     const beforeUrl=page.url();
     const submission=await submitForm(page,best.form.formIndex);
     const success=await successSignal(page,beforeUrl,best.form.formIndex);
-    if(success.challengeText)return{url,status:"captcha_required",message:"A visible human-verification challenge appeared after submission. Submission was not treated as successful and was added to the CAPTCHA queue.",detectedFields,evidence:["Target page reported an error"]};
+    if(success.challengeText)return{url,status:"captcha_required",message:"A visible human-verification challenge appeared on the submitted form. Submission was not treated as successful and was added to the CAPTCHA queue.",detectedFields,evidence:["Visible challenge text detected"]};
     if(success.errorText)return{url,status:"failed",message:"The target page reported a submission or validation error after the form was submitted. "+submission.diagnostic,detectedFields,evidence:["Target page reported an error"]};
     if(submission.observed&&submission.accepted&&success.confirmed){
       return{url,status:"success",message:"Submission request was observed, received an HTTP "+(submission.responses.find(r=>r.url===submission.request?.url)?.status??"2xx/3xx")+" response, and the page returned a success signal.",detectedFields,evidence:["Submission request observed","Success confirmation detected"]};
