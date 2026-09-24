@@ -242,7 +242,7 @@ function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows
  const addCountry=()=>{if(!newCountry||tiles.some(t=>t.country===newCountry))return;setTiles(t=>[...t,{country:newCountry,rows:[dateBlankRow()]}]);setNewCountry("")};
  const removeCountry=(country:string)=>setTiles(t=>t.filter(x=>x.country!==country));
  const patch=(country:string,i:number,key:string,value:unknown)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:tile.rows.map((r,idx)=>idx===i?{...r,[key]:value}:r)}:tile));
- const paste=(country:string,text:string,key:keyof Row)=>{const values=text.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);setTiles(t=>t.map(tile=>{if(tile.country!==country)return tile;const next=[...tile.rows];while(next.length<values.length)next.push(dateBlankRow());values.forEach((v,j)=>{next[j]={...next[j],[key]:v}});return {...tile,rows:next}}))};
+ const paste=(country:string,text:string,key:keyof Row)=>{const values=text.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);setTiles(t=>t.map(tile=>{if(tile.country!==country)return tile;const next=[...tile.rows];while(next.length<values.length)next.push(dateBlankRow());values.forEach((v,j)=>{next[j]={...next[j],[key]:v}});return {...tile,rows:next}}))};
  const addRows=(country:string,count:number)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:[...tile.rows,...Array.from({length:count},dateBlankRow)]}:tile));
  const saveCountry=async(country:string)=>{
   const tile=tiles.find(t=>t.country===country);if(!tile)return;
