@@ -54,3 +54,16 @@ option{color:#10233f;background:#fff}
 .theme-night .freight-grid{background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px)}
 .theme-night .brand-mark{color:#fff}
 .theme-night .bg-white\/\[\.03\]{background-color:rgba(255,255,255,.03)!important}
+
+/* BAF blue accent override: replace the previous neon-lime treatment across the OS. */
+.text-lime-300,.text-lime-400,.text-lime-500,.text-lime-600,.text-lime-700{color:#4d5cff!important}
+.bg-lime-300,.bg-lime-400,.bg-lime-500{background-color:#4d5cff!important}
+.bg-lime-100{background-color:#eef0ff!important}
+.border-lime-300,.border-lime-400{border-color:rgba(77,92,255,.35)!important}
+.border-lime-300\/20{border-color:rgba(77,92,255,.20)!important}
+.bg-lime-300\/\[\.04\]{background-color:rgba(77,92,255,.04)!important}
+.theme-night .text-lime-300,.theme-night .text-lime-400,.theme-night .text-lime-500,.theme-night .text-lime-600,.theme-night .text-lime-700{color:#5ee7ff!important}
+.theme-night .bg-lime-300,.theme-night .bg-lime-400,.theme-night .bg-lime-500{background-color:#4d5cff!important}
+.theme-night .bg-lime-100{background-color:rgba(77,92,255,.16)!important}
+.theme-night .border-lime-300,.theme-night .border-lime-400{border-color:rgba(94,231,255,.35)!important}
+.country-population-area{min-height:430px;border-radius:0 0 1.5rem 1.5rem}
