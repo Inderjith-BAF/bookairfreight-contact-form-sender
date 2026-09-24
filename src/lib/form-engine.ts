@@ -15,7 +15,7 @@ const aliases: Record<MappingKey,string[]> = {
   message:["message","comments","comment","enquiry","inquiry","description","your-message","details"]
 };
 const challengePattern=/captcha|recaptcha|hcaptcha|turnstile|challenge-platform|cf-chl-|i am not a robot|verify you are human/i;
-const visibleChallengeText=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|security check|human verification/i;
+const visibleChallengeText=/i am not a robot|verify (that )?you are human|complete (the )?(captcha|challenge)|security check|human verification|this site is protected by hcaptcha|protected by hcaptcha|hcaptcha protection/i;
 function norm(v:string){return v.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
 function scoreField(field:{tag:string;type:string;name:string;id:string;placeholder:string;autocomplete:string;label:string},key:MappingKey){
   const hay=norm([field.name,field.id,field.placeholder,field.autocomplete,field.label].join(" "));
@@ -202,6 +202,10 @@ export async function submitContactForm(url:string,details:SenderDetails,dryRun=
     }
     if(success)return{url,status:"submitted_unverified",message:"The form changed state after submission, but the expected submission request could not be directly observed. Treat as sent and review if needed.",detectedFields};
     return{url,status:"failed",message:"No submission request or success signal was observed after clicking the form submit control.",detectedFields};
-  }catch(error){return{url,status:"failed",message:error instanceof Error?error.message:"Browser automation failed.",detectedFields:[]};}
+  }catch(error){
+    const raw=error instanceof Error?error.message:"Browser automation failed.";
+    const browserTargetError=/target closed|targetclose|execution context was destroyed|session closed|protocol error/i.test(raw);
+    return{url,status:"failed",message:browserTargetError?"The target page closed unexpectedly while processing this form. The site or browser session ended before submission could be verified.":raw,detectedFields:[]};
+  }
   finally{await browser.close().catch(()=>undefined);}
 }
