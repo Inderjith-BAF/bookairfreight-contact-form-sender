@@ -1,5 +1,5 @@
 @import "tailwindcss";
-:root { --background:#f5f9ff; --foreground:#10233f; --ink:#10233f; --muted:#64748b; --sky:#18b6ff; --lime:#4d5cff; --orange:#ff9f43; --pink:#ff5ca8; }
+:root { --background:#f5f9ff; --foreground:#10233f; --ink:#10233f; --muted:#64748b; --sky:#18b6ff; --lime:#b7f34a; --orange:#ff9f43; --pink:#ff5ca8; }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:#f5f9ff;color:var(--ink);font-family:Arial,Helvetica,sans-serif;overflow-x:hidden}
@@ -15,7 +15,7 @@ option{color:#10233f;background:#fff}
 .freight-sidebar{background:rgba(255,255,255,.88);border-color:rgba(15,35,63,.10)!important;box-shadow:14px 0 50px rgba(35,72,110,.08)}
 .freight-header{background:rgba(245,249,255,.78);backdrop-filter:blur(14px)}
 .freight-shell{background:linear-gradient(135deg,#f8fbff 0%,#eef7ff 48%,#f4f5ff 100%)}
-.neon-button{box-shadow:0 8px 24px rgba(77,92,255,.28)}
+.neon-button{box-shadow:0 8px 24px rgba(183,243,74,.28)}
 .lift{transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease}
 .lift:hover{transform:translateY(-5px);box-shadow:0 20px 55px rgba(35,72,110,.13);border-color:rgba(24,182,255,.28)}
 .route-line{stroke-dasharray:8 10;animation:routeDash 2.8s linear infinite}
@@ -55,17 +55,6 @@ option{color:#10233f;background:#fff}
 .theme-night .brand-mark{color:#fff}
 .theme-night .bg-white\/\[\.03\]{background-color:rgba(255,255,255,.03)!important}
 
-/* BAF blue accent override: replace the previous neon-lime treatment across the OS. */
-.text-lime-300,.text-lime-400,.text-lime-500,.text-lime-600,.text-lime-700{color:#4d5cff!important}
-.bg-lime-300,.bg-lime-400,.bg-lime-500{background-color:#4d5cff!important}
-.bg-lime-100{background-color:#eef0ff!important}
-.border-lime-300,.border-lime-400{border-color:rgba(77,92,255,.35)!important}
-.border-lime-300\/20{border-color:rgba(77,92,255,.20)!important}
-.bg-lime-300\/\[\.04\]{background-color:rgba(77,92,255,.04)!important}
-.theme-night .text-lime-300,.theme-night .text-lime-400,.theme-night .text-lime-500,.theme-night .text-lime-600,.theme-night .text-lime-700{color:#5ee7ff!important}
-.theme-night .bg-lime-300,.theme-night .bg-lime-400,.theme-night .bg-lime-500{background-color:#4d5cff!important}
-.theme-night .bg-lime-100{background-color:rgba(77,92,255,.16)!important}
-.theme-night .border-lime-300,.theme-night .border-lime-400{border-color:rgba(94,231,255,.35)!important}
 .country-population-area{min-height:430px;border-radius:0 0 1.5rem 1.5rem}
 
 
