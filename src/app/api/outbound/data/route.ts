@@ -47,7 +47,9 @@ export async function POST(request: Request) {
   const invalid = normalized.findIndex((r: { prospect_email: string }) => !r.prospect_email);
   if (invalid >= 0) return NextResponse.json({ error: "Row " + (invalid + 1) + " is missing an account/prospect email." }, { status: 400 });
 
-  const existingIds = normalized.filter((r): r is typeof r & { id: string } => Boolean(r.id));
+  const hasId = (r: (typeof normalized)[number]): r is (typeof normalized)[number] & { id: string } =>
+    typeof r.id === "string" && r.id.length > 0;
+  const existingIds = normalized.filter(hasId);
   if (profile.role === "member" && existingIds.length) {
     const ids = existingIds.map(r => r.id);
     const { data: owned, error: ownershipError } = await admin.from("outbound_activities").select("id").eq("employee_id", profile.id).in("id", ids);
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
     if (foreign) return NextResponse.json({ error: "One or more rows cannot be updated by this account." }, { status: 403 });
   }
 
-  const updates = normalized.filter((r): r is typeof r & { id: string } => Boolean(r.id));
+  const updates = normalized.filter(hasId);
   const inserts = normalized.filter(r => !r.id);
   if (updates.length) {
     const { error } = await Promise.all(updates.map(async row => {
