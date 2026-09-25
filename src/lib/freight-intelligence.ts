@@ -24,9 +24,12 @@ export const FREIGHT_INTELLIGENCE_REGIONS = [
 export const FREIGHT_INTELLIGENCE_SOURCES = [
   { name:"DHL Ocean Freight Market Update", url:"https://www.dhl.com/us-en/home/global-forwarding/latest-news-and-webinars/ocean-freight-market-update.html" },
   { name:"Freightos Global Freight Outlook", url:"https://www.freightos.com/freight-resources/freightos-global-freight-outlook-september-2026/" },
-  { name:"Flexport Global Logistics Update", url:"https://www.flexport.com/global-logistics-update/september-24-2026-glu-newsletter/" },
-  { name:"Maersk Asia Pacific Market Update", url:"https://www.maersk.com/news/articles/2026/09/09/maersk-asia-pacific-market-update-september" },
-  { name:"Maersk IMEA Market Update", url:"https://www.maersk.com/news/articles/2026/09/09/india-middle-east-and-africa-market-update-september" }
+  { name:"Freightos Freight Trends", url:"https://www.freightos.com/freight-resources/trends/" },
+  { name:"Flexport Global Logistics Update", url:"https://www.flexport.com/global-logistics-update/" },
+  { name:"Maersk Asia Pacific Market Update", url:"https://www.maersk.com/zh-tw/news/articles/2026/09/09/maersk-asia-pacific-market-update-september" },
+  { name:"Maersk IMEA Market Update", url:"https://www.maersk.com/news/articles/2026/09/09/india-middle-east-and-africa-market-update-september" },
+  { name:"Maersk North America Market Update", url:"https://www.maersk.com/news/articles/2026/09/09/north-america-market-update-september" },
+  { name:"Maersk Market Updates", url:"https://www.maersk.com/news/tags/market-update" }
 ] as const;
 
 export function keywordHits(text:string, keywords:readonly string[]) {
