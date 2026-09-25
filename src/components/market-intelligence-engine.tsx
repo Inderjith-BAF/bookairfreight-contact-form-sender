@@ -77,10 +77,14 @@ export function MarketIntelligenceEngine({activities,session}:Props){
 
   const selectedRegion=result?.regions?.find((r:any)=>r.regionId===selected);
   const opportunities=useMemo(()=>{
-    if(!result?.regions)return [];
-    return result.regions.flatMap((r:any)=>r.topics.slice(0,2).map((t:any)=>({...t,regionId:r.regionId,region:r.region,regionLane:regionLanes[r.regionId]||r.region})))
-      .sort((a:any,b:any)=>b.evidenceScore-a.evidenceScore).slice(0,6);
-  },[result]);
+    if(!selectedRegion)return [];
+    return selectedRegion.topics.slice(0,3).map((t:any)=>({
+      ...t,
+      regionId:selectedRegion.regionId,
+      region:selectedRegion.region,
+      regionLane:regionLanes[selectedRegion.regionId]||selectedRegion.region
+    }));
+  },[selectedRegion]);
 
   const marketPulse=useMemo(()=>{
     if(!result?.regions)return [];
@@ -113,21 +117,58 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     </section>
 
     <section>
-      <div className="mb-4 flex items-end justify-between gap-4">
-        <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">01 / MARKET PULSE</p><h3 className="mt-1 text-2xl font-black">Which China-origin markets are giving us a reason to investigate?</h3></div>
-        <span className="hidden text-xs font-bold text-slate-400 sm:block">China-origin lanes · external evidence first · BAF history validates</span>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">01 / MARKET PULSE</p><h3 className="mt-1 text-2xl font-black">Select a China-origin trade lane to investigate</h3></div>
+        <span className="text-xs font-bold text-slate-400">External evidence first · BAF history validates</span>
       </div>
-      <div className="mb-3 flex flex-wrap gap-2">{CORE_LANES.map(l=><button key={l.id} onClick={()=>setSelected(l.regionId)} className={"rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider "+(selected===l.regionId?"border-[#4d5cff] bg-[#4d5cff] text-white":"border-slate-200 bg-white text-slate-500")}>{l.label}</button>)}</div>
-      <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Future destination coverage</p>
-      <div className="mb-5 flex flex-wrap gap-2">{FUTURE_LANES.map(l=><button key={l.id} onClick={()=>setSelected(l.regionId)} className={"rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider "+(selected===l.regionId?"border-[#4d5cff] bg-[#4d5cff] text-white":"border-slate-200 bg-white text-slate-500")}>{l.label}</button>)}</div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {marketPulse.map((r:any)=><button key={r.regionId} onClick={()=>setSelected(r.regionId)} className={"text-left rounded-2xl border p-5 transition hover:-translate-y-0.5 "+(selected===r.regionId?"border-[#4d5cff] bg-[#f3f5ff] shadow-sm":"border-slate-200 bg-white")}>
-          <div className="flex items-center justify-between gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-[#4d5cff] text-[10px] font-black text-white">{REGIONS.find(x=>x.id===r.regionId)?.short}</span><span className={"rounded-full border px-2.5 py-1 text-[9px] font-black uppercase "+scoreTone(r.top?.evidenceScore||0)}>{scoreLabel(r.top?.evidenceScore||0)}</span></div>
-          <h4 className="mt-4 text-lg font-black">{r.region}</h4>
-          <p className="mt-1 text-xs font-bold text-slate-400">{regionLanes[r.regionId]}</p>
-          {r.top?<><p className="mt-4 text-sm font-black">{r.top.label}</p><p className="mt-1 text-xs leading-5 text-slate-500">{r.top.marketSources} external source{r.top.marketSources===1?"":"s"} · {r.top.internal?.mentions||0} relevant BAF mentions</p></>:<p className="mt-4 text-xs text-slate-400">No current evidence returned.</p>}
-        </button>)}
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <label htmlFor="intelligence-route" className="block text-[10px] font-black uppercase tracking-[.3em] text-slate-400">Trade lane</label>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select id="intelligence-route" value={selected} onChange={e=>setSelected(e.target.value)} className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-800 outline-none focus:border-[#4d5cff] focus:ring-2 focus:ring-[#4d5cff]/10">
+            <optgroup label="Core markets">
+              {CORE_LANES.map(l=><option key={l.id} value={l.regionId}>{l.label}</option>)}
+            </optgroup>
+            <optgroup label="Future destination coverage">
+              {FUTURE_LANES.map(l=><option key={l.id} value={l.regionId}>{l.label}</option>)}
+            </optgroup>
+          </select>
+          {selectedRegion&&<div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+            <p className="text-[9px] font-black uppercase tracking-widest text-blue-500">Selected destination</p>
+            <p className="mt-1 text-sm font-black text-slate-800">{selectedRegion.region}</p>
+          </div>}
+        </div>
       </div>
+
+      {selectedRegion&&<div className="mt-4 rounded-3xl border border-[#4d5cff]/20 bg-[#f5f6ff] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">SELECTED ROUTE</p>
+            <h4 className="mt-1 text-2xl font-black">{regionLanes[selectedRegion.regionId]||selectedRegion.region}</h4>
+            <p className="mt-1 text-xs font-bold text-slate-400">Current market evidence for this destination</p>
+          </div>
+          {selectedRegion.topics[0]&&<span className={"rounded-full border px-3 py-1.5 text-[9px] font-black uppercase "+scoreTone(selectedRegion.topics[0].evidenceScore)}>{scoreLabel(selectedRegion.topics[0].evidenceScore)}</span>}
+        </div>
+        {selectedRegion.topics[0]&&<div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+          <div className="rounded-2xl border border-white bg-white p-5">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Top market signal</p>
+            <h5 className="mt-2 text-lg font-black">{selectedRegion.topics[0].label}</h5>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{selectedRegion.topics[0].angle}</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Sources</p><p className="mt-1 text-lg font-black">{selectedRegion.topics[0].marketSources}</p></div>
+              <div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">BAF mentions</p><p className="mt-1 text-lg font-black">{selectedRegion.topics[0].internal?.mentions||0}</p></div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white bg-white p-5">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Source evidence</p>
+            {selectedRegion.topics[0].evidence?.slice(0,2).map((e:any)=><div key={e.source} className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <a href={e.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-black text-[#4d5cff]">{sourceHost(e.url)} <ExternalLink size={11}/></a>
+              {e.snippet&&<p className="mt-2 text-[11px] leading-5 text-slate-500">{e.snippet}</p>}
+            </div>)}
+            {!selectedRegion.topics[0].evidence?.length&&<p className="mt-3 text-xs text-slate-400">No source evidence was returned for this signal.</p>}
+          </div>
+        </div>}
+      </div>}
     </section>
 
     {selectedRegion&&<section className="grid gap-6 xl:grid-cols-[1.05fr_.95fr]">
@@ -153,7 +194,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     </section>}
 
     <section>
-      <div className="mb-4"><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">04 / CAMPAIGN OPPORTUNITIES</p><h3 className="mt-1 text-2xl font-black">Market signals that can become outreach experiments</h3></div>
+      <div className="mb-4"><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">04 / CAMPAIGN OPPORTUNITIES</p><h3 className="mt-1 text-2xl font-black">Selected route signals that can become outreach experiments</h3></div>
       <div className="grid gap-4 lg:grid-cols-2">
         {opportunities.map((o:any,i:number)=><div key={o.regionId+"-"+o.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{String(i+1).padStart(2,"0")} · {o.region}</p><h4 className="mt-1 text-lg font-black">{o.label}</h4><p className="mt-1 text-xs font-bold text-slate-400">{o.regionLane}</p></div><span className={"rounded-full border px-2.5 py-1 text-[9px] font-black uppercase "+scoreTone(o.evidenceScore)}>{o.evidenceScore} evidence</span></div>
@@ -178,7 +219,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     <section className="rounded-3xl border border-[#4d5cff]/20 bg-[#f5f6ff] p-6">
       <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[#4d5cff]"><TrendingUp size={18}/></div><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">06 / TODAY'S INTELLIGENCE</p><h3 className="mt-1 text-2xl font-black">What should the team investigate next?</h3></div></div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
-        {opportunities.slice(0,3).map((o:any)=><div key={o.regionId+"today"} className="rounded-2xl border border-white bg-white p-4"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{o.region}</p><p className="mt-2 text-sm font-black">{o.label}</p><p className="mt-2 text-xs leading-5 text-slate-500">Investigate this market signal and test a prospect-specific outreach angle around the identified pain point.</p><div className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#4d5cff]">Investigate <ArrowRight size={12}/></div></div>)}
+        {opportunities.slice(0,3).map((o:any)=><div key={o.regionId+"-"+o.id+"-today"} className="rounded-2xl border border-white bg-white p-4"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{o.region}</p><p className="mt-2 text-sm font-black">{o.label}</p><p className="mt-2 text-xs leading-5 text-slate-500">Investigate this market signal and test a prospect-specific outreach angle around the identified pain point.</p><div className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#4d5cff]">Investigate <ArrowRight size={12}/></div></div>)}
       </div>
       {!loading&&ran&&opportunities.length===0&&<div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-500"><CheckCircle2 size={16}/> No actionable market opportunities were returned in this snapshot.</div>}
     </section>
