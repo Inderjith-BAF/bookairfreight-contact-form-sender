@@ -21,6 +21,14 @@ function relevantSource(name:string, region:any){
   if(name.includes("IMEA")) return ["in","mea","ae","sa","za"].includes(region.id);
   return true;
 }
+function evidenceSnippet(text:string,hits:string[]){
+  if(!hits.length)return "";
+  const lower=text.toLowerCase();
+  const hit=hits[0].toLowerCase();
+  const at=lower.indexOf(hit);
+  if(at<0)return "";
+  return text.slice(Math.max(0,at-140),Math.min(text.length,at+360)).replace(/\s+/g," ").trim();
+}
 export async function POST(request:Request){
   const auth=await requireOutboundUser(request);
   if("error" in auth)return auth.error;
