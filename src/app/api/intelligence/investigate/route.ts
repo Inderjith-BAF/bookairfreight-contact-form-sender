@@ -68,10 +68,10 @@ export async function POST(request:Request){
       validation,
       target: "Business owners / founders of importing, e-commerce, manufacturing, wholesale or distribution businesses shipping from China.",
       outreachAngle:topic.angles[0],
-      questions:[
-        `Are your upcoming China → ${region.label} shipments exposed to this issue?`,
-        "How is this affecting your landed cost, inventory timing or customer commitments?",
-        "Would an alternative booking, routing or contingency plan reduce the exposure?"
+      hooks:[
+        `If you're shipping from China to ${region.label}, ${topic.angles[0]} may be worth looking at before your next booking cycle.`,
+        `We've been looking at ${topic.label.toLowerCase()} on the China → ${region.label} lane — the question is how much it is affecting your landed cost, inventory timing or delivery commitments.`,
+        `A quick check we would make: are your next China → ${region.label} shipments exposed to this issue, and is there a practical way to reduce that exposure before it hits your customers?`
       ]
     },
     evidence:evidence.slice(0,5),
