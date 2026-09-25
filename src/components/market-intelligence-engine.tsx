@@ -54,6 +54,9 @@ export function MarketIntelligenceEngine({activities,session}:Props){
   const [investigating,setInvestigating]=useState<string>("");
   const [investigation,setInvestigation]=useState<any>(null);
   const [investigationError,setInvestigationError]=useState("");
+  const [generatingCampaign,setGeneratingCampaign]=useState(false);
+  const [campaign,setCampaign]=useState<any>(null);
+  const [campaignError,setCampaignError]=useState("");
 
   async function runResearch(){
     setLoading(true);setError("");
@@ -95,6 +98,26 @@ export function MarketIntelligenceEngine({activities,session}:Props){
       setTimeout(()=>document.getElementById("investigation-result")?.scrollIntoView({behavior:"smooth",block:"start"}),50);
     }catch(e){setInvestigationError(e instanceof Error?e.message:"Investigation failed.");}
     finally{setInvestigating("");}
+  }
+
+  async function generateCampaign(){
+    if(!investigation)return;
+    setGeneratingCampaign(true);setCampaign(null);setCampaignError("");
+    try{
+      let token=session?.access_token;
+      if(!token){const current=await supabase.auth.getSession();token=current.data.session?.access_token;}
+      if(!token)throw new Error("Your Outbound OS session has expired. Please sign in again.");
+      const res=await fetch("/api/intelligence/campaign",{
+        method:"POST",
+        headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+        body:JSON.stringify({regionId:selected,topicId:investigation.topic.id,investigation})
+      });
+      const data=await res.json().catch(()=>({error:"Campaign generation returned an invalid response."}));
+      if(!res.ok)throw new Error(data.error||"Campaign generation failed.");
+      setCampaign(data);
+      setTimeout(()=>document.getElementById("generated-campaign")?.scrollIntoView({behavior:"smooth",block:"start"}),50);
+    }catch(e){setCampaignError(e instanceof Error?e.message:"Campaign generation failed.");}
+    finally{setGeneratingCampaign(false);}
   }
 
   const selectedRegion=result?.regions?.find((r:any)=>r.regionId===selected);
@@ -261,7 +284,32 @@ export function MarketIntelligenceEngine({activities,session}:Props){
         <div className="rounded-2xl border border-lime-200 bg-lime-50 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-lime-700">Who should we target?</p><p className="mt-2 text-sm font-bold leading-6 text-slate-700">{investigation.analysis.target}</p><p className="mt-4 text-[9px] font-black uppercase tracking-widest text-lime-700">Outreach angle</p><p className="mt-2 text-sm font-black leading-6 text-slate-800">{investigation.analysis.outreachAngle}</p></div>
         <div className="rounded-2xl border border-slate-200 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Outreach hooks to use</p><ol className="mt-2 space-y-2 text-sm font-bold text-slate-700">{(Array.isArray(investigation.analysis?.hooks)?investigation.analysis.hooks:[]).map((q:string,i:number)=><li key={i} className="rounded-xl bg-white px-3 py-2 leading-5">{q}</li>)}</ol></div>
       </div>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={generateCampaign} disabled={generatingCampaign} className="inline-flex items-center gap-2 rounded-xl bg-[#4d5cff] px-4 py-3 text-xs font-black text-white shadow-sm disabled:opacity-60">
+          <Zap size={14}/>{generatingCampaign?"BUILDING CAMPAIGN…":"GENERATE CAMPAIGN"}
+        </button>
+        <span className="text-[10px] font-bold text-slate-400">Turns this investigation into a testable outbound campaign.</span>
+      </div>
       <div className="mt-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Source evidence</p><div className="mt-2 grid gap-3 md:grid-cols-2">{(Array.isArray(investigation.evidence)?investigation.evidence:[]).map((e:any)=><a key={e.source} href={e.url} target="_blank" rel="noreferrer" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 hover:border-[#4d5cff]"><p className="text-xs font-black text-[#4d5cff]">{e.source}</p><p className="mt-2 text-[11px] leading-5 text-slate-500">{e.snippet||"Relevant topic evidence detected in this source."}</p></a>)}</div></div>
+    </section>}
+    {campaignError&&<div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{campaignError}</div>}
+    {campaign&&<section id="generated-campaign" className="rounded-3xl border border-lime-200 bg-lime-50 p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-lime-700">GENERATED CAMPAIGN</p><h3 className="mt-1 text-2xl font-black">{campaign.campaignName}</h3><p className="mt-2 text-xs font-bold text-slate-500">{campaign.target}</p></div>
+        <button type="button" onClick={()=>navigator.clipboard?.writeText(campaign.body)} className="rounded-xl border border-lime-300 bg-white px-4 py-2 text-xs font-black text-lime-800 hover:bg-lime-100">COPY EMAIL</button>
+      </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-white bg-white p-5">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Subject lines</p>
+          <div className="mt-3 space-y-2">{(campaign.subjectLines||[]).map((s:string,i:number)=><div key={i} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">{s}</div>)}</div>
+          <p className="mt-5 text-[9px] font-black uppercase tracking-widest text-slate-400">Opening hook</p><p className="mt-2 text-sm font-black leading-6 text-slate-800">{campaign.opening}</p>
+        </div>
+        <div className="rounded-2xl border border-white bg-white p-5">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cold email draft</p>
+          <pre className="mt-3 whitespace-pre-wrap font-sans text-sm leading-6 text-slate-700">{campaign.body}</pre>
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl border border-white bg-white p-4"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Recommended test</p><p className="mt-2 text-sm font-bold text-slate-700">{campaign.nextStep}</p></div>
     </section>}
     <p className="text-[10px] leading-5 text-slate-400">Research strength is based on source evidence and relevant BAF history. It is not a guaranteed response rate or prediction of campaign performance.</p>
   </div>
