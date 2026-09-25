@@ -8,11 +8,11 @@ export const maxDuration=60;
 
 function stripHtml(html:string){
   return html
-    .replace(/<(script|style|nav|header|footer|aside)[^>]*>[\s\S]*?<\\/\1>/gi," ")
+    .replace(/<(script|style|nav|header|footer|aside)[^>]*>[\s\S]*?<\/\1>/gi," ")
     .replace(/<[^>]+>/g," ")
     .replace(/&nbsp;/g," ")
     .replace(/&amp;/g,"&")
-    .replace(/\\s+/g," ")
+    .replace(/\s+/g," ")
     .trim();
 }
 function cleanSnippet(text:string,hits:string[]){
@@ -29,7 +29,7 @@ function cleanSnippet(text:string,hits:string[]){
   if(at===undefined)return "";
   const left=Math.max(0,text.lastIndexOf(". ",Math.max(0,at-180))+2);
   const right=text.indexOf(". ",Math.min(text.length,at+360));
-  return text.slice(left,right>left?right+1:Math.min(text.length,at+520)).replace(/\\s+/g," ").trim();
+  return text.slice(left,right>left?right+1:Math.min(text.length,at+520)).replace(/\s+/g," ").trim();
 }
 function relevantSource(name:string, regionId:string){
   if(name.includes("Asia Pacific")) return ["au","in","nz","sg","jp","kr"].includes(regionId);
