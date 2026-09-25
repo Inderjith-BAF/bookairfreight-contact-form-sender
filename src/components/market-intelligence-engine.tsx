@@ -144,7 +144,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
         <div className="mt-5 space-y-3">
           {selectedRegion.topics.map((t:any,i:number)=><div key={t.id} className={"rounded-2xl border p-4 "+(i===0?"border-blue-200 bg-blue-50/60":"border-slate-100 bg-slate-50/50")}>
             <div className="flex items-start justify-between gap-4"><div><div className="flex items-center gap-2"><span className="text-[10px] font-black text-[#4d5cff]">0{i+1}</span><h4 className="text-sm font-black">{t.label}</h4></div><p className="mt-2 text-xs leading-5 text-slate-600">{t.angle}</p></div><span className="shrink-0 text-sm font-black">{t.evidenceScore}</span></div>
-            <div className="mt-3 flex flex-wrap gap-2">{t.evidence?.slice(0,3).map((e:any)=><a key={e.source} href={e.url} target="_blank" rel="noreferrer" onClick={e2=>e2.stopPropagation()} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-bold text-slate-500 hover:text-[#4d5cff]">{sourceHost(e.url)} <ExternalLink size={10}/></a>)}</div>
+            <div className="mt-3 flex flex-wrap gap-2">{t.evidence?.slice(0,3).map((e:any)=><a key={e.source} href={e.url} target="_blank" rel="noreferrer" onClick={e2=>e2.stopPropagation()} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-bold text-slate-500 hover:text-[#4d5cff]">{sourceHost(e.url)} <ExternalLink size={10}/></a>)}</div>{t.evidence?.[0]?.snippet&&<p className="mt-3 border-l-2 border-cyan-300 pl-3 text-[11px] leading-5 text-slate-500">{t.evidence[0].snippet}</p>}
           </div>)}
         </div>
       </div>
