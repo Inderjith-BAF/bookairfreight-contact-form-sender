@@ -6,7 +6,16 @@ export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export const maxDuration=60;
 
-function stripHtml(html:string){return html.replace(/<script[\\s\\S]*?<\\/script>/gi," ").replace(/<style[\\s\\S]*?<\\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/\\s+/g," ").trim();}
+function stripHtml(html:string){
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi," ")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi," ")
+    .replace(/<[^>]+>/g," ")
+    .replace(/&nbsp;/g," ")
+    .replace(/&amp;/g,"&")
+    .replace(/\s+/g," ")
+    .trim();
+}
 function relevantSource(name:string, region:any){ 
   if(name.includes("Asia Pacific")) return ["apac","in","au","nz","sg","jp","kr"].includes(region.id);
   if(name.includes("IMEA")) return ["in","mea","ae","sa","za"].includes(region.id);
