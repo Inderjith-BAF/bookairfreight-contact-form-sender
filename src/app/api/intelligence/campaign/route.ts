@@ -8,10 +8,10 @@ export const dynamic="force-dynamic";
 export async function POST(request:Request){
   const auth=await requireOutboundUser(request);
   if("error" in auth)return auth.error;
-  const body=await request.json().catch(()=>({}));
-  const regionId=String(body?.regionId||"");
-  const topicId=String(body?.topicId||"");
-  const investigation=body?.investigation;
+  const requestBody=await request.json().catch(()=>({}));
+  const regionId=String(requestBody?.regionId||"");
+  const topicId=String(requestBody?.topicId||"");
+  const investigation=requestBody?.investigation;
   const region=FREIGHT_INTELLIGENCE_REGIONS.find(r=>r.id===regionId);
   const topic=FREIGHT_INTELLIGENCE_TOPICS.find(t=>t.id===topicId);
   if(!region||!topic||!investigation)return NextResponse.json({error:"A completed investigation is required before generating a campaign."},{status:400});
@@ -27,7 +27,7 @@ export async function POST(request:Request){
     `${topic.label}: worth checking before your next shipment?`
   ];
   const opening=hook;
-  const body=[
+  const emailBody=[
     opening,
     "",
     `We work with businesses moving goods from China to ${region.label}, and we're seeing enough movement around ${topic.label.toLowerCase()} to think it is worth a quick check against your upcoming shipments.`,
@@ -45,7 +45,7 @@ export async function POST(request:Request){
     angle,
     subjectLines:subjects,
     opening,
-    body,
+    body:emailBody,
     cta:"Would it be useful if I looked at one of your upcoming shipments?",
     nextStep:"Test this as a small outbound campaign first; use reply data to validate the angle before scaling."
   });
