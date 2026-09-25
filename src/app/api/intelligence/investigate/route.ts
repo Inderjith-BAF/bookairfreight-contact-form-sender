@@ -7,10 +7,29 @@ export const dynamic="force-dynamic";
 export const maxDuration=60;
 
 function stripHtml(html:string){
-  return html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi," ")
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi," ")
-    .replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&")
-    .replace(/\s+/g," ").trim();
+  return html
+    .replace(/<(script|style|nav|header|footer|aside)[^>]*>[\s\S]*?<\\/\1>/gi," ")
+    .replace(/<[^>]+>/g," ")
+    .replace(/&nbsp;/g," ")
+    .replace(/&amp;/g,"&")
+    .replace(/\\s+/g," ")
+    .trim();
+}
+function cleanSnippet(text:string,hits:string[]){
+  if(!hits.length)return "";
+  const hit=hits[0].toLowerCase();
+  const lower=text.toLowerCase();
+  const positions:number[]=[];
+  let from=0;
+  while((from=lower.indexOf(hit,from))>=0){positions.push(from);from+=hit.length;}
+  const at=positions.find(p=>{
+    const window=text.slice(Math.max(0,p-220),Math.min(text.length,p+520));
+    return window.split(/(?<=[.!?])\\s+/).length>=2 && window.length>180;
+  }) ?? positions[0];
+  if(at===undefined)return "";
+  const left=Math.max(0,text.lastIndexOf(". ",Math.max(0,at-180))+2);
+  const right=text.indexOf(". ",Math.min(text.length,at+360));
+  return text.slice(left,right>left?right+1:Math.min(text.length,at+520)).replace(/\\s+/g," ").trim();
 }
 function relevantSource(name:string, regionId:string){
   if(name.includes("Asia Pacific")) return ["au","in","nz","sg","jp","kr"].includes(regionId);
@@ -41,7 +60,7 @@ export async function POST(request:Request){
       clearTimeout(timer);
       const text=stripHtml(await res.text()).slice(0,60000);
       const hits=keywordHits(text,topic.keywords);
-      return {source:source.name,url:source.url,ok:res.ok,hits,snippet:snippet(text,hits)};
+      return {source:source.name,url:source.url,ok:res.ok,hits,snippet:cleanSnippet(text,hits)};
     }catch(e){return {source:source.name,url:source.url,ok:false,hits:[],snippet:"",error:e instanceof Error?e.message:"source unavailable"};}
   }));
   const evidence=fetched.filter(x=>x.ok&&x.hits.length);
