@@ -12,15 +12,41 @@ export const FREIGHT_INTELLIGENCE_TOPICS = [
 
 export const FREIGHT_INTELLIGENCE_REGIONS = [
   { id:"us", label:"United States", keywords:["usa","us","united states","north america","transpacific","tpeb"] },
-  { id:"uk", label:"United Kingdom", keywords:["uk","united kingdom","britain","british","north europe"] },
-  { id:"eu", label:"Europe", keywords:["europe","european","north europe","rotterdam","antwerp","germany","netherlands","mediterranean"] },
   { id:"au", label:"Australia", keywords:["australia","oceania","australian"] },
-  { id:"mea", label:"Middle East", keywords:["middle east","gulf","uae","dubai","saudi","qatar","oman","hormuz","jebel ali"] },
+  { id:"uk", label:"United Kingdom", keywords:["uk","united kingdom","britain","british","north europe"] },
+  { id:"eu", label:"Europe", keywords:["europe","european","north europe","rotterdam","antwerp","germany","netherlands","france","italy","spain"] },
+  { id:"ca", label:"Canada", keywords:["canada","canadian"] },
   { id:"in", label:"India", keywords:["india","indian subcontinent","nhava sheva","mundra","colombo","isc"] },
-  { id:"apac", label:"Asia Pacific", keywords:["asia pacific","asia","china","singapore","hong kong","busan","shanghai","ningbo","golden week"] },
-  { id:"ca", label:"Canada", keywords:["canada","canadian"] }
+  { id:"ae", label:"United Arab Emirates", keywords:["uae","united arab emirates","dubai","jebel ali","abu dhabi"] },
+  { id:"sa", label:"Saudi Arabia", keywords:["saudi","saudi arabia","jeddah","riyadh"] },
+  { id:"nz", label:"New Zealand", keywords:["new zealand","new zealand"] },
+  { id:"sg", label:"Singapore", keywords:["singapore"] },
+  { id:"jp", label:"Japan", keywords:["japan","tokyo","yokohama"] },
+  { id:"kr", label:"South Korea", keywords:["south korea","korea","busan"] },
+  { id:"mx", label:"Mexico", keywords:["mexico","mexican"] },
+  { id:"br", label:"Brazil", keywords:["brazil","brazilian"] },
+  { id:"za", label:"South Africa", keywords:["south africa","durban","cape town"] },
+  { id:"mea", label:"Middle East & Africa", keywords:["middle east","gulf","uae","dubai","saudi","qatar","oman","africa","hormuz","jebel ali"] }
 ] as const;
 
+
+export const FREIGHT_INTELLIGENCE_LANES = [
+  { id:"cn-us", origin:"China", destination:"United States", label:"China → United States", regionId:"us" },
+  { id:"cn-au", origin:"China", destination:"Australia", label:"China → Australia", regionId:"au" },
+  { id:"cn-uk", origin:"China", destination:"United Kingdom", label:"China → United Kingdom", regionId:"uk" },
+  { id:"cn-eu", origin:"China", destination:"Europe", label:"China → Europe", regionId:"eu" },
+  { id:"cn-ca", origin:"China", destination:"Canada", label:"China → Canada", regionId:"ca" },
+  { id:"cn-in", origin:"China", destination:"India", label:"China → India", regionId:"in" },
+  { id:"cn-ae", origin:"China", destination:"United Arab Emirates", label:"China → UAE", regionId:"ae" },
+  { id:"cn-sa", origin:"China", destination:"Saudi Arabia", label:"China → Saudi Arabia", regionId:"sa" },
+  { id:"cn-nz", origin:"China", destination:"New Zealand", label:"China → New Zealand", regionId:"nz" },
+  { id:"cn-sg", origin:"China", destination:"Singapore", label:"China → Singapore", regionId:"sg" },
+  { id:"cn-jp", origin:"China", destination:"Japan", label:"China → Japan", regionId:"jp" },
+  { id:"cn-kr", origin:"China", destination:"South Korea", label:"China → South Korea", regionId:"kr" },
+  { id:"cn-mx", origin:"China", destination:"Mexico", label:"China → Mexico", regionId:"mx" },
+  { id:"cn-br", origin:"China", destination:"Brazil", label:"China → Brazil", regionId:"br" },
+  { id:"cn-za", origin:"China", destination:"South Africa", label:"China → South Africa", regionId:"za" }
+] as const;
 export const FREIGHT_INTELLIGENCE_SOURCES = [
   { name:"DHL Ocean Freight Market Update", url:"https://www.dhl.com/us-en/home/global-forwarding/latest-news-and-webinars/ocean-freight-market-update.html" },
   { name:"Freightos Global Freight Outlook", url:"https://www.freightos.com/freight-resources/freightos-global-freight-outlook-september-2026/" },
