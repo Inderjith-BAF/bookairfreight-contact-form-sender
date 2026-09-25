@@ -33,12 +33,15 @@ export async function POST(request:Request){
   const output=regions.map(region=>{
     const sources=sourceResults.filter(s=>s.ok && relevantSource(s.name,region));
     const topics=FREIGHT_INTELLIGENCE_TOPICS.map(topic=>{
-      const evidence=sources.map(s=>({source:s.name,url:s.url,hits:keywordHits(s.text,topic.keywords)})).filter(x=>x.hits.length);
+      const evidence=sources.map(s=>{
+        const hits=keywordHits(s.text,topic.keywords);
+        return {source:s.name,url:s.url,hits,snippet:evidenceSnippet(s.text,hits)};
+      }).filter(x=>x.hits.length);
       const internal=topicInternalSignal(activities,region,topic);
       const marketScore=Math.min(45,evidence.length*15);
       const internalScore=internal.mentions?Math.min(40,10+internal.responseRate*2+Math.min(20,internal.positive*1.5)):0;
       const evidenceScore=Math.round(marketScore+internalScore+(evidence.length?15:0));
-      return {id:topic.id,label:topic.label,evidenceScore,marketSources:evidence.length,internal,angle:"Lead with "+topic.angles[0]+" and make the email specific to the prospect's lane, shipment timing or inventory exposure.",evidence:evidence.slice(0,4).map(x=>({source:x.source,url:x.url,hits:x.hits.slice(0,8)}))};
+      return {id:topic.id,label:topic.label,evidenceScore,marketSources:evidence.length,internal,angle:"Lead with "+topic.angles[0]+" and make the email specific to the prospect's lane, shipment timing or inventory exposure.",evidence:evidence.slice(0,4).map(x=>({source:x.source,url:x.url,hits:x.hits.slice(0,8),snippet:x.snippet}))};
     }).sort((a,b)=>b.evidenceScore-a.evidenceScore||b.marketSources-a.marketSources).slice(0,5);
     const signals=sources.flatMap(s=>FREIGHT_INTELLIGENCE_TOPICS.map(t=>({source:s.name,url:s.url,topic:t.label,hits:keywordHits(s.text,t.keywords)})).filter(x=>x.hits.length)).slice(0,12);
     return {regionId:region.id,region:region.label,sourceCount:sources.length,topics,signals};
