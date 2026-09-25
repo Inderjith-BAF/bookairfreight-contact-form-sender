@@ -4,37 +4,27 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, ArrowRight, CheckCircle2, ExternalLink, RefreshCw, Search, Target, TrendingUp, Waves, Zap } from "lucide-react";
 import type { OutboundActivity } from "@/lib/outbound-types";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { FREIGHT_INTELLIGENCE_LANES, FREIGHT_INTELLIGENCE_REGIONS } from "@/lib/freight-intelligence";
 
 type Props={activities:OutboundActivity[]; session:any};
 
-const REGIONS=[
-  {id:"us",label:"United States",short:"US"},
-  {id:"eu",label:"Europe",short:"EU"},
-  {id:"au",label:"Australia",short:"AU"},
-  {id:"in",label:"India",short:"IN"},
-  {id:"uk",label:"United Kingdom",short:"UK"},
-  {id:"mea",label:"Middle East",short:"MEA"},
-];
+const REGIONS=FREIGHT_INTELLIGENCE_REGIONS.map(r=>({id:r.id,label:r.label,short:r.label.slice(0,3).toUpperCase()}));
+const LANES=FREIGHT_INTELLIGENCE_LANES;
+const CORE_LANES=LANES.slice(0,6);
+const FUTURE_LANES=LANES.slice(6);
 
-const regionLanes:Record<string,string>={
-  us:"Asia → US / North America",
-  eu:"Asia → Europe",
-  au:"Asia → Australia",
-  in:"India / Indian Subcontinent",
-  uk:"Asia → UK / North Europe",
-  mea:"Asia → Middle East / Africa",
-};
+const regionLanes:Record<string,string>=Object.fromEntries(REGIONS.map(r=>[r.id,`China → ${r.label}`]));
 
 const targetProfiles:Record<string,string[]>={
-  cost:["Importers","Procurement teams","Distributors"],
-  capacity:["Importers","Manufacturers","Supply-chain teams"],
-  reliability:["Operations","Supply-chain teams","Time-sensitive shippers"],
-  congestion:["Importers","Warehouse teams","Operations"],
-  routing:["Supply-chain teams","Logistics managers","Import/export teams"],
-  trade:["Importers","Procurement","Compliance / trade teams"],
-  peak:["Retailers","Manufacturers","Distributors"],
-  visibility:["Supply-chain teams","Inventory planners","Operations"],
-  air:["Time-critical shippers","Electronics / tech","Manufacturers"],
+  cost:["Business owners / founders","Importers & distributors","E-commerce brands"],
+  capacity:["Business owners / founders","Importers","Manufacturers & wholesalers"],
+  reliability:["Business owners / founders","Operations owners","Time-sensitive shippers"],
+  congestion:["Business owners / founders","Importers","Warehouse-dependent businesses"],
+  routing:["Business owners / founders","Import/export businesses","Logistics decision-makers"],
+  trade:["Business owners / founders","Importers","Trade/compliance owners"],
+  peak:["Business owners / founders","Retailers","Manufacturers & distributors"],
+  visibility:["Business owners / founders","Importers","Inventory-dependent businesses"],
+  air:["Business owners / founders","Time-critical shippers","Manufacturers / e-commerce brands"],
 };
 
 function scoreLabel(score:number){
@@ -105,8 +95,8 @@ export function MarketIntelligenceEngine({activities,session}:Props){
       <div className="flex flex-wrap items-start justify-between gap-5">
         <div className="max-w-4xl">
           <p className="text-[10px] font-black uppercase tracking-[.35em] text-cyan-500">BOOKAIRFREIGHT / MARKET INTELLIGENCE</p>
-          <h2 className="mt-2 text-3xl font-black tracking-[-.04em] sm:text-5xl">What is happening in freight — and what should we do about it?</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Current freight-market signals are combined with BAF outbound history to turn external events into markets, pain points, target buyers and concrete outreach opportunities.</p>
+          <h2 className="mt-2 text-3xl font-black tracking-[-.04em] sm:text-5xl">What is happening on our trade lanes — and which business owners should we talk to?</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Current freight-market signals are combined with BAF outbound history to identify China-origin trade-lane opportunities, the business-owner pain points behind them, and the outreach opportunities worth testing.</p>
         </div>
         <button onClick={runResearch} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-[#4d5cff] px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-wait disabled:opacity-60">
           <RefreshCw size={16} className={loading?"animate-spin":""}/>{loading?"Researching…":"Refresh intelligence"}
@@ -124,9 +114,12 @@ export function MarketIntelligenceEngine({activities,session}:Props){
 
     <section>
       <div className="mb-4 flex items-end justify-between gap-4">
-        <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">01 / MARKET PULSE</p><h3 className="mt-1 text-2xl font-black">Where is the market giving us a reason to investigate?</h3></div>
-        <span className="hidden text-xs font-bold text-slate-400 sm:block">External evidence first · outbound data validates</span>
+        <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">01 / MARKET PULSE</p><h3 className="mt-1 text-2xl font-black">Which China-origin markets are giving us a reason to investigate?</h3></div>
+        <span className="hidden text-xs font-bold text-slate-400 sm:block">China-origin lanes · external evidence first · BAF history validates</span>
       </div>
+      <div className="mb-3 flex flex-wrap gap-2">{CORE_LANES.map(l=><button key={l.id} onClick={()=>setSelected(l.regionId)} className={"rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider "+(selected===l.regionId?"border-[#4d5cff] bg-[#4d5cff] text-white":"border-slate-200 bg-white text-slate-500")}>{l.label}</button>)}</div>
+      <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Future destination coverage</p>
+      <div className="mb-5 flex flex-wrap gap-2">{FUTURE_LANES.map(l=><button key={l.id} onClick={()=>setSelected(l.regionId)} className={"rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider "+(selected===l.regionId?"border-[#4d5cff] bg-[#4d5cff] text-white":"border-slate-200 bg-white text-slate-500")}>{l.label}</button>)}</div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {marketPulse.map((r:any)=><button key={r.regionId} onClick={()=>setSelected(r.regionId)} className={"text-left rounded-2xl border p-5 transition hover:-translate-y-0.5 "+(selected===r.regionId?"border-[#4d5cff] bg-[#f3f5ff] shadow-sm":"border-slate-200 bg-white")}>
           <div className="flex items-center justify-between gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-[#4d5cff] text-[10px] font-black text-white">{REGIONS.find(x=>x.id===r.regionId)?.short}</span><span className={"rounded-full border px-2.5 py-1 text-[9px] font-black uppercase "+scoreTone(r.top?.evidenceScore||0)}>{scoreLabel(r.top?.evidenceScore||0)}</span></div>
@@ -150,11 +143,11 @@ export function MarketIntelligenceEngine({activities,session}:Props){
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-lime-50 text-lime-700"><Target size={19}/></div><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-lime-600">03 / WHO TO TALK TO</p><h3 className="mt-1 text-2xl font-black">Buyer & campaign angle</h3></div></div>
+        <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-lime-50 text-lime-700"><Target size={19}/></div><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-lime-600">03 / WHO TO TALK TO</p><h3 className="mt-1 text-2xl font-black">Business owner & campaign angle</h3></div></div>
         {selectedRegion.topics[0]&&<div className="mt-6">
           <div className="rounded-2xl border border-lime-200 bg-lime-50 p-5"><p className="text-[10px] font-black uppercase tracking-widest text-lime-700">Primary intelligence topic</p><h4 className="mt-2 text-xl font-black">{selectedRegion.topics[0].label}</h4><p className="mt-2 text-sm leading-6 text-slate-700">{selectedRegion.topics[0].angle}</p></div>
-          <div className="mt-5"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target profiles</p><div className="mt-2 flex flex-wrap gap-2">{(targetProfiles[selectedRegion.topics[0].id]||["Importers","Logistics managers"]).map(x=><span key={x} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{x}</span>)}</div></div>
-          <div className="mt-5"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Suggested campaign theme</p><div className="mt-2 flex items-start gap-3 rounded-2xl border border-slate-200 p-4"><Zap size={17} className="mt-0.5 shrink-0 text-[#4d5cff]"/><p className="text-sm font-black text-slate-700">{selectedRegion.topics[0].angle}</p></div></div>
+          <div className="mt-5"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Business owners to target</p><div className="mt-2 flex flex-wrap gap-2">{(targetProfiles[selectedRegion.topics[0].id]||["Importers","Logistics managers"]).map(x=><span key={x} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{x}</span>)}</div></div>
+          <div className="mt-5"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Suggested owner-first campaign theme</p><div className="mt-2 flex items-start gap-3 rounded-2xl border border-slate-200 p-4"><Zap size={17} className="mt-0.5 shrink-0 text-[#4d5cff]"/><p className="text-sm font-black text-slate-700">{selectedRegion.topics[0].angle}</p></div></div>
         </div>}
       </div>
     </section>}
