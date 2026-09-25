@@ -262,7 +262,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     </section>
 
     <section className="rounded-3xl border border-[#4d5cff]/20 bg-[#f5f6ff] p-6">
-      <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[#4d5cff]"><TrendingUp size={18}/></div><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">06 / TODAY'S INTELLIGENCE</p><h3 className="mt-1 text-2xl font-black">What should the team investigate next?</h3></div></div>
+      <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[#4d5cff]"><TrendingUp size={18}/></div><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">06 / TODAY&apos;S INTELLIGENCE</p><h3 className="mt-1 text-2xl font-black">What should the team investigate next?</h3></div></div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
         {opportunities.slice(0,3).map((o:any)=><div key={o.regionId+"-"+o.id+"-today"} className="rounded-2xl border border-white bg-white p-4"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{o.region}</p><p className="mt-2 text-sm font-black">{o.label}</p><p className="mt-2 text-xs leading-5 text-slate-500">Investigate this market signal and test a prospect-specific outreach angle around the identified pain point.</p><button type="button" onClick={()=>investigateOpportunity(o)} disabled={!!investigating} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#4d5cff] hover:underline disabled:opacity-50">{investigating===o.id?"INVESTIGATING…":"INVESTIGATE"} <ArrowRight size={12}/></button></div>)}
       </div>
