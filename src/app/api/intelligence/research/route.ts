@@ -8,8 +8,8 @@ export const maxDuration=60;
 
 function stripHtml(html:string){return html.replace(/<script[\\s\\S]*?<\\/script>/gi," ").replace(/<style[\\s\\S]*?<\\/style>/gi," ").replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/\\s+/g," ").trim();}
 function relevantSource(name:string, region:any){ 
-  if(name.includes("Asia Pacific")) return ["apac","in","au"].includes(region.id);
-  if(name.includes("IMEA")) return ["in","mea"].includes(region.id);
+  if(name.includes("Asia Pacific")) return ["apac","in","au","nz","sg","jp","kr"].includes(region.id);
+  if(name.includes("IMEA")) return ["in","mea","ae","sa","za"].includes(region.id);
   return true;
 }
 export async function POST(request:Request){
@@ -43,7 +43,7 @@ export async function POST(request:Request){
       const marketScore=Math.min(45,evidence.length*15);
       const internalScore=internal.mentions?Math.min(40,10+internal.responseRate*2+Math.min(20,internal.positive*1.5)):0;
       const evidenceScore=Math.round(marketScore+internalScore+(evidence.length?15:0));
-      return {id:topic.id,label:topic.label,evidenceScore,marketSources:evidence.length,internal,angle:"Lead with "+topic.angles[0]+" and make the email specific to the prospect's lane, shipment timing or inventory exposure.",evidence:evidence.slice(0,4).map(x=>({source:x.source,url:x.url,hits:x.hits.slice(0,8),snippet:x.snippet}))};
+      return {id:topic.id,label:topic.label,evidenceScore,marketSources:evidence.length,internal,angle:"Lead with "+topic.angles[0]+" and make the email specific to the business owner’s China-origin lane, shipment timing, inventory exposure or landed-cost concern.",evidence:evidence.slice(0,4).map(x=>({source:x.source,url:x.url,hits:x.hits.slice(0,8),snippet:x.snippet}))};
     }).sort((a,b)=>b.evidenceScore-a.evidenceScore||b.marketSources-a.marketSources).slice(0,5);
     const signals=sources.flatMap(s=>FREIGHT_INTELLIGENCE_TOPICS.map(t=>({source:s.name,url:s.url,topic:t.label,hits:keywordHits(s.text,t.keywords)})).filter(x=>x.hits.length)).slice(0,12);
     return {regionId:region.id,region:region.label,sourceCount:sources.length,topics,signals};
