@@ -51,6 +51,9 @@ export function MarketIntelligenceEngine({activities,session}:Props){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
   const [ran,setRan]=useState(false);
+  const [investigating,setInvestigating]=useState<string>("");
+  const [investigation,setInvestigation]=useState<any>(null);
+  const [investigationError,setInvestigationError]=useState("");
 
   async function runResearch(){
     setLoading(true);setError("");
@@ -74,6 +77,25 @@ export function MarketIntelligenceEngine({activities,session}:Props){
   }
 
   useEffect(()=>{if(session&&!ran)runResearch();},[session]); // intentionally runs once when the intelligence tab mounts
+
+  async function investigateOpportunity(o:any){
+    setInvestigating(o.id); setInvestigation(null); setInvestigationError("");
+    try{
+      let token=session?.access_token;
+      if(!token){const current=await supabase.auth.getSession(); token=current.data.session?.access_token;}
+      if(!token)throw new Error("Your Outbound OS session has expired. Please sign in again.");
+      const res=await fetch("/api/intelligence/investigate",{
+        method:"POST",
+        headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+        body:JSON.stringify({regionId:o.regionId,topicId:o.id,activities:activities.slice(0,3000)})
+      });
+      const data=await res.json().catch(()=>({error:"Investigation returned an invalid response."}));
+      if(!res.ok)throw new Error(data.error||"Investigation failed.");
+      setInvestigation(data);
+      setTimeout(()=>document.getElementById("investigation-result")?.scrollIntoView({behavior:"smooth",block:"start"}),50);
+    }catch(e){setInvestigationError(e instanceof Error?e.message:"Investigation failed.");}
+    finally{setInvestigating("");}
+  }
 
   const selectedRegion=result?.regions?.find((r:any)=>r.regionId===selected);
   const opportunities=useMemo(()=>{
@@ -219,11 +241,27 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     <section className="rounded-3xl border border-[#4d5cff]/20 bg-[#f5f6ff] p-6">
       <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[#4d5cff]"><TrendingUp size={18}/></div><div><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">06 / TODAY'S INTELLIGENCE</p><h3 className="mt-1 text-2xl font-black">What should the team investigate next?</h3></div></div>
       <div className="mt-5 grid gap-3 md:grid-cols-3">
-        {opportunities.slice(0,3).map((o:any)=><div key={o.regionId+"-"+o.id+"-today"} className="rounded-2xl border border-white bg-white p-4"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{o.region}</p><p className="mt-2 text-sm font-black">{o.label}</p><p className="mt-2 text-xs leading-5 text-slate-500">Investigate this market signal and test a prospect-specific outreach angle around the identified pain point.</p><button type="button" onClick={()=>document.getElementById("campaign-opportunities")?.scrollIntoView({behavior:"smooth",block:"start"})} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#4d5cff] hover:underline">Investigate <ArrowRight size={12}/></button></div>)}
+        {opportunities.slice(0,3).map((o:any)=><div key={o.regionId+"-"+o.id+"-today"} className="rounded-2xl border border-white bg-white p-4"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{o.region}</p><p className="mt-2 text-sm font-black">{o.label}</p><p className="mt-2 text-xs leading-5 text-slate-500">Investigate this market signal and test a prospect-specific outreach angle around the identified pain point.</p><button type="button" onClick={()=>investigateOpportunity(o)} disabled={!!investigating} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#4d5cff] hover:underline disabled:opacity-50">{investigating===o.id?"INVESTIGATING…":"INVESTIGATE"} <ArrowRight size={12}/></button></div>)}
       </div>
       {!loading&&ran&&opportunities.length===0&&<div className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-500"><CheckCircle2 size={16}/> No actionable market opportunities were returned in this snapshot.</div>}
     </section>
 
-    <p className="text-[10px] leading-5 text-slate-400">Research strength is based on source evidence and relevant BAF history. It is not a guaranteed response rate or prediction of campaign performance.</p>
+    {investigationError&&<div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{investigationError}</div>}
+    {investigation&&<section id="investigation-result" className="rounded-3xl border border-[#4d5cff]/25 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div><p className="text-[10px] font-black uppercase tracking-[.3em] text-[#4d5cff]">AUTOMATIC INVESTIGATION</p><h3 className="mt-1 text-2xl font-black">{investigation.route} · {investigation.topic.label}</h3><p className="mt-2 text-xs font-bold text-slate-400">Fresh source check + BAF history + business-owner impact analysis</p></div>
+        <div className="rounded-2xl bg-[#f5f6ff] px-4 py-3 text-center"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Research strength</p><p className="mt-1 text-2xl font-black text-[#4d5cff]">{investigation.evidenceScore}</p></div>
+      </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="rounded-2xl bg-slate-50 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">What is happening?</p><p className="mt-2 text-sm leading-6 text-slate-700">{investigation.analysis.marketFinding}</p></div>
+        <div className="rounded-2xl bg-slate-50 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Why should an owner care?</p><p className="mt-2 text-sm leading-6 text-slate-700">{investigation.analysis.businessImpact}</p></div>
+        <div className="rounded-2xl bg-slate-50 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">BAF validation</p><p className="mt-2 text-sm leading-6 text-slate-700">{investigation.analysis.validation}</p></div>
+      </div>
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-lime-200 bg-lime-50 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-lime-700">Who should we target?</p><p className="mt-2 text-sm font-bold leading-6 text-slate-700">{investigation.analysis.target}</p><p className="mt-4 text-[9px] font-black uppercase tracking-widest text-lime-700">Outreach angle</p><p className="mt-2 text-sm font-black leading-6 text-slate-800">{investigation.analysis.outreachAngle}</p></div>
+        <div className="rounded-2xl border border-slate-200 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Questions to validate with prospects</p><ol className="mt-2 space-y-2 text-sm font-bold text-slate-700">{investigation.analysis.questions.map((q:string,i:number)=><li key={i}>{i+1}. {q}</li>)}</ol></div>
+      </div>
+      <div className="mt-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Source evidence</p><div className="mt-2 grid gap-3 md:grid-cols-2">{investigation.evidence.map((e:any)=><a key={e.source} href={e.url} target="_blank" rel="noreferrer" className="rounded-2xl border border-slate-200 bg-slate-50 p-4 hover:border-[#4d5cff]"><p className="text-xs font-black text-[#4d5cff]">{e.source}</p><p className="mt-2 text-[11px] leading-5 text-slate-500">{e.snippet||"Relevant topic evidence detected in this source."}</p></a>)}</div></div>
+    </section>}\n    <p className="text-[10px] leading-5 text-slate-400">Research strength is based on source evidence and relevant BAF history. It is not a guaranteed response rate or prediction of campaign performance.</p>
   </div>
 }
