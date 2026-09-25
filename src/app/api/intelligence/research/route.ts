@@ -19,17 +19,19 @@ export async function POST(request:Request){
   const activities=Array.isArray(body?.activities)?body.activities:[];
   const ids=Array.isArray(body?.regions)?body.regions.map(String):FREIGHT_INTELLIGENCE_REGIONS.map(r=>r.id);
   const regions=FREIGHT_INTELLIGENCE_REGIONS.filter(r=>ids.includes(r.id));
-  const sourceResults:any[]=[];
-  for(const source of FREIGHT_INTELLIGENCE_SOURCES){
+  const sourceResults:any[]=await Promise.all(FREIGHT_INTELLIGENCE_SOURCES.map(async source=>{
     try{
-      const res=await fetch(source.url,{headers:{"user-agent":"BookAirfreight-Freight-Intelligence/1.0"},cache:"no-store"});
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),12000);
+      const res=await fetch(source.url,{headers:{"user-agent":"BookAirfreight-Freight-Intelligence/1.0"},cache:"no-store",signal:controller.signal});
+      clearTimeout(timeout);
       const html=await res.text();
       const text=stripHtml(html).slice(0,50000);
-      sourceResults.push({name:source.name,url:source.url,ok:res.ok,status:res.status,checkedAt:new Date().toISOString(),chars:text.length,text});
+      return {name:source.name,url:source.url,ok:res.ok,status:res.status,checkedAt:new Date().toISOString(),chars:text.length,text};
     }catch(e){
-      sourceResults.push({name:source.name,url:source.url,ok:false,error:e instanceof Error?e.message:"source unavailable",text:""});
+      return {name:source.name,url:source.url,ok:false,error:e instanceof Error?e.message:"source unavailable",text:""};
     }
-  }
+  }));
   const output=regions.map(region=>{
     const sources=sourceResults.filter(s=>s.ok && relevantSource(s.name,region));
     const topics=FREIGHT_INTELLIGENCE_TOPICS.map(topic=>{
