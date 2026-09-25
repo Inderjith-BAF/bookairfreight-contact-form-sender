@@ -21,23 +21,21 @@ export async function POST(request:Request){
   const angle=String(investigation.analysis?.outreachAngle||topic.angles[0]);
   const hook=String(investigation.analysis?.hooks?.[0]||`If you're shipping from China to ${region.label}, ${angle} may be worth looking at before your next booking cycle.`);
   const campaignName=`${region.label} · ${topic.label} · Owner Outreach`;
-  const sourceHint=String(investigation.evidence?.[0]?.snippet||"").replace(/\s+/g," ").trim().slice(0,220);
   const subjects=[
-    `${topic.label}: a quick check on your China → ${region.label} shipments`,
-    `China → ${region.label}: worth checking before your next booking?`,
-    `Quick question about your China → ${region.label} freight`
+    `${lane}: a quick freight check`,
+    `Question about your ${lane.toLowerCase()} shipments`,
+    `${topic.label}: worth checking before your next shipment?`
   ];
   const opening=hook;
   const emailBody=[
     opening,
     "",
-    `I work with businesses importing from China into ${region.label}, and I wanted to flag this because it can affect ${topic.label.toLowerCase()} for upcoming shipments.`,
-    sourceHint ? `\nThe latest market material is pointing to conditions worth checking on the lane.` : "",
+    `We work with businesses moving goods from China to ${region.label}, and we're seeing enough movement around ${topic.label.toLowerCase()} to think it is worth a quick check against your upcoming shipments.`,
     "",
-    `If you have a shipment moving soon, I can quickly review the lane and see whether there is a lower-risk or more practical option.`,
+    `If this is relevant to you, I can take a look at the lane and see whether there is a practical way to reduce the exposure — whether that's cost, timing, routing or capacity.`,
     "",
-    "Worth taking a look at one upcoming shipment?"
-  ].filter(Boolean).join("\n");
+    "Would it be useful if I looked at one of your upcoming shipments?"
+  ].join("\n");
   return NextResponse.json({
     generatedAt:new Date().toISOString(),
     campaignName,
