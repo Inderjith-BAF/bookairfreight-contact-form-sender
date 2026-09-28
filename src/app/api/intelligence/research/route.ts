@@ -186,7 +186,8 @@ export async function POST(request:Request){
         };
       }).filter(x=>x.allowed);
       const internal=topicInternalSignal(activities,region,topic);
-      const scoring=topicScore(evidence,internal);\n      return {id:topic.id,label:topic.label,evidenceScore:scoring.score,decision:scoring.decision,scoreBreakdown:scoring.breakdown,
+      const scoring=topicScore(evidence,internal);
+      return {id:topic.id,label:topic.label,evidenceScore:scoring.score,decision:scoring.decision,scoreBreakdown:scoring.breakdown,
         marketSources:evidence.length,routeSpecificSources:evidence.filter(e=>e.routeSpecific).length,changedSources:evidence.filter(e=>e.changed).length,
         sourceTypes:new Set(evidence.map(e=>e.kind)).size,internal,
         angle:"Lead with "+topic.angles[0]+" and make the outreach specific to the business owner's China-origin lane, shipment timing, inventory exposure or landed-cost concern.",
