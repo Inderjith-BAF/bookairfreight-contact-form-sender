@@ -85,12 +85,21 @@ function buyerPainPoint(topic:any,region:any,evidence:any[]){
   return "The evidence suggests a potential "+topic.label.toLowerCase()+" issue for businesses importing from China to "+region.label+"; the specific exposure should be validated with the shipper."; 
 }
 function topicScore(evidence:any[],internal:any){
-  const authority=evidence.reduce((sum,e)=>sum+Math.min(5,Number(e.priority||1)),0);
+  const count=evidence.length;
+  const authorityAvg=count?evidence.reduce((sum,e)=>sum+Math.min(5,Number(e.priority||1)),0)/count:0;
   const sourceDiversity=new Set(evidence.map(e=>e.kind)).size;
-  const marketScore=Math.min(55,evidence.length*8+authority*2+Math.max(0,sourceDiversity-1)*4);
-  const internalScore=internal.mentions?Math.min(35,8+internal.responseRate*1.5+Math.min(18,internal.positive*1.5)):0;
-  const confidenceBonus=evidence.length>=3?10:evidence.length>=1?5:0;
-  return Math.min(100,Math.round(marketScore+internalScore+confidenceBonus));
+  const changedCount=evidence.filter(e=>e.changed).length;
+  const breadth=Math.min(30,count*4);
+  const authority=Math.round((authorityAvg/5)*20);
+  const diversity=Math.min(15,sourceDiversity*5);
+  const momentum=Math.min(15,changedCount*3);
+  const corroboration=count>=5?10:count>=3?7:count>=2?4:count===1?2:0;
+  const internalValidation=internal.mentions
+    ? Math.min(10,Math.round(Math.min(1,internal.responseRate/10)*5 + Math.min(5,internal.positive))
+    : 0;
+  const score=Math.min(100,Math.max(0,Math.round(breadth+authority+diversity+momentum+corroboration+internalValidation)));
+  const decision=score>=70?"Investigate now":score>=50?"Test outreach":score>=30?"Monitor":"Insufficient evidence";
+  return {score,decision,breakdown:{breadth,authority,diversity,momentum,corroboration,internalValidation}};
 }
 
 async function optionalAiSynthesis(payload:any){
@@ -177,7 +186,7 @@ export async function POST(request:Request){
         };
       }).filter(x=>x.allowed);
       const internal=topicInternalSignal(activities,region,topic);
-      return {id:topic.id,label:topic.label,evidenceScore:topicScore(evidence,internal),
+      const scoring=topicScore(evidence,internal);\n      return {id:topic.id,label:topic.label,evidenceScore:scoring.score,decision:scoring.decision,scoreBreakdown:scoring.breakdown,
         marketSources:evidence.length,routeSpecificSources:evidence.filter(e=>e.routeSpecific).length,changedSources:evidence.filter(e=>e.changed).length,
         sourceTypes:new Set(evidence.map(e=>e.kind)).size,internal,
         angle:"Lead with "+topic.angles[0]+" and make the outreach specific to the business owner's China-origin lane, shipment timing, inventory exposure or landed-cost concern.",
