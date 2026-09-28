@@ -79,7 +79,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     finally{setLoading(false);}
   }
 
-  useEffect(()=>{if(session&&!ran)runResearch();},[session]); // intentionally runs once when the intelligence tab mounts
+  useEffect(()=>{if(session&&!ran)runResearch();},[session,ran]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function investigateOpportunity(o:any){
     setInvestigating(o.id); setInvestigation(null); setInvestigationError("");
@@ -148,7 +148,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Current freight-market signals are combined with BAF outbound history to identify China-origin trade-lane opportunities, the business-owner pain points behind them, and the outreach opportunities worth testing.</p>
         </div>
         <button onClick={runResearch} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-[#4d5cff] px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-wait disabled:opacity-60">
-          <RefreshCw size={16} className={loading?"animate-spin":""}/>{loading?"Researching…":"Refresh intelligence"}
+          <RefreshCw size={16} className={loading?"animate-spin":""}/>{loading?"Running deep research…":"Refresh intelligence"}
         </button>
       </div>
       <div className="mt-6 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
@@ -159,6 +159,25 @@ export function MarketIntelligenceEngine({activities,session}:Props){
       </div>
       {result?.generatedAt&&<p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Research snapshot · {new Date(result.generatedAt).toLocaleString("en-US",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}</p>}
       {error&&<div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
+      {result?.sourceStats&&<div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="rounded-2xl border border-white bg-white p-4"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Sources checked</p><p className="mt-1 text-2xl font-black">{result.sourceStats.successful}/{result.sourceStats.configured}</p><p className="mt-1 text-[10px] font-bold text-slate-400">live source surfaces</p></div>
+        <div className="rounded-2xl border border-white bg-white p-4"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Changed</p><p className="mt-1 text-2xl font-black text-[#4d5cff]">{result.sourceStats.changed}</p><p className="mt-1 text-[10px] font-bold text-slate-400">since previous scan</p></div>
+        <div className="rounded-2xl border border-white bg-white p-4"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">New sources</p><p className="mt-1 text-2xl font-black">{result.sourceStats.newSources}</p><p className="mt-1 text-[10px] font-bold text-slate-400">first-time observations</p></div>
+        <div className="rounded-2xl border border-white bg-white p-4"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Failed</p><p className="mt-1 text-2xl font-black">{result.sourceStats.failed}</p><p className="mt-1 text-[10px] font-bold text-slate-400">will retry next scan</p></div>
+        <div className="rounded-2xl border border-white bg-white p-4"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Research mode</p><p className="mt-1 text-sm font-black">{result.ai?"AI + multi-source":"Multi-source change-aware"}</p><p className="mt-1 text-[10px] font-bold text-slate-400">{result.previousRunAt?"Compared with prior run":"Baseline snapshot created"}</p></div>
+      </div>}
+      {result?.ai?.executiveSummary&&<div className="mt-4 rounded-2xl border border-[#4d5cff]/15 bg-white p-5">
+        <p className="text-[9px] font-black uppercase tracking-[.3em] text-[#4d5cff]">DEEP RESEARCH SYNTHESIS</p>
+        <p className="mt-2 text-sm leading-6 text-slate-700">{result.ai.executiveSummary}</p>
+      </div>}
+      {result?.changes?.length>0&&<div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[.3em] text-amber-700">WHAT CHANGED</p><p className="mt-1 text-sm font-black text-slate-800">{result.changes.length} source change{result.changes.length===1?"":"s"} detected in this scan</p></div><span className="text-[10px] font-bold text-amber-700">Compared with the previous research snapshot</span></div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">{result.changes.slice(0,6).map((c:any)=><a key={c.source} href={c.url} target="_blank" rel="noreferrer" className="rounded-xl border border-amber-100 bg-white p-3 hover:border-[#4d5cff]"><div className="flex items-center justify-between gap-3"><span className="text-xs font-black text-slate-800">{c.source}</span><span className="text-[9px] font-black uppercase text-amber-700">{c.isNew?"NEW":"CHANGED"}</span></div><p className="mt-1 text-[10px] font-bold text-slate-400">{c.charsDelta>0?"Page content expanded":"Page content changed"} · {c.kind}</p></a>)}</div>
+      </div>}
+      {result?.topicDeltas?.some((x:any)=>x.delta!==null)&&<div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <p className="text-[9px] font-black uppercase tracking-[.3em] text-slate-400">SIGNAL MOVEMENT</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-4">{result.topicDeltas.filter((x:any)=>x.delta!==null).slice(0,8).map((x:any)=><div key={x.regionId+x.topicId} className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">{x.region}</p><p className="mt-1 text-xs font-black">{x.topic}</p><p className={"mt-1 text-sm font-black "+(x.delta>0?"text-emerald-600":x.delta<0?"text-rose-600":"text-slate-500")}>{x.delta>0?"+":""}{x.delta} score movement</p></div>)}</div>
+      </div>}
     </section>
 
     <section>
@@ -311,6 +330,6 @@ export function MarketIntelligenceEngine({activities,session}:Props){
       </div>
       <div className="mt-4 rounded-2xl border border-white bg-white p-4"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Recommended test</p><p className="mt-2 text-sm font-bold text-slate-700">{campaign.nextStep}</p></div>
     </section>}
-    <p className="text-[10px] leading-5 text-slate-400">Research strength is based on source evidence and relevant BAF history. It is not a guaranteed response rate or prediction of campaign performance.</p>
+    <p className="text-[10px] leading-5 text-slate-400">Research combines live source checks, source-change memory, cross-source evidence, and relevant BAF history. If OPENAI_API_KEY is configured, the scan also adds an AI synthesis layer. Scores are evidence indicators, not guaranteed campaign performance.</p>
   </div>
 }
