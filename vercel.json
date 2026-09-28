@@ -3,5 +3,11 @@
     "src/app/api/submit/route.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/intelligence/research",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }
