@@ -20,22 +20,27 @@ export const FREIGHT_INTELLIGENCE_TOPICS = [
 ] as const;
 
 export const FREIGHT_INTELLIGENCE_REGIONS = [
-  { id:"us", label:"United States", keywords:["usa","us","united states","north america","transpacific","tpeb"] },
-  { id:"au", label:"Australia", keywords:["australia","oceania","australian"] },
-  { id:"uk", label:"United Kingdom", keywords:["uk","united kingdom","britain","british","north europe"] },
-  { id:"eu", label:"Europe", keywords:["europe","european","north europe","rotterdam","antwerp","germany","netherlands","france","italy","spain"] },
-  { id:"ca", label:"Canada", keywords:["canada","canadian"] },
-  { id:"in", label:"India", keywords:["india","indian subcontinent","nhava sheva","mundra","colombo","isc"] },
-  { id:"ae", label:"United Arab Emirates", keywords:["uae","united arab emirates","dubai","jebel ali","abu dhabi"] },
-  { id:"sa", label:"Saudi Arabia", keywords:["saudi","saudi arabia","jeddah","riyadh"] },
-  { id:"nz", label:"New Zealand", keywords:["new zealand"] },
-  { id:"sg", label:"Singapore", keywords:["singapore"] },
-  { id:"jp", label:"Japan", keywords:["japan","tokyo","yokohama"] },
-  { id:"kr", label:"South Korea", keywords:["south korea","korea","busan"] },
-  { id:"mx", label:"Mexico", keywords:["mexico","mexican"] },
-  { id:"br", label:"Brazil", keywords:["brazil","brazilian"] },
-  { id:"za", label:"South Africa", keywords:["south africa","durban","cape town"] },
-  { id:"mea", label:"Middle East & Africa", keywords:["middle east","gulf","uae","dubai","saudi","qatar","oman","africa","hormuz","jebel ali"] }
+  // Destination routing uses destination-specific terms. Broad umbrella terms
+  // such as "North America" are intentionally excluded because they contaminate
+  // multiple destination lanes.
+  { id:"us", label:"United States", keywords:["usa","united states","u.s.","u.s.a.","los angeles","long beach","oakland","seattle","tacoma","savannah","new york","new jersey","ny/nj","norfolk","charleston","houston","transpacific","tpeb"] },
+  { id:"au", label:"Australia", keywords:["australia","australian","sydney","melbourne","brisbane","fremantle","perth","adelaide","port botany","port kembla","australian ports","australian import"] },
+  { id:"uk", label:"United Kingdom", keywords:["united kingdom","u.k.","britain","british","england","liverpool","felixstowe","southampton","tilbury","london gateway"] },
+  { id:"eu", label:"Europe", keywords:["europe","european","rotterdam","antwerp","hamburg","bremerhaven","germany","netherlands","france","italy","spain","le havre","valencia","barcelona"] },
+  { id:"ca", label:"Canada", keywords:["canada","canadian","vancouver","montreal","prince rupert","halifax","toronto"] },
+  { id:"in", label:"India", keywords:["india","indian","indian subcontinent","nhava sheva","jnpt","mundra","chennai","tuticorin","cochin","kochi","kolkata","pipavav","hazira","vizag","krishnapatnam","icd india","indian import"] },
+  { id:"ae", label:"United Arab Emirates", keywords:["uae","united arab emirates","dubai","jebel ali","abu dhabi","khalifa port"] },
+  { id:"sa", label:"Saudi Arabia", keywords:["saudi","saudi arabia","jeddah","riyadh","dammam","king abdullah port"] },
+  { id:"nz", label:"New Zealand", keywords:["new zealand","auckland","tauranga","christchurch"] },
+  { id:"sg", label:"Singapore", keywords:["singapore","tanjong pagar","pasir panjang"] },
+  { id:"jp", label:"Japan", keywords:["japan","tokyo","yokohama","osaka","kobe","nagoya"] },
+  { id:"kr", label:"South Korea", keywords:["south korea","republic of korea","korea","busan","incheon","gwangyang"] },
+  { id:"mx", label:"Mexico", keywords:["mexico","mexican","manzanillo","veracruz","lazaro cardenas","altamira"] },
+  { id:"br", label:"Brazil", keywords:["brazil","brazilian","santos","paranagua","rio de janeiro"] },
+  { id:"za", label:"South Africa", keywords:["south africa","south african","durban","cape town","ngqura","port elizabeth"] },
+  // MEA is intentionally broad and is only used when the UI asks for that
+  // aggregate region, not as a substitute for destination-specific evidence.
+  { id:"mea", label:"Middle East & Africa", keywords:["middle east","gulf","qatar","oman","africa","hormuz"] }
 ] as const;
 
 export const FREIGHT_INTELLIGENCE_LANES = [
