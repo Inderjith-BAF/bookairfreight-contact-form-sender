@@ -68,11 +68,11 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     return token;
   }
 
-  async function loadCachedResearch(){
+  async function loadCachedResearch(regionId=selected){
     setError("");
     try{
       const token=await getToken();
-      const res=await fetch("/api/intelligence/research",{headers:{Authorization:"Bearer "+token},cache:"no-store"});
+      const res=await fetch(`/api/intelligence/research?region=${encodeURIComponent(regionId)}`,{headers:{Authorization:"Bearer "+token},cache:"no-store"});
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Unable to load market intelligence.");
       if(data.result){
@@ -111,7 +111,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
 
   useEffect(()=>{
     if(!session||ran)return;
-    loadCachedResearch().then(found=>{
+    loadCachedResearch(selected).then(found=>{
       if(!found)runResearch(selected);
     });
   },[session,ran]); // eslint-disable-line react-hooks/exhaustive-deps
