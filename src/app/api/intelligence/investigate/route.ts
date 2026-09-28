@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOutboundUser } from "@/lib/outbound-auth";
-import { FREIGHT_INTELLIGENCE_REGIONS, FREIGHT_INTELLIGENCE_SOURCES, FREIGHT_INTELLIGENCE_TOPICS, keywordHits, topicInternalSignal } from "@/lib/freight-intelligence";
+import { FREIGHT_INTELLIGENCE_REGIONS, FREIGHT_INTELLIGENCE_SOURCES, FREIGHT_INTELLIGENCE_TOPICS, keywordHits, routeEvidenceScore, topicInternalSignal } from "@/lib/freight-intelligence";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -56,11 +56,11 @@ export async function POST(request:Request){
       const res=await fetch(source.url,{headers:{"user-agent":"BookAirfreight-Freight-Intelligence/1.0"},cache:"no-store",signal:controller.signal});
       clearTimeout(timer);
       const text=stripHtml(await res.text()).slice(0,60000);
-      const hits=keywordHits(text,topic.keywords);
-      return {source:source.name,url:source.url,ok:res.ok,hits,snippet:cleanSnippet(text,hits),kind:source.kind,priority:source.priority};
+      const match=routeEvidenceScore(text,region,topic);
+      return {source:source.name,url:source.url,ok:res.ok,hits:match.topicHits,regionHits:match.regionHits,originHits:match.originHits,routeSpecific:match.routeSpecific,snippet:cleanSnippet(text,match.topicHits),kind:source.kind,priority:source.priority};
     }catch(e){return {source:source.name,url:source.url,ok:false,hits:[],snippet:"",error:e instanceof Error?e.message:"source unavailable"};}
   }));
-  const evidence=fetched.filter(x=>x.ok&&x.hits.length).sort((a,b)=>b.priority-a.priority);
+  const evidence=fetched.filter(x=>x.ok&&x.hits.length&&(x.routeSpecific||FREIGHT_INTELLIGENCE_SOURCES.some(s=>s.name===x.source&&s.regions?.includes(region.id)))).sort((a,b)=>Number(b.routeSpecific)-Number(a.routeSpecific)||b.priority-a.priority);
   const internal=topicInternalSignal(activities,region,topic);
   const evidenceScore=Math.min(100,evidence.length*12+evidence.reduce((n,e)=>n+Math.min(5,e.priority||1),0)*2+(new Set(evidence.map(e=>e.kind)).size-1)*5+(internal.mentions?Math.min(25,10+internal.responseRate*1.5):0)+(evidence.length?10:0));
 
