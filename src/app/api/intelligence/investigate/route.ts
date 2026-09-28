@@ -31,11 +31,8 @@ function cleanSnippet(text:string,hits:string[]){
   const right=text.indexOf(". ",Math.min(text.length,at+360));
   return text.slice(left,right>left?right+1:Math.min(text.length,at+520)).replace(/\s+/g," ").trim();
 }
-function relevantSource(name:string, regionId:string){
-  if(name.includes("Asia Pacific")) return ["au","in","nz","sg","jp","kr"].includes(regionId);
-  if(name.includes("IMEA")) return ["in","ae","sa","za"].includes(regionId);
-  if(name.includes("North America")) return ["us","ca","mx"].includes(regionId);
-  return true;
+function relevantSource(source:any, regionId:string){
+  return !source.regions || source.regions.includes(regionId);
 }
 function snippet(text:string,hits:string[]){
   if(!hits.length)return "";
@@ -53,19 +50,19 @@ export async function POST(request:Request){
   const topic=FREIGHT_INTELLIGENCE_TOPICS.find(t=>t.id===topicId);
   if(!region||!topic)return NextResponse.json({error:"A valid trade lane and intelligence topic are required."},{status:400});
 
-  const fetched:any[]=await Promise.all(FREIGHT_INTELLIGENCE_SOURCES.filter(s=>relevantSource(s.name,region.id)).map(async source=>{
+  const fetched:any[]=await Promise.all(FREIGHT_INTELLIGENCE_SOURCES.filter(s=>relevantSource(s,region.id)).map(async source=>{
     try{
       const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),12000);
       const res=await fetch(source.url,{headers:{"user-agent":"BookAirfreight-Freight-Intelligence/1.0"},cache:"no-store",signal:controller.signal});
       clearTimeout(timer);
       const text=stripHtml(await res.text()).slice(0,60000);
       const hits=keywordHits(text,topic.keywords);
-      return {source:source.name,url:source.url,ok:res.ok,hits,snippet:cleanSnippet(text,hits)};
+      return {source:source.name,url:source.url,ok:res.ok,hits,snippet:cleanSnippet(text,hits),kind:source.kind,priority:source.priority};
     }catch(e){return {source:source.name,url:source.url,ok:false,hits:[],snippet:"",error:e instanceof Error?e.message:"source unavailable"};}
   }));
-  const evidence=fetched.filter(x=>x.ok&&x.hits.length);
+  const evidence=fetched.filter(x=>x.ok&&x.hits.length).sort((a,b)=>b.priority-a.priority);
   const internal=topicInternalSignal(activities,region,topic);
-  const evidenceScore=Math.min(100,evidence.length*18+(internal.mentions?Math.min(25,10+internal.responseRate*1.5):0)+(evidence.length?15:0));
+  const evidenceScore=Math.min(100,evidence.length*12+evidence.reduce((n,e)=>n+Math.min(5,e.priority||1),0)*2+(new Set(evidence.map(e=>e.kind)).size-1)*5+(internal.mentions?Math.min(25,10+internal.responseRate*1.5):0)+(evidence.length?10:0));
 
   const marketFinding=evidence.length
     ? `Current source material contains evidence related to ${topic.label.toLowerCase()} on the ${region.label} destination market. The strongest recurring terms are ${Array.from(new Set(evidence.flatMap(e=>e.hits))).slice(0,6).join(", ")}.`
