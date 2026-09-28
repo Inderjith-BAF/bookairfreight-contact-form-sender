@@ -120,9 +120,16 @@ export async function POST(request:Request){
   const ids=Array.isArray(body?.regions)?body.regions.map(String):FREIGHT_INTELLIGENCE_REGIONS.map(r=>r.id);
   const regions=FREIGHT_INTELLIGENCE_REGIONS.filter(r=>ids.includes(r.id));
   const admin=auth.admin;
+  if(!regions.length)return NextResponse.json({error:"Select a valid China-origin destination lane."},{status:400});
 
-  const sourceResults:any[]=await Promise.all(FREIGHT_INTELLIGENCE_SOURCES.map(fetchSource));
-  const sourceIds=FREIGHT_INTELLIGENCE_SOURCES.map(s=>s.id);
+  // Manual research is route-scoped: only sources applicable to the selected
+  // destination (plus intentionally global sources) are fetched. Cron requests
+  // without a region list continue to scan the full registry.
+  const scopedSources=regions.length===1
+    ? FREIGHT_INTELLIGENCE_SOURCES.filter(s=>relevantSource(s,regions[0]))
+    : FREIGHT_INTELLIGENCE_SOURCES;
+  const sourceResults:any[]=await Promise.all(scopedSources.map(fetchSource));
+  const sourceIds=scopedSources.map(s=>s.id);
   const {data:previousSnapshots}=await admin.from("outbound_intelligence_source_snapshots")
     .select("source_id,checked_at,content_hash,chars,ok").in("source_id",sourceIds)
     .order("checked_at",{ascending:false}).limit(sourceIds.length*2);
@@ -198,9 +205,11 @@ export async function POST(request:Request){
 
   const ai=process.env.OPENAI_INTELLIGENCE_ON_RESEARCH==="true" ? await optionalAiSynthesis(deepResearchInput) : null;
   const result={
+    routeScope:regions.map(r=>r.id),
+    routeLabel:regions.length===1 ? `China → ${regions[0].label}` : "All configured China-origin lanes",
     mode:ai?"deep-research-ai+multi-source":"deep-research-multi-source",
     generatedAt:new Date().toISOString(),previousRunAt:previousRun?.generated_at||null,
-    sourceStats:{configured:FREIGHT_INTELLIGENCE_SOURCES.length,checked:sourceResultsWithChange.length,
+    sourceStats:{configured:scopedSources.length,checked:sourceResultsWithChange.length,
       successful:sourceResultsWithChange.filter(s=>s.ok).length,failed:sourceResultsWithChange.filter(s=>!s.ok).length,
       changed:changes.length,newSources:changes.filter(x=>x.isNew).length},
     changes:changes.slice(0,30),topicDeltas:topicDeltas.slice(0,40),ai,regions:output,
