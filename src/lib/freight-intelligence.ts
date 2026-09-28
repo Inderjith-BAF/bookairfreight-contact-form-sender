@@ -110,10 +110,7 @@ export const FREIGHT_INTELLIGENCE_SOURCES:readonly FreightSource[] = [
 ];
 
 export function escapedKeyword(keyword:string){
-  return keyword.toLowerCase().trim().replace(/[.*+?^$\{\}()|[\]\\]/g,"\\export function keywordHits(text:string, keywords:readonly string[]) {
-  const lower = text.toLowerCase();
-  return keywords.filter(k => lower.includes(k.toLowerCase()));
-}");
+  return keyword.toLowerCase().trim().replace(/[.*+?^$\{\}()|[\]\\]/g,"\\$&");
 }
 
 export function keywordHits(text:string, keywords:readonly string[]) {
