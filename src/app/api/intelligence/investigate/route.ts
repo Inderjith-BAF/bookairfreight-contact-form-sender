@@ -60,7 +60,11 @@ export async function POST(request:Request){
       return {source:source.name,url:source.url,ok:res.ok,hits:match.topicHits,regionHits:match.regionHits,originHits:match.originHits,routeSpecific:match.routeSpecific,snippet:cleanSnippet(text,match.topicHits),kind:source.kind,priority:source.priority};
     }catch(e){return {source:source.name,url:source.url,ok:false,hits:[],snippet:"",error:e instanceof Error?e.message:"source unavailable"};}
   }));
-  const evidence=fetched.filter(x=>x.ok&&x.hits.length&&(x.routeSpecific||FREIGHT_INTELLIGENCE_SOURCES.some(s=>s.name===x.source&&s.regions?.includes(region.id)))).sort((a,b)=>Number(b.routeSpecific)-Number(a.routeSpecific)||b.priority-a.priority);
+  // Investigation follows the same hard routing rule as scheduled research:
+  // source tags limit which pages are fetched, but only actual route-specific
+  // evidence can support the selected destination.
+  const evidence=fetched.filter(x=>x.ok&&x.hits.length&&x.routeSpecific)
+    .sort((a,b)=>Number(b.routeSpecific)-Number(a.routeSpecific)||b.priority-a.priority);
   const internal=topicInternalSignal(activities,region,topic);
   const evidenceScore=Math.min(100,evidence.length*12+evidence.reduce((n,e)=>n+Math.min(5,e.priority||1),0)*2+(new Set(evidence.map(e=>e.kind)).size-1)*5+(internal.mentions?Math.min(25,10+internal.responseRate*1.5):0)+(evidence.length?10:0));
 
