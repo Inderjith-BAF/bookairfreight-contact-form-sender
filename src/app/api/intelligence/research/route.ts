@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { requireOutboundUser } from "@/lib/outbound-auth";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { FREIGHT_INTELLIGENCE_REGIONS, FREIGHT_INTELLIGENCE_SOURCES, FREIGHT_INTELLIGENCE_TOPICS, keywordHits, routeEvidenceScore, topicInternalSignal } from "@/lib/freight-intelligence";
 
 export const runtime="nodejs";
@@ -107,7 +108,12 @@ async function optionalAiSynthesis(payload:any){
 }
 
 export async function POST(request:Request){
-  const auth=await requireOutboundUser(request);
+  const cronSecret=process.env.CRON_SECRET;
+  const authorization=request.headers.get("authorization")||"";
+  const isCron=!!cronSecret && authorization===`Bearer ${cronSecret}`;
+  const auth=isCron
+    ? (()=>{ const admin=getSupabaseAdmin(); return admin ? {admin,user:{id:null as string|null},profile:null} : {error:NextResponse.json({error:"Supabase configuration missing."},{status:500})}; })()
+    : await requireOutboundUser(request);
   if("error" in auth)return auth.error;
   const body=await request.json().catch(()=>({}));
   const activities=Array.isArray(body?.activities)?body.activities:[];
@@ -203,10 +209,20 @@ export async function POST(request:Request){
   };
 
   const {error:saveError}=await admin.from("outbound_intelligence_runs").insert({
-    created_by:auth.user.id,generated_at:result.generatedAt,mode:result.mode,
+    created_by:auth.user.id || null,generated_at:result.generatedAt,mode:result.mode,
     source_count:result.sourceStats.successful,changed_source_count:result.sourceStats.changed,
     failed_source_count:result.sourceStats.failed,result});
   if(saveError)console.error("Failed to save intelligence run:",saveError.message);
 
   return NextResponse.json(result);
+}
+
+
+export async function GET(request:Request){
+  const cronSecret=process.env.CRON_SECRET;
+  const authorization=request.headers.get("authorization")||"";
+  if(!cronSecret || authorization!==`Bearer ${cronSecret}`) {
+    return NextResponse.json({error:"Cron authentication required."},{status:401});
+  }
+  return POST(new Request(request.url,{method:"POST",headers:{"authorization":authorization,"content-type":"application/json"},body:"{}"}));
 }
