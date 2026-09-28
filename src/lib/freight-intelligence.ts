@@ -142,7 +142,7 @@ export function topicInternalSignal(activities:any[], region:any, topic:any) {
   let outreach=0, responses=0, positive=0, mentions=0;
   for (const a of activities) {
     const regionText=String(a.region||"").toLowerCase();
-    if (!region.keywords.some((k:string)=>regionText.includes(k))) continue;
+    if (!keywordHits(regionText, region.keywords).length) continue;
     const text=[a.subject,a.content,a.campaign].filter(Boolean).join(" ");
     const hits=keywordHits(text,topic.keywords);
     if (!hits.length) continue;
