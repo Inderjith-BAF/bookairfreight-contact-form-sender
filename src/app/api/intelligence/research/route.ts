@@ -236,11 +236,16 @@ export async function GET(request:Request){
   }
   const auth=await requireOutboundUser(request);
   if("error" in auth)return auth.error;
-  const {data,error}=await auth.admin.from("outbound_intelligence_runs")
+  const url=new URL(request.url);
+  const regionId=url.searchParams.get("region");
+  const query=auth.admin.from("outbound_intelligence_runs")
     .select("result,generated_at")
     .order("generated_at",{ascending:false})
-    .limit(1)
-    .maybeSingle();
+    .limit(20);
+  const {data:rows,error}=await query;
+  const data=regionId
+    ? (rows||[]).find((row:any)=>Array.isArray(row.result?.routeScope)&&row.result.routeScope.length===1&&row.result.routeScope[0]===regionId)
+    : rows?.[0];
   if(error)return NextResponse.json({error:"Unable to load the latest intelligence snapshot."},{status:500});
   if(!data?.result)return NextResponse.json({result:null});
   return NextResponse.json({result:data.result,cached:true},{headers:{"Cache-Control":"private, max-age=30, stale-while-revalidate=120"}});
