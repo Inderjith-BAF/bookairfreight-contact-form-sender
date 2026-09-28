@@ -182,7 +182,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
           <h2 className="mt-2 text-3xl font-black tracking-[-.04em] sm:text-5xl">What is happening on our trade lanes — and which business owners should we talk to?</h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">Current freight-market signals are combined with BAF outbound history to identify China-origin trade-lane opportunities, the business-owner pain points behind them, and the outreach opportunities worth testing.</p>
         </div>
-        <button onClick={runResearch} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-[#4d5cff] px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-wait disabled:opacity-60">
+        <button onClick={()=>runResearch(selected)} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-[#4d5cff] px-4 py-3 text-sm font-black text-white shadow-sm disabled:cursor-wait disabled:opacity-60">
           <RefreshCw size={16} className={loading?"animate-spin":""}/>{loading?"Running deep research…":"Refresh intelligence"}
         </button>
       </div>
