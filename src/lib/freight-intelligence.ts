@@ -109,9 +109,25 @@ export const FREIGHT_INTELLIGENCE_SOURCES:readonly FreightSource[] = [
   {id:"port-of-oakland",name:"Port of Oakland",url:"https://www.portofoakland.com/performance/statistics/",kind:"official",priority:3,regions:["us"]},
 ];
 
-export function keywordHits(text:string, keywords:readonly string[]) {
+export export function keywordHits(text:string, keywords:readonly string[]) {
   const lower = text.toLowerCase();
   return keywords.filter(k => lower.includes(k.toLowerCase()));
+}
+
+export function regionEvidenceHits(text:string, region:any) {
+  return keywordHits(text, region.keywords || []);
+}
+
+export function routeEvidenceScore(text:string, region:any, topic:any) {
+  const topicHits = keywordHits(text, topic.keywords);
+  const regionHits = regionEvidenceHits(text, region);
+  const originHits = keywordHits(text, ["china","chinese","shanghai","ningbo","shenzhen","yantian","shekou","qingdao","xiamen"]);
+  return {
+    topicHits,
+    regionHits,
+    originHits,
+    routeSpecific: topicHits.length > 0 && regionHits.length > 0 && originHits.length > 0
+  };
 }
 
 export function topicInternalSignal(activities:any[], region:any, topic:any) {
