@@ -247,6 +247,7 @@ function Report({title,subtitle,stats,reportOpenRate,reportReplyRate,reportBounc
 
    {showPreviousCampaign&&reportStats.previousPositive+reportStats.previousNeutral+reportStats.previousNegative>0&&<div className="glass rounded-3xl border border-cyan-300/20 p-5"><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-500">Previous campaign</p><div className="mt-3 grid gap-3 sm:grid-cols-4"><Metric label="PC Accounts" value={String(reportStats.pcAccounts)}/><Metric label="Positive (PC)" value={String(reportStats.previousPositive)}/><Metric label="Neutral (PC)" value={String(reportStats.previousNeutral)}/><Metric label="Negative (PC)" value={String(reportStats.previousNegative)}/></div></div>}
  </div>
+ </div>
 }
 function rowSignature(r:Row){
  return JSON.stringify({
