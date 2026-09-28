@@ -121,7 +121,6 @@ export const FREIGHT_INTELLIGENCE_SOURCES:readonly FreightSource[] = [
   {id:"unctad-port",name:"UNCTAD Transport & Logistics",url:"https://unctad.org/topic/transport-and-trade-logistics",kind:"official",priority:5},
   {id:"worldbank-logistics",name:"World Bank Logistics Performance",url:"https://lpi.worldbank.org/",kind:"official",priority:5},
   {id:"worldbank-trade-data",name:"World Bank Trade Data",url:"https://data.worldbank.org/topic/trade",kind:"official",priority:4},
-  {id:"oecd-trade",name:"OECD Trade",url:"https://www.oecd.org/en/topics/trade.html",kind:"official",priority:4},
   {id:"oecd-supply-chains",name:"OECD Supply Chains",url:"https://www.oecd.org/en/topics/global-value-chains.html",kind:"official",priority:4},
   {id:"wto-trade-topics",name:"WTO Trade Topics",url:"https://www.wto.org/english/tratop_e/tratop_e.htm",kind:"official",priority:5},
   {id:"wto-news",name:"WTO News",url:"https://www.wto.org/english/news_e/news_e.htm",kind:"official",priority:4},
