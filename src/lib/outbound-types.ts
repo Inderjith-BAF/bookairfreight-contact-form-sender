@@ -5,7 +5,7 @@ export type Sequence = {
   id: string; name: string; stage: string; subject_template: string;
   content_template: string; content_link: string; content_creator: string;
 };
-export type OutboundProfile = { id: string; full_name: string; role: Role; active: boolean };
+export type OutboundProfile = { id: string; full_name: string; role: Role; active: boolean; tab_permissions?: Record<string, boolean>; accounts?: string[] };
 export type OutboundActivity = {
   id?: string; activity_date: string; employee_id?: string | null; employee_name?: string;
   email_account_id?: string | null; email_account?: string; email_account_text?: string; prospect_email: string;
