@@ -147,7 +147,8 @@ export async function POST(request:Request){
     const topics=FREIGHT_INTELLIGENCE_TOPICS.map(topic=>{
       const evidence=sources.map(s=>{
         const match=routeEvidenceScore(s.text,region,topic);
-        // Region metadata controls fetch scope; the actual page must still contain topic + destination + China-origin evidence. This prevents cross-route contamination.\n        const allowed = match.routeSpecific;
+        // Region metadata controls fetch scope; the actual page must still contain topic + destination + China-origin evidence. This prevents cross-route contamination.
+        const allowed = match.routeSpecific;
         return {
           source:s.name,url:s.url,hits:match.topicHits,snippet:evidenceSnippet(s.text,match.topicHits),
           priority:s.priority,kind:s.kind,changed:s.changed,regionHits:match.regionHits,
