@@ -70,6 +70,20 @@ async function fetchSource(source:any){
   }
 }
 
+function buyerPainPoint(topic:any,region:any,evidence:any[]){
+  const terms=new Set(evidence.flatMap(e=>e.hits||[]).map((x:string)=>x.toLowerCase()));
+  if(topic.id==="trade" && ["tariff","tariffs","customs","duty","import duty","compliance","trade rules"].some(x=>terms.has(x)))
+    return "Importers on the China → "+region.label+" lane may be exposed to customs requirements, duties or trade-rule changes that affect landed cost, clearance timing and margin.";
+  if(topic.id==="congestion") return "Importers may face port or terminal congestion that increases dwell time, missed cut-offs and inventory uncertainty on the China → "+region.label+" lane."; 
+  if(topic.id==="capacity") return "Importers may struggle to secure predictable vessel space or equipment, increasing rollover and booking uncertainty on the China → "+region.label+" lane."; 
+  if(topic.id==="reliability") return "Importers may face schedule and transit uncertainty that puts inventory arrival and customer delivery commitments at risk on the China → "+region.label+" lane."; 
+  if(topic.id==="cost") return "Importers may face freight-rate or surcharge volatility that makes landed-cost planning less predictable on the China → "+region.label+" lane."; 
+  if(topic.id==="routing") return "Importers may need contingency routing when chokepoint or diversion conditions change transit time and cost on the China → "+region.label+" lane."; 
+  if(topic.id==="peak") return "Importers may need earlier booking and inventory planning when seasonal demand tightens capacity on the China → "+region.label+" lane."; 
+  if(topic.id==="visibility") return "Importers may lack early enough shipment exceptions and inventory signals to react before China → "+region.label+" delivery problems reach customers."; 
+  if(topic.id==="air") return "Time-sensitive shippers may need an air-freight fallback when China → "+region.label+" ocean timing becomes unreliable."; 
+  return "The evidence suggests a potential "+topic.label.toLowerCase()+" issue for businesses importing from China to "+region.label+"; the specific exposure should be validated with the shipper."; 
+}
 function topicScore(evidence:any[],internal:any){
   const authority=evidence.reduce((sum,e)=>sum+Math.min(5,Number(e.priority||1)),0);
   const sourceDiversity=new Set(evidence.map(e=>e.kind)).size;
@@ -167,6 +181,8 @@ export async function POST(request:Request){
         marketSources:evidence.length,routeSpecificSources:evidence.filter(e=>e.routeSpecific).length,changedSources:evidence.filter(e=>e.changed).length,
         sourceTypes:new Set(evidence.map(e=>e.kind)).size,internal,
         angle:"Lead with "+topic.angles[0]+" and make the outreach specific to the business owner's China-origin lane, shipment timing, inventory exposure or landed-cost concern.",
+        buyerPain:buyerPainPoint(topic,region,evidence),
+        evidenceTerms:Array.from(new Set(evidence.flatMap((e:any)=>e.hits||[]))).slice(0,10),
         evidence:evidence.sort((a,b)=>Number(b.changed)-Number(a.changed)||b.priority-a.priority).slice(0,6)
           .map(x=>({source:x.source,url:x.url,hits:x.hits.slice(0,8),snippet:x.snippet,changed:x.changed,kind:x.kind}))};
     }).sort((a,b)=>b.evidenceScore-a.evidenceScore||b.marketSources-a.marketSources).slice(0,5);
