@@ -109,9 +109,20 @@ export const FREIGHT_INTELLIGENCE_SOURCES:readonly FreightSource[] = [
   {id:"port-of-oakland",name:"Port of Oakland",url:"https://www.portofoakland.com/performance/statistics/",kind:"official",priority:3,regions:["us"]},
 ];
 
-export export function keywordHits(text:string, keywords:readonly string[]) {
+export function escapedKeyword(keyword:string){
+  return keyword.toLowerCase().trim().replace(/[.*+?^$\{\}()|[\]\\]/g,"\\export function keywordHits(text:string, keywords:readonly string[]) {
   const lower = text.toLowerCase();
   return keywords.filter(k => lower.includes(k.toLowerCase()));
+}");
+}
+
+export function keywordHits(text:string, keywords:readonly string[]) {
+  const lower = text.toLowerCase();
+  return keywords.filter(k => {
+    const value=escapedKeyword(k);
+    if(!value)return false;
+    return new RegExp(`(^|\\W)${value}(?=\\W|$)`,"i").test(lower);
+  });
 }
 
 export function regionEvidenceHits(text:string, region:any) {
