@@ -48,7 +48,7 @@ function extractPageDate(html:string,text:string){
 async function fetchSource(source:any){
   try{
     const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),12000);
+    const timeout=setTimeout(()=>controller.abort(),7000);
     const res=await fetch(source.url,{
       headers:{
         "user-agent":"BookAirfreight-Outbound-Intelligence/2.0",
@@ -196,7 +196,7 @@ export async function POST(request:Request){
       id:t.id,label:t.label,evidenceScore:t.evidenceScore,marketSources:t.marketSources,
       changedSources:t.changedSources,internal:t.internal,evidence:t.evidence.slice(0,4)}))}))};
 
-  const ai=await optionalAiSynthesis(deepResearchInput);
+  const ai=process.env.OPENAI_INTELLIGENCE_ON_RESEARCH==="true" ? await optionalAiSynthesis(deepResearchInput) : null;
   const result={
     mode:ai?"deep-research-ai+multi-source":"deep-research-multi-source",
     generatedAt:new Date().toISOString(),previousRunAt:previousRun?.generated_at||null,
@@ -222,8 +222,17 @@ export async function POST(request:Request){
 export async function GET(request:Request){
   const cronSecret=process.env.CRON_SECRET;
   const authorization=request.headers.get("authorization")||"";
-  if(!cronSecret || authorization!==`Bearer ${cronSecret}`) {
-    return NextResponse.json({error:"Cron authentication required."},{status:401});
+  if(cronSecret && authorization===`Bearer ${cronSecret}`) {
+    return POST(new Request(request.url,{method:"POST",headers:{"authorization":authorization,"content-type":"application/json"},body:"{}"}));
   }
-  return POST(new Request(request.url,{method:"POST",headers:{"authorization":authorization,"content-type":"application/json"},body:"{}"}));
+  const auth=await requireOutboundUser(request);
+  if("error" in auth)return auth.error;
+  const {data,error}=await auth.admin.from("outbound_intelligence_runs")
+    .select("result,generated_at")
+    .order("generated_at",{ascending:false})
+    .limit(1)
+    .maybeSingle();
+  if(error)return NextResponse.json({error:"Unable to load the latest intelligence snapshot."},{status:500});
+  if(!data?.result)return NextResponse.json({result:null});
+  return NextResponse.json({result:data.result,cached:true},{headers:{"Cache-Control":"private, max-age=30, stale-while-revalidate=120"}});
 }
