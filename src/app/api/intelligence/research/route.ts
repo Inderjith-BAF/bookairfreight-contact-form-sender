@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { requireOutboundUser } from "@/lib/outbound-auth";
-import { FREIGHT_INTELLIGENCE_REGIONS, FREIGHT_INTELLIGENCE_SOURCES, FREIGHT_INTELLIGENCE_TOPICS, keywordHits, topicInternalSignal } from "@/lib/freight-intelligence";
+import { FREIGHT_INTELLIGENCE_REGIONS, FREIGHT_INTELLIGENCE_SOURCES, FREIGHT_INTELLIGENCE_TOPICS, keywordHits, routeEvidenceScore, topicInternalSignal } from "@/lib/freight-intelligence";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -140,20 +140,26 @@ export async function POST(request:Request){
     const sources=sourceResultsWithChange.filter(s=>s.ok&&relevantSource(s,region));
     const topics=FREIGHT_INTELLIGENCE_TOPICS.map(topic=>{
       const evidence=sources.map(s=>{
-        const hits=keywordHits(s.text,topic.keywords);
-        return {source:s.name,url:s.url,hits,snippet:evidenceSnippet(s.text,hits),priority:s.priority,kind:s.kind,changed:s.changed};
-      }).filter(x=>x.hits.length);
+        const match=routeEvidenceScore(s.text,region,topic);
+        const allowed = match.routeSpecific || (!!s.regions?.includes(region.id) && match.topicHits.length>0);
+        return {
+          source:s.name,url:s.url,hits:match.topicHits,snippet:evidenceSnippet(s.text,match.topicHits),
+          priority:s.priority,kind:s.kind,changed:s.changed,regionHits:match.regionHits,
+          originHits:match.originHits,routeSpecific:match.routeSpecific,allowed
+        };
+      }).filter(x=>x.allowed);
       const internal=topicInternalSignal(activities,region,topic);
       return {id:topic.id,label:topic.label,evidenceScore:topicScore(evidence,internal),
-        marketSources:evidence.length,changedSources:evidence.filter(e=>e.changed).length,
+        marketSources:evidence.length,routeSpecificSources:evidence.filter(e=>e.routeSpecific).length,changedSources:evidence.filter(e=>e.changed).length,
         sourceTypes:new Set(evidence.map(e=>e.kind)).size,internal,
         angle:"Lead with "+topic.angles[0]+" and make the outreach specific to the business owner's China-origin lane, shipment timing, inventory exposure or landed-cost concern.",
         evidence:evidence.sort((a,b)=>Number(b.changed)-Number(a.changed)||b.priority-a.priority).slice(0,6)
           .map(x=>({source:x.source,url:x.url,hits:x.hits.slice(0,8),snippet:x.snippet,changed:x.changed,kind:x.kind}))};
     }).sort((a,b)=>b.evidenceScore-a.evidenceScore||b.marketSources-a.marketSources).slice(0,5);
-    const signals=sources.flatMap(s=>FREIGHT_INTELLIGENCE_TOPICS.map(t=>({
-      source:s.name,url:s.url,topic:t.label,hits:keywordHits(s.text,t.keywords),changed:s.changed,priority:s.priority,kind:s.kind
-    })).filter(x=>x.hits.length)).sort((a,b)=>Number(b.changed)-Number(a.changed)||b.priority-a.priority).slice(0,20);
+    const signals=sources.flatMap(s=>FREIGHT_INTELLIGENCE_TOPICS.map(t=>{
+      const match=routeEvidenceScore(s.text,region,t);
+      return {source:s.name,url:s.url,topic:t.label,hits:match.topicHits,changed:s.changed,priority:s.priority,kind:s.kind,routeSpecific:match.routeSpecific};
+    }).filter(x=>x.hits.length&&x.routeSpecific)).sort((a,b)=>Number(b.changed)-Number(a.changed)||b.priority-a.priority).slice(0,20);
     return {regionId:region.id,region:region.label,sourceCount:sources.length,changedSourceCount:sources.filter(s=>s.changed).length,topics,signals};
   });
 
