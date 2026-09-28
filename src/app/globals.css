@@ -169,6 +169,3 @@ option{color:#10233f;background:#fff}
 .country-population-area tbody input::placeholder{
   font-size:16px!important;
 }
-
-/* Report layout: keep every major card clearly separated. */
-.report-section-gap > * + *{margin-top:32px!important}
