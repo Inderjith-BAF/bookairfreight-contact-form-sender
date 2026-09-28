@@ -58,28 +58,57 @@ export function MarketIntelligenceEngine({activities,session}:Props){
   const [campaign,setCampaign]=useState<any>(null);
   const [campaignError,setCampaignError]=useState("");
 
+  async function getToken(){
+    let token=session?.access_token;
+    if(!token){
+      const current=await supabase.auth.getSession();
+      token=current.data.session?.access_token;
+    }
+    if(!token)throw new Error("Your Outbound OS session has expired. Please sign in again.");
+    return token;
+  }
+
+  async function loadCachedResearch(){
+    setError("");
+    try{
+      const token=await getToken();
+      const res=await fetch("/api/intelligence/research",{headers:{Authorization:"Bearer "+token},cache:"no-store"});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw new Error(data.error||"Unable to load market intelligence.");
+      if(data.result){
+        setResult(data.result);
+        setRan(true);
+        return true;
+      }
+      return false;
+    }catch(e){
+      setError(e instanceof Error?e.message:"Unable to load market intelligence.");
+      return false;
+    }
+  }
+
   async function runResearch(){
     setLoading(true);setError("");
     try{
-      let token=session?.access_token;
-      if(!token){
-        const current=await supabase.auth.getSession();
-        token=current.data.session?.access_token;
-      }
-      if(!token)throw new Error("Your Outbound OS session has expired. Please sign in again.");
+      const token=await getToken();
       const res=await fetch("/api/intelligence/research",{
         method:"POST",
         headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
-        body:JSON.stringify({regions:REGIONS.map(r=>r.id),activities:activities.slice(0,3000)}),
+        body:JSON.stringify({regions:REGIONS.map(r=>r.id),activities:activities.slice(0,3000),includeAi:false}),
       });
-      const data=await res.json();
+      const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Market research failed.");
       setResult(data);setRan(true);
     }catch(e){setError(e instanceof Error?e.message:"Market research failed.");}
     finally{setLoading(false);}
   }
 
-  useEffect(()=>{if(session&&!ran)runResearch();},[session,ran]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{
+    if(!session||ran)return;
+    loadCachedResearch().then(found=>{
+      if(!found)runResearch();
+    });
+  },[session,ran]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function investigateOpportunity(o:any){
     setInvestigating(o.id); setInvestigation(null); setInvestigationError("");
