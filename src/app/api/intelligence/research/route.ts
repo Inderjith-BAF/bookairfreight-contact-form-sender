@@ -95,7 +95,7 @@ function topicScore(evidence:any[],internal:any){
   const momentum=Math.min(15,changedCount*3);
   const corroboration=count>=5?10:count>=3?7:count>=2?4:count===1?2:0;
   const internalValidation=internal.mentions
-    ? Math.min(10,Math.round(Math.min(1,internal.responseRate/10)*5 + Math.min(5,internal.positive))
+    ? Math.min(10,Math.round(Math.min(1,internal.responseRate/10)*5 + Math.min(5,internal.positive)))
     : 0;
   const score=Math.min(100,Math.max(0,Math.round(breadth+authority+diversity+momentum+corroboration+internalValidation)));
   const decision=score>=70?"Investigate now":score>=50?"Test outreach":score>=30?"Monitor":"Insufficient evidence";
