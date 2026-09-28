@@ -59,11 +59,11 @@ async function fetchSource(source:any){
     clearTimeout(timeout);
     const html=await res.text();
     const text=stripHtml(html).slice(0,60000);
-    return {id:source.id,name:source.name,url:source.url,kind:source.kind,priority:source.priority,
+    return {id:source.id,name:source.name,url:source.url,kind:source.kind,priority:source.priority,regions:source.regions,
       ok:res.ok,status:res.status,checkedAt:new Date().toISOString(),chars:text.length,
       hash:hashText(text),publishedAt:extractPageDate(html,text),text};
   }catch(e){
-    return {id:source.id,name:source.name,url:source.url,kind:source.kind,priority:source.priority,
+    return {id:source.id,name:source.name,url:source.url,kind:source.kind,priority:source.priority,regions:source.regions,
       ok:false,status:0,checkedAt:new Date().toISOString(),chars:0,hash:"",publishedAt:null,text:"",
       error:e instanceof Error?e.message:"source unavailable"};
   }
