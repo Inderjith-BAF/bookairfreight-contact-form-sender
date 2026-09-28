@@ -87,14 +87,14 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     }
   }
 
-  async function runResearch(){
+  async function runResearch(regionId=selected){
     setLoading(true);setError("");
     try{
       const token=await getToken();
       const res=await fetch("/api/intelligence/research",{
         method:"POST",
         headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
-        body:JSON.stringify({regions:REGIONS.map(r=>r.id),activities:activities.slice(0,3000),includeAi:false}),
+        body:JSON.stringify({regions:[regionId],activities:activities.slice(0,3000),includeAi:false}),
       });
       const data=await res.json().catch(()=>({}));
       if(!res.ok)throw new Error(data.error||"Market research failed.");
@@ -103,10 +103,16 @@ export function MarketIntelligenceEngine({activities,session}:Props){
     finally{setLoading(false);}
   }
 
+  async function selectRoute(regionId:string){
+    setSelected(regionId);
+    setResult((current:any)=>current?.routeScope?.includes(regionId)?current:null);
+    await runResearch(regionId);
+  }
+
   useEffect(()=>{
     if(!session||ran)return;
     loadCachedResearch().then(found=>{
-      if(!found)runResearch();
+      if(!found)runResearch(selected);
     });
   },[session,ran]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -218,7 +224,7 @@ export function MarketIntelligenceEngine({activities,session}:Props){
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <label htmlFor="intelligence-route" className="block text-[10px] font-black uppercase tracking-[.3em] text-slate-400">Trade lane</label>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <select id="intelligence-route" value={selected} onChange={e=>setSelected(e.target.value)} className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-800 outline-none focus:border-[#4d5cff] focus:ring-2 focus:ring-[#4d5cff]/10">
+          <select id="intelligence-route" value={selected} onChange={e=>selectRoute(e.target.value)} disabled={loading} className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-800 outline-none focus:border-[#4d5cff] focus:ring-2 focus:ring-[#4d5cff]/10 disabled:cursor-wait disabled:opacity-70">
             <optgroup label="Core markets">
               {CORE_LANES.map(l=><option key={l.id} value={l.regionId}>{l.label}</option>)}
             </optgroup>
