@@ -169,3 +169,53 @@ option{color:#10233f;background:#fff}
 .country-population-area tbody input::placeholder{
   font-size:16px!important;
 }
+
+/* Black Ops contrast: darken light utility surfaces and keep text legible. */
+.theme-night .text-slate-700{color:#e2e8f0!important}
+.theme-night .text-slate-600{color:#cbd5e1!important}
+.theme-night .text-slate-500{color:#94a3b8!important}
+.theme-night .text-slate-400{color:#94a3b8!important}
+.theme-night .bg-white,
+.theme-night .bg-white\/80,
+.theme-night .bg-white\/70,
+.theme-night .bg-white\/60,
+.theme-night .bg-slate-50,
+.theme-night .bg-slate-100,
+.theme-night .bg-blue-50,
+.theme-night .bg-blue-50\/60,
+.theme-night .bg-blue-50\/70,
+.theme-night .bg-cyan-50,
+.theme-night .bg-lime-50{
+  background-color:#111c2d!important;
+  color:#f1f5f9;
+}
+.theme-night .bg-gradient-to-br,
+.theme-night .bg-gradient-to-r{
+  background-image:linear-gradient(135deg,#111c2d 0%,#17243a 55%,#102a31 100%)!important;
+}
+.theme-night .border-blue-100,
+.theme-night .border-blue-200,
+.theme-night .border-slate-100,
+.theme-night .border-slate-200,
+.theme-night .border-white{
+  border-color:rgba(148,163,184,.22)!important;
+}
+.theme-night .bg-amber-50,
+.theme-night .bg-amber-50\/60{
+  background-color:#352a17!important;
+  color:#fef3c7!important;
+}
+.theme-night .bg-lime-50{background-color:#1e3329!important}
+.theme-night .bg-blue-50 .text-blue-500,
+.theme-night .bg-blue-50 .text-blue-700,
+.theme-night .bg-lime-50 .text-lime-700{color:#a5f3fc!important}
+.theme-night .bg-slate-100{background-color:#263449!important}
+.theme-night .bg-blue-100{background-color:#263a55!important}
+.theme-night .bg-cyan-50{background-color:#123344!important}
+.theme-night .bg-white .text-slate-800,
+.theme-night .bg-white .text-slate-700,
+.theme-night .bg-white .text-slate-600,
+.theme-night .bg-white .text-slate-500{color:#cbd5e1!important}
+.theme-night .freight-header .bg-white{background:#111827!important;color:#e2e8f0!important}
+.theme-night .freight-header .bg-white .text-slate-500{color:#94a3b8!important}
+
