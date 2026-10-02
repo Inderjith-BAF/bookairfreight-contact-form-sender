@@ -81,3 +81,25 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ saved: normalized.length, inserted, updated: updates.length });
 }
+
+export async function DELETE(request: Request) {
+  const auth = await requireOutboundUser(request);
+  if ("error" in auth) return auth.error;
+  const { admin, profile } = auth;
+  const body = await request.json().catch(() => null);
+  const country = typeof body?.country === "string" ? body.country.trim() : "";
+  const activityDate = typeof body?.activity_date === "string" ? body.activity_date : "";
+  const channel = body?.channel === "contact_form" ? "contact_form" : "cold_email";
+  if (!country || !/^\\d{4}-\\d{2}-\\d{2}$/.test(activityDate)) {
+    return NextResponse.json({ error: "A country and valid activity date are required." }, { status: 400 });
+  }
+  let query = admin.from("outbound_activities").delete()
+    .eq("region", country).eq("activity_date", activityDate).eq("channel", channel);
+  if (profile.role === "member") query = query.eq("employee_id", profile.id);
+  const { data, error } = await query.select("id");
+  if (error) {
+    console.error("[outbound/data] delete failed:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ deleted: data?.length ?? 0 });
+}
