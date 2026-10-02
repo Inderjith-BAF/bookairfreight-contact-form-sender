@@ -122,7 +122,7 @@ export function OutboundOS(){
     {tab==="daily"&&<Report title="Daily Consolidated" subtitle="A full operating picture across markets, lead sources, content and subject lines." stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities} team={team} profile={profile} session={session} sequences={sequences} showPreviousCampaign dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo}/>}
     {tab==="weekly"&&<Report title="Weekly Report" subtitle="Week-level patterns, response mix and decision signals." stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities} team={team} profile={profile} session={session} sequences={sequences} dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo}/>}
     {tab==="monthly"&&<Report title="Monthly Report" subtitle="Monthly performance with historical context." stats={stats} openRate={openRate} replyRate={replyRate} bounceRate={bounceRate} activities={activities} team={team} profile={profile} session={session} sequences={sequences} dateFrom={dateFrom} dateTo={dateTo} setDateFrom={setDateFrom} setDateTo={setDateTo}/>}
-    {tab==="forms"&&<div className="glass lift rounded-3xl p-8 shimmer"><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-300">Contact form channel</p><h2 className="mt-2 text-2xl font-black">Open the contact-form control room</h2><p className="mt-2 max-w-2xl text-sm text-slate-500">Your existing form automation remains available as a separate controlled workspace. CAPTCHA and anti-bot challenges stay in the human-review queue.</p><Link href="/forms" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-lime-300 px-4 py-3 text-sm font-black text-slate-950">Open Contact Forms →</Link></div>}{tab==="my"&&<Entry sequences={visibleSequences} selectedSequence={selectedSequence} setSelectedSequence={setSelectedSequence} selected={selected} saveRows={saveRows} activities={activities} viewDate={dateFrom} setViewDate={(d:string)=>{setDateFrom(d);setDateTo(d)}} profileId={profile.id} refresh={()=>session?load(session.access_token):Promise.resolve()}/>}
+    {tab==="forms"&&<div className="glass lift rounded-3xl p-8 shimmer"><p className="text-[10px] font-black uppercase tracking-[.3em] text-cyan-300">Contact form channel</p><h2 className="mt-2 text-2xl font-black">Open the contact-form control room</h2><p className="mt-2 max-w-2xl text-sm text-slate-500">Your existing form automation remains available as a separate controlled workspace. CAPTCHA and anti-bot challenges stay in the human-review queue.</p><Link href="/forms" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-lime-300 px-4 py-3 text-sm font-black text-slate-950">Open Contact Forms →</Link></div>}{tab==="my"&&<Entry sequences={visibleSequences} selectedSequence={selectedSequence} setSelectedSequence={setSelectedSequence} selected={selected} saveRows={saveRows} activities={activities} viewDate={dateFrom} setViewDate={(d:string)=>{setDateFrom(d);setDateTo(d)}} profileId={profile.id} accessToken={session.access_token} refresh={()=>session?load(session.access_token):Promise.resolve()}/>}
     {tab==="import"&&<Historical importYear={importYear} setImportYear={setImportYear} importFile={importFile} preview={importPreview} message={importMessage} parse={parseWorkbook} importing={importing} doImport={importHistorical}/>}
     {tab==="team"&&<Team team={team} stats={employeeStats} newUser={newUser} setNewUser={setNewUser} createUser={createUser} message={teamMessage} saveUser={updateUser}/>}
    </section>
@@ -293,7 +293,7 @@ function activityToRow(a:OutboundActivity,sequences:Sequence[]):Row{
   region:a.region||"",country:a.region||"",channel:a.channel||"cold_email",positive_entry:pc.positive?pc.positive+"pc":String(n(a.positive_replies)),neutral_entry:pc.neutral?pc.neutral+"pc":String(n(a.neutral_replies)),negative_entry:pc.negative?pc.negative+"pc":String(n(a.negative_replies))
  };
 }
-function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows,activities,viewDate,setViewDate,profileId,refresh}:any){
+function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows,activities,viewDate,setViewDate,profileId,accessToken,refresh}:any){
  const [tiles,setTiles]=useState<{country:string;rows:Row[]}[]>([]);
  const [contactFormOpen,setContactFormOpen]=useState(false);
  const [contactFormSaving,setContactFormSaving]=useState(false);
@@ -350,7 +350,15 @@ function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows
 
  const dateBlankRow=()=>({...blankRow(),activity_date:viewDate});
  const addCountry=()=>{if(!newCountry||tiles.some(t=>t.country===newCountry))return;setTiles(t=>[...t,{country:newCountry,rows:[dateBlankRow()]}]);setNewCountry("")};
- const removeCountry=(country:string)=>setTiles(t=>t.filter(x=>x.country!==country));
+ const removeCountry=async(country:string)=>{
+  if(!window.confirm("Permanently delete the saved outbound records for "+country+" on "+viewDate+"? This cannot be undone."))return;
+  setSavingCountry(country);setMessages(m=>({...m,[country]:""}));
+  try{const res=await fetch("/api/outbound/data",{method:"DELETE",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json"},body:JSON.stringify({country,activity_date:viewDate,channel:"cold_email"})});const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not delete saved workspace.");
+   setTiles(t=>t.filter(x=>x.country!==country));setSavedSignatures(m=>{const next={...m};delete next[country];return next});
+   try{const raw=window.localStorage.getItem(draftKey);const drafts=raw?JSON.parse(raw):[];if(Array.isArray(drafts)){const remaining=drafts.filter((x:any)=>x?.country!==country);if(remaining.length)window.localStorage.setItem(draftKey,JSON.stringify(remaining));else window.localStorage.removeItem(draftKey)}}catch{}
+   setMessages(m=>({...m,[country]:data.deleted+" saved records deleted."}));await refresh();
+  }catch(e){setMessages(m=>({...m,[country]:e instanceof Error?e.message:"Delete failed"}))}finally{setSavingCountry("")}
+ };
  const patch=(country:string,i:number,key:string,value:unknown)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:tile.rows.map((r,idx)=>idx===i?{...r,[key]:value}:r)}:tile));
  const paste=(country:string,text:string,key:keyof Row)=>{const values=text.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);setTiles(t=>t.map(tile=>{if(tile.country!==country)return tile;const next=[...tile.rows];while(next.length<values.length)next.push(dateBlankRow());values.forEach((v,j)=>{next[j]={...next[j],[key]:v}});return {...tile,rows:next}}))};
  const addRows=(country:string,count:number)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:[...tile.rows,...Array.from({length:count},dateBlankRow)]}:tile));
