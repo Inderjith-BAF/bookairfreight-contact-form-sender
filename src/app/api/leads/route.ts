@@ -31,7 +31,11 @@ export async function GET(request: Request) {
     admin.from("lead_import_batches").select("*").order("started_at", { ascending: false }).limit(20)
   ]);
   if (error || batchError) return NextResponse.json({ error: error?.message || batchError?.message }, { status: 500 });
-  return NextResponse.json({ leads: data || [], total: count || 0, page, pageSize, batches: batches || [] });
+  const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
+  const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
+  const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
+  const leads = (data || []).map((lead: any) => ({ ...lead, lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned" }));
+  return NextResponse.json({ leads, total: count || 0, page, pageSize, batches: batches || [] });
 }
 
 export async function POST(request: Request) {
