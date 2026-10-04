@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { BarChart3, CalendarDays, ChevronDown, CircleHelp, FileSpreadsheet, Gauge, History, LogOut, Mail, Menu, Plus, RefreshCw, Send, Shield, Sparkles, Target, Users, X } from "lucide-react";
+import { AlertTriangle, BarChart3, CalendarDays, ChevronDown, CircleHelp, FileSpreadsheet, Gauge, History, LogOut, Mail, Menu, Plus, RefreshCw, Send, Shield, Sparkles, Target, Users, X } from "lucide-react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import type { OutboundActivity, OutboundProfile, Sequence } from "@/lib/outbound-types";
 import { MarketIntelligenceEngine } from "@/components/market-intelligence-engine";
@@ -295,17 +295,17 @@ function activityToRow(a:OutboundActivity,sequences:Sequence[]):Row{
 }
 function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows,activities,viewDate,setViewDate,profileId,accessToken,refresh}:any){
  const [tiles,setTiles]=useState<{country:string;rows:Row[]}[]>([]);
+ const [deleteDialog,setDeleteDialog]=useState<{message:string;run:()=>Promise<void>}|null>(null);
  const [contactFormOpen,setContactFormOpen]=useState(false);
  const [contactFormSaving,setContactFormSaving]=useState(false);
  const [contactFormMessage,setContactFormMessage]=useState("");
  const [contactFormValues,setContactFormValues]=useState({outreach:"0",positive:"0",neutral:"0",negative:"0"});
  const contactFormActivity=(activities||[]).find((a:OutboundActivity)=>a.activity_date===viewDate&&a.channel==="contact_form"&&a.employee_id===profileId);
  useEffect(()=>{if(contactFormActivity){setContactFormValues({outreach:String(n(contactFormActivity.outreach_volume)),positive:String(n(contactFormActivity.positive_replies)),neutral:String(n(contactFormActivity.neutral_replies)),negative:String(n(contactFormActivity.negative_replies))});setContactFormOpen(true)}else{setContactFormValues({outreach:"0",positive:"0",neutral:"0",negative:"0"});setContactFormOpen(false)}setContactFormMessage("")},[viewDate,contactFormActivity?.id,contactFormActivity?.outreach_volume,contactFormActivity?.positive_replies,contactFormActivity?.neutral_replies,contactFormActivity?.negative_replies]);
- const removeContactForm=async()=>{
-  if(!window.confirm("Permanently delete contact form outreach records for "+viewDate+"? This cannot be undone."))return;
+ const removeContactForm=()=>setDeleteDialog({message:"Permanently delete contact form outreach records for "+viewDate+"? This cannot be undone.",run:async()=>{
   setContactFormSaving(true);setContactFormMessage("");
-  try{const res=await fetch("/api/outbound/data",{method:"DELETE",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json"},body:JSON.stringify({activity_date:viewDate,channel:"contact_form"})});const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not delete contact form records.");setContactFormOpen(false);setContactFormValues({outreach:"0",positive:"0",neutral:"0",negative:"0"});setContactFormMessage(data.deleted+" contact form records deleted.");await refresh()}catch(e){setContactFormMessage(e instanceof Error?e.message:"Delete failed")}finally{setContactFormSaving(false)}
- };
+  try{const res=await fetch("/api/outbound/data",{method:"DELETE",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json"},body:JSON.stringify({activity_date:viewDate,channel:"contact_form"})});const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not delete contact form records.");setContactFormOpen(false);setContactFormValues({outreach:"0",positive:"0",neutral:"0",negative:"0"});setContactFormMessage(data.deleted+" contact form records deleted.");await refresh()}catch(e){setContactFormMessage(e instanceof Error?e.message:"Delete failed")}finally{setContactFormSaving(false);setDeleteDialog(null)}
+ }});
  const saveContactForm=async()=>{setContactFormSaving(true);setContactFormMessage("");try{const row:Row={...blankRow(),...(contactFormActivity?.id?{id:contactFormActivity.id}:{}),account:"contact-form-"+profileId+"-"+viewDate+"@internal.bookairfreight",email_account_text:"Contact Form Outreach",activity_date:viewDate,channel:"contact_form",outreach_volume:Math.max(0,n(contactFormValues.outreach)),positive_replies:Math.max(0,n(contactFormValues.positive)),neutral_replies:Math.max(0,n(contactFormValues.neutral)),negative_replies:Math.max(0,n(contactFormValues.negative)),positive_entry:contactFormValues.positive,neutral_entry:contactFormValues.neutral,negative_entry:contactFormValues.negative};const count=await saveRows("Contact Form",[row]);setContactFormMessage(count+" contact form record saved.");await refresh()}catch(e){setContactFormMessage(e instanceof Error?e.message:"Save failed")}finally{setContactFormSaving(false)}};
 
  const [newCountry,setNewCountry]=useState("");
@@ -355,15 +355,14 @@ function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows
 
  const dateBlankRow=()=>({...blankRow(),activity_date:viewDate});
  const addCountry=()=>{if(!newCountry||tiles.some(t=>t.country===newCountry))return;setTiles(t=>[...t,{country:newCountry,rows:[dateBlankRow()]}]);setNewCountry("")};
- const removeCountry=async(country:string)=>{
-  if(!window.confirm("Permanently delete the saved outbound records for "+country+" on "+viewDate+"? This cannot be undone."))return;
+ const removeCountry=(country:string)=>setDeleteDialog({message:"Permanently delete the saved outbound records for "+country+" on "+viewDate+"? This cannot be undone.",run:async()=>{
   setSavingCountry(country);setMessages(m=>({...m,[country]:""}));
   try{const res=await fetch("/api/outbound/data",{method:"DELETE",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json"},body:JSON.stringify({country,activity_date:viewDate,channel:"cold_email"})});const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not delete saved workspace.");
    setTiles(t=>t.filter(x=>x.country!==country));setSavedSignatures(m=>{const next={...m};delete next[country];return next});
    try{const raw=window.localStorage.getItem(draftKey);const drafts=raw?JSON.parse(raw):[];if(Array.isArray(drafts)){const remaining=drafts.filter((x:any)=>x?.country!==country);if(remaining.length)window.localStorage.setItem(draftKey,JSON.stringify(remaining));else window.localStorage.removeItem(draftKey)}}catch{}
    setMessages(m=>({...m,[country]:data.deleted+" saved records deleted."}));await refresh();
-  }catch(e){setMessages(m=>({...m,[country]:e instanceof Error?e.message:"Delete failed"}))}finally{setSavingCountry("")}
- };
+  }catch(e){setMessages(m=>({...m,[country]:e instanceof Error?e.message:"Delete failed"}))}finally{setSavingCountry("");setDeleteDialog(null)}
+ }});
  const patch=(country:string,i:number,key:string,value:unknown)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:tile.rows.map((r,idx)=>idx===i?{...r,[key]:value}:r)}:tile));
  const paste=(country:string,text:string,key:keyof Row)=>{const values=text.split(/\r?\n/).map(v=>v.trim()).filter(Boolean);setTiles(t=>t.map(tile=>{if(tile.country!==country)return tile;const next=[...tile.rows];while(next.length<values.length)next.push(dateBlankRow());values.forEach((v,j)=>{next[j]={...next[j],[key]:v}});return {...tile,rows:next}}))};
  const addRows=(country:string,count:number)=>setTiles(t=>t.map(tile=>tile.country===country?{...tile,rows:[...tile.rows,...Array.from({length:count},dateBlankRow)]}:tile));
@@ -400,6 +399,7 @@ function Entry({sequences,selectedSequence,setSelectedSequence,selected,saveRows
   {newCountry&&<div className="glass rounded-3xl border border-lime-300/20 p-5"><div className="flex flex-wrap items-end gap-3"><div className="flex-1 min-w-48"><p className="text-[11px] font-black uppercase tracking-[.25em] text-lime-300">Create country tile</p><select value={newCountry} onChange={e=>setNewCountry(e.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-bold outline-none"><option value="">Select country</option>{COUNTRIES.filter(x=>!tiles.some(t=>t.country===x)).map(x=><option key={x} value={x}>{x}</option>)}</select></div><button onClick={addCountry} disabled={!newCountry} className="rounded-xl bg-lime-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-40">Create Tile</button><button onClick={()=>setNewCountry("")} className="rounded-xl border border-white/10 px-4 py-3 text-sm font-black">Cancel</button></div></div>}
   {!tiles.length&&<div className="glass rounded-3xl p-10 text-center"><p className="text-sm font-bold text-slate-400">{viewDate===localToday()?"No country tiles yet.":"No saved outbound data for this date."}</p><p className="mt-2 text-xs text-slate-600">{viewDate===localToday()?"Click + Add Country to create today's first market workspace.":"Choose another date or use Previous day to browse saved work."}</p></div>}
   {tiles.map(tile=><CountryTile key={tile.country} tile={tile} sequences={sequences} selectedSequence={selectedSequence} patch={patch} paste={paste} addRows={addRows} saveCountry={saveCountry} saving={savingCountry===tile.country} message={messages[tile.country]||""} onRemove={()=>removeCountry(tile.country)} dirty={tileSignature(tile.rows)!==(savedSignatures[tile.country]||"")}/>)}
+ {deleteDialog&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"><section role="alertdialog" aria-modal="true" aria-labelledby="delete-warning-title" className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 text-slate-900 shadow-2xl"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600"><AlertTriangle size={20}/></div><div><h3 id="delete-warning-title" className="text-lg font-black">Confirm permanent deletion</h3><p className="mt-2 text-sm leading-6 text-slate-600">{deleteDialog.message}</p></div></div><div className="mt-6 flex justify-end gap-3"><button type="button" disabled={contactFormSaving||!!savingCountry} onClick={()=>setDeleteDialog(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50">Cancel</button><button type="button" disabled={contactFormSaving||!!savingCountry} onClick={()=>void deleteDialog.run()} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50">{contactFormSaving||savingCountry?"Deleting…":"Delete permanently"}</button></div></section></div>}
  </div>
 }
 function CountryTile({tile,sequences,selectedSequence,patch,paste,addRows,saveCountry,saving,message,onRemove,dirty}:any){
