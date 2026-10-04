@@ -127,8 +127,8 @@ export async function PATCH(request: Request) {
     response_classification: isResponse ? status : null,
     updated_at: new Date().toISOString()
   };
-  if (isResponse) { patch.suppression_reason = "Response classified: " + status; patch.suppressed_at = new Date().toISOString(); }
-  if (status === "Suppressed") { patch.suppression_reason = String(body?.suppressionReason || "Manually suppressed"); patch.suppressed_at = new Date().toISOString(); }\n  if (status === "Bounced" || status === "Unsubscribed") { patch.suppression_reason = status; patch.suppressed_at = new Date().toISOString(); }
+  if (isResponse) { patch.suppression_reason = "Response classified: " + status; patch.suppressed_at = new Date().toISOString(); patch.last_replied_at = new Date().toISOString(); }
+  if (status === "Suppressed") { patch.suppression_reason = String(body?.suppressionReason || "Manually suppressed"); patch.suppressed_at = new Date().toISOString(); }\n  if (status === "Bounced" || status === "Unsubscribed") { patch.suppression_reason = status; patch.suppressed_at = new Date().toISOString(); }\n  if (status === "Out of Office") patch.last_replied_at = new Date().toISOString();
   if (["New","Qualified","Fresh Outreach","Follow-up 1","Follow-up 2","Follow-up 3"].includes(status) && before.suppression_reason) {
     return NextResponse.json({ error: "This lead is suppressed. Reactivation requires an explicit admin workflow and must not be done by changing status." }, { status: 409 });
   }
