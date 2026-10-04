@@ -1,4 +1,4 @@
-export type Role = "admin" | "manager" | "member";
+export type Role = "admin" | "manager" | "member" | "lead_generation_admin";
 export type ActivityChannel = "cold_email" | "contact_form";
 export type Freshness = "fresh" | "recycled";
 export type Sequence = {
