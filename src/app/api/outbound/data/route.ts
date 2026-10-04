@@ -90,7 +90,7 @@ export async function DELETE(request: Request) {
   const activityDate = typeof body?.activity_date === "string" ? body.activity_date : "";
   const channel = body?.channel === "contact_form" ? "contact_form" : "cold_email";
   const country = typeof body?.country === "string" ? body.country.trim() : "";
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(activityDate)) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(activityDate)) {
     return NextResponse.json({ error: "A valid activity date is required." }, { status: 400 });
   }
   if (channel === "cold_email" && !country) {
