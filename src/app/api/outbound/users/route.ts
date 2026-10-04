@@ -26,7 +26,7 @@ export async function PATCH(request:Request){
   const userId=String(body?.user_id??"").trim();
   const email=String(body?.email??"").trim().toLowerCase();
   const fullName=String(body?.full_name??"").trim();
-  const role=["admin","manager","member"].includes(body?.role)?body.role:"member";
+  const role=["admin","manager","member","lead_generation_admin"].includes(body?.role)?body.role:"member";
   const active=body?.active!==false;
   const defaultTabs={intelligence:true,command:true,daily:true,weekly:true,monthly:true,my:true,forms:true,import:true};
   const tabPermissions={...defaultTabs,...(body?.tab_permissions&&typeof body?.tab_permissions==="object"?body.tab_permissions:{})};
