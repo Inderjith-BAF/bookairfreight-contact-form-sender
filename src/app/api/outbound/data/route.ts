@@ -87,14 +87,18 @@ export async function DELETE(request: Request) {
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth;
   const body = await request.json().catch(() => null);
-  const country = typeof body?.country === "string" ? body.country.trim() : "";
   const activityDate = typeof body?.activity_date === "string" ? body.activity_date : "";
   const channel = body?.channel === "contact_form" ? "contact_form" : "cold_email";
-  if (!country || !/^\\d{4}-\\d{2}-\\d{2}$/.test(activityDate)) {
-    return NextResponse.json({ error: "A country and valid activity date are required." }, { status: 400 });
+  const country = typeof body?.country === "string" ? body.country.trim() : "";
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(activityDate)) {
+    return NextResponse.json({ error: "A valid activity date is required." }, { status: 400 });
+  }
+  if (channel === "cold_email" && !country) {
+    return NextResponse.json({ error: "A country is required for email workspace deletion." }, { status: 400 });
   }
   let query = admin.from("outbound_activities").delete()
-    .eq("region", country).eq("activity_date", activityDate).eq("channel", channel);
+    .eq("activity_date", activityDate).eq("channel", channel);
+  if (channel === "cold_email") query = query.eq("region", country);
   if (profile.role === "member") query = query.eq("employee_id", profile.id);
   const { data, error } = await query.select("id");
   if (error) {
