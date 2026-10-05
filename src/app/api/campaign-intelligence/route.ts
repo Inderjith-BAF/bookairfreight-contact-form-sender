@@ -1,0 +1,15 @@
+import { NextResponse } from "next/server"; import { requireOutboundUser } from "@/lib/outbound-auth";
+export const runtime="nodejs"; export const dynamic="force-dynamic";
+export async function GET(request:Request){const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;const {admin}=auth;const {searchParams}=new URL(request.url);
+const country=searchParams.get("country")||"",group=searchParams.get("group")||"",account=searchParams.get("account")||"";
+const [{data:campaigns,error:cErr},{data:recipients,error:rErr},{data:leads,error:lErr},{data:accounts,error:aErr},{data:batches,error:bErr}]=await Promise.all([
+ admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(500),
+ admin.from("mail_merge_campaign_recipients").select("*").limit(10000),
+ admin.from("master_leads").select("id,country,current_status,response_classification,suppression_status,last_contacted_at,last_replied_at"),
+ admin.from("outbound_email_accounts").select("id,email,health_status"),
+ admin.from("lead_import_batches").select("*").order("started_at",{ascending:false}).limit(200)
+]);if(cErr||rErr||lErr||aErr||bErr)return NextResponse.json({error:cErr?.message||rErr?.message||lErr?.message||aErr?.message||bErr?.message},{status:500});
+const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||((recipients||[]).filter((r:any)=>r.campaign_id===c.id).some((r:any)=>r.sender_account_id===account))));
+const rows=cs.map((c:any)=>{const rs=(recipients||[]).filter((r:any)=>r.campaign_id===c.id);const sent=rs.filter((r:any)=>r.status==="Sent").length;const opens=rs.reduce((n:any,r:any)=>n+Number(r.open_count||0),0);const replies=rs.filter((r:any)=>r.status==="Replied").length;const bounces=rs.filter((r:any)=>["Bounced","Failed"].includes(r.status)).length;const suppressed=rs.filter((r:any)=>r.status==="Suppressed").length;const positive=(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.response_classification==="Positive").length;const neutral=(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.response_classification==="Neutral").length;const negative=(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.response_classification==="Negative").length;return {...c,metrics:{imported:0,recipients:rs.length,eligible:rs.filter((r:any)=>r.status!=="Suppressed").length,sent,opens,replies,positive,neutral,negative,bounces,unsubscribes:(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.current_status==="Unsubscribed").length,completion_time:c.completed_at&&c.started_at?Math.max(0,new Date(c.completed_at).getTime()-new Date(c.started_at).getTime()):null}}});
+const totals=rows.reduce((a:any,r:any)=>{for(const k of Object.keys(r.metrics)){if(typeof r.metrics[k]==="number")a[k]=(a[k]||0)+r.metrics[k]}return a},{});
+return NextResponse.json({campaigns:rows,totals,batches: batches||[],accounts:accounts||[],filters:{countries:[...new Set((campaigns||[]).map((c:any)=>c.country).filter(Boolean))],groups:[...new Set((campaigns||[]).map((c:any)=>c.campaign_group).filter(Boolean))]}})}
