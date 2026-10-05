@@ -1,0 +1,21 @@
+-- Blueprint completion layer
+alter table public.master_leads add column if not exists current_workflow_assignee uuid references public.outbound_profiles(id) on delete set null;
+alter table public.master_leads add column if not exists current_campaign_stage text not null default 'New';
+alter table public.master_leads add column if not exists recipient_status text not null default 'Active';
+alter table public.master_leads add column if not exists last_campaign uuid references public.mail_merge_campaigns(id) on delete set null;
+alter table public.master_leads add column if not exists last_sending_account uuid references public.outbound_email_accounts(id) on delete set null;
+alter table public.master_leads add column if not exists next_follow_up_eligibility timestamptz;
+alter table public.master_leads add column if not exists suppression_status text not null default 'Active';
+alter table public.master_leads add column if not exists suppression_source text;
+alter table public.master_leads add column if not exists suppression_history jsonb not null default '[]'::jsonb;
+create index if not exists master_leads_workflow_assignee_idx on public.master_leads(current_workflow_assignee);
+create index if not exists master_leads_suppression_status_idx on public.master_leads(suppression_status);
+create table if not exists public.recipient_assignments (id uuid primary key default gen_random_uuid(),lead_id uuid not null references public.master_leads(id) on delete cascade,assignee_id uuid references public.outbound_profiles(id) on delete set null,assignment_type text not null default 'workflow',assigned_by uuid references public.outbound_profiles(id) on delete set null,assigned_at timestamptz not null default now(),ended_at timestamptz,details jsonb not null default '{}'::jsonb);
+create table if not exists public.suppression_records (id uuid primary key default gen_random_uuid(),lead_id uuid not null references public.master_leads(id) on delete cascade,status text not null,reason text not null,source text not null,actor_id uuid references public.outbound_profiles(id) on delete set null,created_at timestamptz not null default now(),released_at timestamptz,released_by uuid references public.outbound_profiles(id) on delete set null,release_reason text);
+create table if not exists public.account_health_snapshots (id uuid primary key default gen_random_uuid(),account_id uuid not null references public.outbound_email_accounts(id) on delete cascade,health_status text not null,attempted integer not null default 0,provider_accepted integer not null default 0,failures integer not null default 0,hard_bounces integer not null default 0,soft_bounces integer not null default 0,opens integer not null default 0,replies integer not null default 0,unsubscribes integer not null default 0,auth_ok boolean,error_count integer not null default 0,suppression_activity integer not null default 0,snapshot_at timestamptz not null default now(),details jsonb not null default '{}'::jsonb);
+alter table public.mail_merge_campaigns add column if not exists owner_id uuid references public.outbound_profiles(id) on delete set null,add column if not exists scheduled_at timestamptz,add column if not exists started_at timestamptz,add column if not exists completed_at timestamptz,add column if not exists previous_campaign_id uuid references public.mail_merge_campaigns(id) on delete set null,add column if not exists recipient_batch_id uuid references public.lead_import_batches(id) on delete set null,add column if not exists readiness jsonb not null default '{}'::jsonb;
+alter table public.recipient_assignments enable row level security;
+alter table public.suppression_records enable row level security;
+alter table public.account_health_snapshots enable row level security;
+revoke all on public.recipient_assignments,public.suppression_records,public.account_health_snapshots from anon,authenticated;
+grant all on public.recipient_assignments,public.suppression_records,public.account_health_snapshots to service_role;
