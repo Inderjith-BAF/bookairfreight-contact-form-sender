@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOutboundUser } from "@/lib/outbound-auth";
-import { render } from "../route";
+import { render } from "@/lib/mail-merge";
 export const runtime="nodejs";
 export async function POST(request:Request){
  const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; const b=await request.json().catch(()=>null);
