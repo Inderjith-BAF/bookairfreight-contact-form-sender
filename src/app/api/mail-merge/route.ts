@@ -3,7 +3,7 @@ import { requireOutboundUser } from "@/lib/outbound-auth";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
 const GROUPS=["Fresh Outreach","Follow-up 1","Follow-up 2","Follow-up 3","Custom"] as const;
 const STATUSES=["Draft","Ready","Queued","Paused","Completed","Cancelled"] as const;
-export function render(text:string,lead:any){return text.replace(/{{\s*first[_ ]?name\s*}}/gi,lead.first_name||"").replace(/{{\s*last[_ ]?name\s*}}/gi,lead.last_name||"").replace(/{{\s*company(?:[_ ]?name)?\s*}}/gi,lead.company_name||"").replace(/{{\s*email\s*}}/gi,lead.email||"").replace(/{{\s*country\s*}}/gi,lead.country||"");}
+function render(text:string,lead:any){return text.replace(/{{\s*first[_ ]?name\s*}}/gi,lead.first_name||"").replace(/{{\s*last[_ ]?name\s*}}/gi,lead.last_name||"").replace(/{{\s*company(?:[_ ]?name)?\s*}}/gi,lead.company_name||"").replace(/{{\s*email\s*}}/gi,lead.email||"").replace(/{{\s*country\s*}}/gi,lead.country||"");}
 const manager=(p:any)=>["admin","manager","lead_generation_admin"].includes(p.role);
 export async function GET(request:Request){
  const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; const sp=new URL(request.url).searchParams; const id=sp.get("id");
