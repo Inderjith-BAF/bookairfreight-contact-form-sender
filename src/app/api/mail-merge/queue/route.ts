@@ -7,7 +7,13 @@ export async function POST(request:Request){
  const {data:campaign,error:ce}=await admin.from("mail_merge_campaigns").select("*").eq("id",campaignId).maybeSingle(); if(ce||!campaign)return NextResponse.json({error:ce?.message||"Campaign not found."},{status:404});
  if(profile.role==="member"&&campaign.created_by!==profile.id)return NextResponse.json({error:"Not authorized."},{status:403});
  const {data:rows,error}=await admin.from("mail_merge_campaign_recipients").select("*,master_leads(*)").eq("campaign_id",campaignId).eq("status","Ready"); if(error)return NextResponse.json({error:error.message},{status:500});
- const eligible=(rows||[]).filter((r:any)=>!r.master_leads?.suppression_reason&&!["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"].includes(r.master_leads?.current_status));
+ const eligible=(rows||[]).filter((r:any)=>{
+  const l=r.master_leads;
+  if(!l||l.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"].includes(l.current_status))return false;
+  if(campaign.campaign_group==="Fresh Outreach"&&l.last_contacted_at)return false;
+  if(["Follow-up 1","Follow-up 2","Follow-up 3"].includes(campaign.campaign_group)&&!l.last_contacted_at)return false;
+  return true;
+});
  const blocked=(rows||[]).filter((r:any)=>!eligible.some((x:any)=>x.id===r.id));
  if(blocked.length)await admin.from("mail_merge_campaign_recipients").update({status:"Suppressed",error_message:"Recipient is suppressed or has a response.",updated_at:new Date().toISOString()}).in("id",blocked.map((r:any)=>r.id));
  const bySender=new Map<string,any[]>(); for(const r of eligible){const k=r.sender_account_id||"unassigned";const a=bySender.get(k)||[];a.push(r);bySender.set(k,a);}
@@ -17,7 +23,11 @@ export async function POST(request:Request){
   const {data:account}=await admin.from("outbound_email_accounts").select("*").eq("id",sender).maybeSingle();
   if(!account||account.health_status==="Paused"){skipped+=items.length;continue;}
   const {count}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("sender_account_id",sender).neq("status","Suppressed");
-  const allowed=Math.max(0,10-Number(count||0)); const take=items.slice(0,allowed);
+  const now=new Date(); const dayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString(); const hourStart=new Date(now.getTime()-60*60*1000).toISOString();
+  const {count:sentToday}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",dayStart);
+  const {count:sentHour}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",hourStart);
+  const accountDaily=Math.max(0,Number(account.daily_send_limit||100)-Number(sentToday||0)); const accountHourly=Math.max(0,Number(account.hourly_send_limit||20)-Number(sentHour||0));
+  const allowed=Math.max(0,Math.min(10-Number(count||0),accountDaily,accountHourly)); const take=items.slice(0,allowed);
   if(take.length){await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:new Date().toISOString(),updated_at:new Date().toISOString()}).in("id",take.map((r:any)=>r.id));queued+=take.length;}
   skipped+=Math.max(0,items.length-take.length);
  }
