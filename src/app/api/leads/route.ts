@@ -35,7 +35,8 @@ export async function GET(request: Request) {
   const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
   const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
   const leads = (data || []).map((lead: any) => ({ ...lead, lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned" }));
-  return NextResponse.json({ leads, total: count || 0, page, pageSize, batches: batches || [] });
+  const { data: team } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
+  return NextResponse.json({ leads, total: count || 0, page, pageSize, batches: batches || [], team: team || [] });
 }
 
 export async function POST(request: Request) {
