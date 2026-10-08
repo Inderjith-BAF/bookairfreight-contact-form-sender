@@ -228,7 +228,33 @@ export default function MailMergePage(){
  }
  async function syncReplies(){setBusy(true);setErr("");try{const d=await api("/api/mail-merge/sync-replies",{method:"POST"});setMsg(d.message);await load()}catch(e){setErr(e instanceof Error?e.message:"Reply sync failed")}finally{setBusy(false)}}
  async function send(){
-  setBusy(true);setErr("");try{const d=await api("/api/mail-merge/send",{method:"POST",body:JSON.stringify({campaignId})});setMsg(`Dispatch complete · ${d.sent} sent · ${d.failed} failed.`);await load()}catch(e){setErr(e instanceof Error?e.message:"Dispatch failed")}finally{setBusy(false)}
+  setBusy(true);setErr("");setMsg("Paced dispatch started · minimum 60 seconds between emails from the same sending account.");
+  let totalSent=0,totalFailed=0;
+  try{
+   for(let attempt=0;attempt<200;attempt++){
+    try{
+     const d=await api("/api/mail-merge/send",{method:"POST",body:JSON.stringify({campaignId})});
+     totalSent+=Number(d.sent||0);totalFailed+=Number(d.failed||0);
+     if(!d.remaining){
+      setMsg(`Paced dispatch complete · ${totalSent} sent · ${totalFailed} failed.`);
+      await load();
+      break;
+     }
+     await load();
+     await new Promise(resolve=>setTimeout(resolve,15000));
+    }catch(e){
+     const next=(e as any)?.next_send_at;
+     if(next){
+      const wait=Math.max(1000,Math.min(120000,Date.parse(String(next))-Date.now()+1000));
+      setMsg(`Paced dispatch active · next email scheduled for ${new Date(String(next)).toLocaleTimeString()}.`);
+      await new Promise(resolve=>setTimeout(resolve,wait));
+      continue;
+     }
+     throw e;
+    }
+   }
+  }catch(e){setErr(e instanceof Error?e.message:"Dispatch failed")}
+  finally{setBusy(false)}
  }
  function nextFromStage2(){
   if(selected.length<required){setErr(`Select/upload at least ${required} eligible leads for the selected account volume. You currently have ${selected.length}.`);return}
