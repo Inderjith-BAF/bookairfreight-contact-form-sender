@@ -26,6 +26,7 @@ export default function MailMergePage(){
  const [volumes,setVolumes]=useState<Record<string,number>>({});
  const [campaignId,setCampaignId]=useState("");
  const [followupSource,setFollowupSource]=useState("");
+ const [followupSubjects,setFollowupSubjects]=useState<Record<string,string>>({});
  const [sourceMode,setSourceMode]=useState<"fresh"|"followup">("fresh");
  const [blocks,setBlocks]=useState<Block[]>([]);
  const [savedBlocks,setSavedBlocks]=useState(false);
@@ -59,8 +60,15 @@ export default function MailMergePage(){
  const loadFollowup=useCallback(async(id:string)=>{
   if(!id)return;
   const d=await api("/api/mail-merge?id="+encodeURIComponent(id));
-  const rows=(d.recipients||[]).map((r:any)=>r.master_leads).filter(Boolean);
-  setLeads(rows.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status)));
+  const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads);
+  const rows=recipients.map((r:any)=>r.master_leads).filter(Boolean);
+  const eligible=rows.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+  const subjects:Record<string,string>={};
+  for(const r of recipients){
+   if(r.master_leads?.id&&typeof r.subject==="string")subjects[r.master_leads.id]=r.subject;
+  }
+  setFollowupSubjects(subjects);
+  setLeads(eligible);
  },[api]);
 
  useEffect(()=>{supabase.auth.getSession().then(({data})=>{if(data.session)setToken(data.session.access_token)})},[supabase]);
@@ -133,8 +141,23 @@ export default function MailMergePage(){
   const alloc=selectedByAccount;
   const nextBlocks:Block[]=[];
   for(const a of alloc){
-   for(let i=0;i<a.leadIds.length;i+=10){
-    nextBlocks.push({batchId:crypto.randomUUID(),accountId:a.accountId,leadIds:a.leadIds.slice(i,i+10),subject:"",body:""});
+   if(sourceMode==="followup"){
+    const bySubject=new Map<string,string[]>();
+    for(const leadId of a.leadIds){
+     const subject=followupSubjects[leadId]||"";
+     const ids=bySubject.get(subject)||[];
+     ids.push(leadId);
+     bySubject.set(subject,ids);
+    }
+    for(const [subject,ids] of bySubject){
+     for(let i=0;i<ids.length;i+=10){
+      nextBlocks.push({batchId:crypto.randomUUID(),accountId:a.accountId,leadIds:ids.slice(i,i+10),subject,body:""});
+     }
+    }
+   }else{
+    for(let i=0;i<a.leadIds.length;i+=10){
+     nextBlocks.push({batchId:crypto.randomUUID(),accountId:a.accountId,leadIds:a.leadIds.slice(i,i+10),subject:"",body:""});
+    }
    }
   }
   setBlocks(nextBlocks);
@@ -166,7 +189,7 @@ export default function MailMergePage(){
     <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
      <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">2. Upload or select leads</h2><p className="mt-1 text-sm text-slate-500">You need <b>{required}</b> eligible leads for the selected account allocation.</p></div><label className="cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700"><Upload size={16} className="mr-1 inline"/>{uploading?"Uploading…":"Upload CSV"}<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadLeads(f)}}/></label></div>
-      <div className="mt-5 flex gap-2 rounded-2xl bg-slate-50 p-2"><button onClick={()=>{setSourceMode("fresh");setForm(f=>({...f,campaign_group:"Fresh Outreach"}));loadFreshLeads()}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="fresh"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Fresh eligible leads</button><button onClick={()=>{setSourceMode("followup");setForm(f=>({...f,campaign_group:"Follow-up 1"}))}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="followup"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Follow-up from campaign</button></div>
+      <div className="mt-5 flex gap-2 rounded-2xl bg-slate-50 p-2"><button onClick={()=>{setSourceMode("fresh");setFollowupSubjects({});setForm(f=>({...f,campaign_group:"Fresh Outreach"}));loadFreshLeads()}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="fresh"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Fresh eligible leads</button><button onClick={()=>{setSourceMode("followup");setForm(f=>({...f,campaign_group:"Follow-up 1"}))}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="followup"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Follow-up from campaign</button></div>
       {sourceMode==="followup"&&<select value={followupSource} onChange={e=>{setFollowupSource(e.target.value);loadFollowup(e.target.value)}} className="mt-4 w-full rounded-xl border border-blue-100 p-3"><option value="">Select previous campaign</option>{campaigns.filter(c=>c.id!==campaignId).map(c=><option key={c.id} value={c.id}>{c.name} · {c.country} · {c.campaign_group}</option>)}</select>}
       <div className="mt-4 flex gap-3"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search email, company or person" className="flex-1 rounded-xl border border-blue-100 p-3"/><button onClick={sourceMode==="fresh"?loadFreshLeads:()=>loadFollowup(followupSource)} className="rounded-xl border border-blue-100 px-4 font-bold text-indigo-600">Refresh</button></div>
       <div className="mt-4 max-h-[430px] overflow-auto rounded-2xl border border-blue-50"><table className="w-full text-left text-sm"><thead className="sticky top-0 bg-blue-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Select</th><th className="p-3">Recipient</th><th className="p-3">Company</th><th className="p-3">Country</th><th className="p-3">Status</th></tr></thead><tbody>{leads.filter(l=>!q||`${l.email} ${l.company_name} ${l.first_name} ${l.last_name}`.toLowerCase().includes(q.toLowerCase())).map(l=><tr key={l.id} className="border-t border-blue-50 hover:bg-blue-50/50"><td className="p-3"><input type="checkbox" checked={selected.includes(l.id)} disabled={!selected.includes(l.id)&&selected.length>=required} onChange={e=>setSelected(s=>e.target.checked?[...s,l.id]:s.filter(x=>x!==l.id))}/></td><td className="p-3"><b>{l.first_name} {l.last_name}</b><div className="text-xs text-indigo-600">{l.email}</div></td><td className="p-3">{l.company_name||"—"}</td><td className="p-3">{l.country}</td><td className="p-3 text-xs">{l.current_status}</td></tr>)}</tbody></table></div>
@@ -176,8 +199,8 @@ export default function MailMergePage(){
    </section>}
 
    {stage===3&&<section className="mx-auto max-w-6xl space-y-5">
-    <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">3. Campaign Builder</h2><p className="mt-1 text-sm text-slate-500">Each account can have multiple message blocks. Every subject + content block is limited to 10 recipients.</p></div><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{blocks.length} message blocks · {selected.length} recipients</span></div>
-    <div className="mt-5 space-y-5">{blocks.map((b,i)=><div key={b.batchId} className="rounded-3xl border border-blue-100 bg-slate-50 p-5"><div className="flex items-center justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-500">Message Block {i+1} · Batch of 10 max</div><div className="mt-1 font-black">{accountName(b.accountId)}</div></div><span className="rounded-full bg-white px-3 py-1 text-xs font-bold">{b.leadIds.length}/10 recipients</span></div><div className="mt-4 grid gap-4 lg:grid-cols-2"><div><label className="text-xs font-black text-slate-500">Subject</label><input value={b.subject} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,subject:e.target.value}:x))} placeholder="Subject line" className="mt-2 w-full rounded-xl border border-blue-100 bg-white p-3"/><div className="mt-2 text-[11px] text-slate-400">Exactly this batch of up to 10 recipients uses this subject/content. Multiple batches can use the same sending account.</div></div><div><label className="text-xs font-black text-slate-500">Email content</label><textarea value={b.body} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,body:e.target.value}:x))} placeholder="Write the email content. Use {{first_name}}, {{company_name}}, {{last_name}}, {{email}}." className="mt-2 min-h-40 w-full rounded-xl border border-blue-100 bg-white p-3 leading-6"/></div></div><div className="mt-4 rounded-2xl bg-white p-4"><div className="text-xs font-black uppercase text-slate-400">Recipients in this block</div><div className="mt-2 flex flex-wrap gap-2">{b.leadIds.map(id=>{const l=leads.find(x=>x.id===id);return <span key={id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{l?.email||id}</span>})}</div></div></div>)}</div>
+    <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">3. Campaign Builder</h2><p className="mt-1 text-sm text-slate-500">Each account can have multiple message blocks. Every subject + content block is limited to 10 recipients. Follow-ups inherit the previous subject line for each recipient batch and remain editable.</p></div><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{blocks.length} message blocks · {selected.length} recipients</span></div>
+    <div className="mt-5 space-y-5">{blocks.map((b,i)=><div key={b.batchId} className="rounded-3xl border border-blue-100 bg-slate-50 p-5"><div className="flex items-center justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-500">Message Block {i+1} · Batch of 10 max</div><div className="mt-1 font-black">{accountName(b.accountId)}</div></div><span className="rounded-full bg-white px-3 py-1 text-xs font-bold">{b.leadIds.length}/10 recipients</span></div><div className="mt-4 grid gap-4 lg:grid-cols-2"><div><label className="text-xs font-black text-slate-500">Subject {sourceMode==="followup"&&<span className="font-normal text-emerald-600">· inherited from previous campaign</span>}</label><input value={b.subject} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,subject:e.target.value}:x))} placeholder="Subject line" className="mt-2 w-full rounded-xl border border-blue-100 bg-white p-3"/><div className="mt-2 text-[11px] text-slate-400">{sourceMode==="followup"?"The previous campaign subject is pre-filled for this recipient batch. Edit it if needed.":"Exactly this batch of up to 10 recipients uses this subject/content. Multiple batches can use the same sending account."}</div></div><div><label className="text-xs font-black text-slate-500">Email content</label><textarea value={b.body} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,body:e.target.value}:x))} placeholder="Write the email content. Use {{first_name}}, {{company_name}}, {{last_name}}, {{email}}." className="mt-2 min-h-40 w-full rounded-xl border border-blue-100 bg-white p-3 leading-6"/></div></div><div className="mt-4 rounded-2xl bg-white p-4"><div className="text-xs font-black uppercase text-slate-400">Recipients in this block</div><div className="mt-2 flex flex-wrap gap-2">{b.leadIds.map(id=>{const l=leads.find(x=>x.id===id);return <span key={id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{l?.email||id}</span>})}</div></div></div>)}</div>
     <div className="mt-5 flex justify-between"><button onClick={()=>setStage(2)} className="rounded-xl border border-blue-100 px-5 py-3 font-bold"><ChevronLeft size={16} className="mr-1 inline"/>Back</button><button onClick={saveMessageBlocks} disabled={busy||blocks.some(b=>!b.subject.trim()||!b.body.trim())} className="rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white disabled:opacity-40">Save & Review <ChevronRight size={16} className="ml-1 inline"/></button></div>
     </div>
    </section>}
