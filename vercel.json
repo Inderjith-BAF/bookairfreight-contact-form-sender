@@ -8,6 +8,10 @@
     {
       "path": "/api/intelligence/research",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/mail-merge/worker",
+      "schedule": "* * * * *"
     }
   ]
 }
