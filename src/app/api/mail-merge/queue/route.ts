@@ -14,6 +14,7 @@ export async function POST(request:Request){
   if(["Follow-up 1","Follow-up 2","Follow-up 3"].includes(campaign.campaign_group)&&!l.last_contacted_at)return false;
   return true;
 });
+ const reasons:{disconnected:number;daily_hourly_cap:number;unassigned:number;eligible_blocked:number}={disconnected:0,daily_hourly_cap:0,unassigned:0,eligible_blocked:0};
  const blocked=(rows||[]).filter((r:any)=>!eligible.some((x:any)=>x.id===r.id));
  if(blocked.length){reasons.eligible_blocked=blocked.length;await admin.from("mail_merge_campaign_recipients").update({status:"Suppressed",error_message:"Recipient is suppressed or has a response.",updated_at:new Date().toISOString()}).in("id",blocked.map((r:any)=>r.id));}
  const byBatch=new Map<string,any[]>();
@@ -24,7 +25,6 @@ export async function POST(request:Request){
  const remainingDaily=new Map<string,number>();
  const remainingHourly=new Map<string,number>();
  let queued=0,skipped=0;
- const reasons:{disconnected:number;daily_hourly_cap:number;unassigned:number;eligible_blocked:number}={disconnected:0,daily_hourly_cap:0,unassigned:0,eligible_blocked:0};
  for(const [batchKey,items] of byBatch){
   const [sender]=batchKey.split("::");
   if(sender==="unassigned"){skipped+=items.length;reasons.unassigned+=items.length;continue;}
