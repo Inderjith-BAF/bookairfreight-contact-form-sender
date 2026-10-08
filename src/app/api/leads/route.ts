@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   if (country) query = query.eq("country", country);
   if (status) query = query.eq("current_status", status);
   if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
-  if (dateTo) query = query.lt("created_at", `${dateTo}T00:00:00.000Z`);
+  if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59.999Z`);
   if (q) query = query.or("email.ilike.%"+q+"%,company_name.ilike.%"+q+"%,first_name.ilike.%"+q+"%,last_name.ilike.%"+q+"%,country.ilike.%"+q+"%");
   const [{ data, error, count }, { data: batches, error: batchError }] = await Promise.all([
     query,
