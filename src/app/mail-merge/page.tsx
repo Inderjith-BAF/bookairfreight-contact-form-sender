@@ -70,7 +70,8 @@ export default function MailMergePage(){
  const [form,setForm]=useState({name:"",country:"USA",campaign_group:"Fresh Outreach"});
  const [addAccountOpen,setAddAccountOpen]=useState(false);
  const [connectionBusy,setConnectionBusy]=useState<"google"|"microsoft"|null>(null);
- const [resumeLoaded,setResumeLoaded]=useState(false);\n const [notifications,setNotifications]=useState<Array<{id:string;title:string;message:string;created_at:string;account_id?:string|null}>>([]);
+ const [resumeLoaded,setResumeLoaded]=useState(false);
+ const [notifications,setNotifications]=useState<Array<{id:string;title:string;message:string;created_at:string;account_id?:string|null}>>([]);
 
  const api=useCallback(async(path:string,options?:RequestInit)=>{
   const r=await fetch(path,{...options,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(options?.headers||{})}});
@@ -79,7 +80,11 @@ export default function MailMergePage(){
   return d;
  },[token]);
 
- const loadNotifications=useCallback(async()=>{\n  if(!token)return;\n  try{const d=await api("/api/mail-merge/notifications");setNotifications(d.notifications||[])}catch{}\n },[api,token]);\n const load=useCallback(async()=>{
+ const loadNotifications=useCallback(async()=>{
+  if(!token)return;
+  try{const d=await api("/api/mail-merge/notifications");setNotifications(d.notifications||[])}catch{}
+ },[api,token]);
+ const load=useCallback(async()=>{
   if(!token)return;
   const d=await api("/api/mail-merge");
   setCampaigns(d.campaigns||[]);
@@ -109,7 +114,8 @@ export default function MailMergePage(){
  },[api]);
 
  useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase]);
- useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);\n useEffect(()=>{if(!token)return;loadNotifications();const timer=window.setInterval(loadNotifications,30000);return()=>window.clearInterval(timer)},[token,loadNotifications]);
+ useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
+ useEffect(()=>{if(!token)return;loadNotifications();const timer=window.setInterval(loadNotifications,30000);return()=>window.clearInterval(timer)},[token,loadNotifications]);
  // resumeCampaign is intentionally excluded because it is a function declaration recreated on render; token/resumeLoaded are the actual triggers.
  // eslint-disable-next-line react-hooks/exhaustive-deps
  useEffect(()=>{if(!token||resumeLoaded)return;const id=new URLSearchParams(window.location.search).get("campaignId");if(id){setResumeLoaded(true);resumeCampaign(id).catch(e=>setErr(e.message))}else setResumeLoaded(true)},[token,resumeLoaded]);
@@ -227,7 +233,8 @@ export default function MailMergePage(){
   setBusy(true);setErr("");try{const d=await api("/api/mail-merge/queue",{method:"POST",body:JSON.stringify({campaignId})});const r=d.reasons||{};setMsg(d.message+(d.queued===0?" · Connection blocked: "+(r.disconnected||0)+"; cap blocked: "+(r.daily_hourly_cap||0)+"; already suppressed: "+(r.eligible_blocked||0)+".":" Browser can be closed after dispatch; the backend domain dispatcher owns delivery."));await load()}catch(e){setErr(e instanceof Error?e.message:"Queue failed")}finally{setBusy(false)}
  }
  async function syncReplies(){setBusy(true);setErr("");try{const d=await api("/api/mail-merge/sync-replies",{method:"POST"});setMsg(d.message);await load()}catch(e){setErr(e instanceof Error?e.message:"Reply sync failed")}finally{setBusy(false)}}
- async function send(){await queue()}\n function nextFromStage2(){
+ async function send(){await queue()}
+ function nextFromStage2(){
   if(selected.length<required){setErr(`Select/upload at least ${required} eligible leads for the selected account volume. You currently have ${selected.length}.`);return}
   const alloc=selectedByAccount;
   const nextBlocks:Block[]=[];
@@ -267,7 +274,8 @@ export default function MailMergePage(){
     <button onClick={()=>load()} className="rounded-xl border border-blue-100 p-3 text-indigo-600">{busy?<RefreshCw className="animate-spin" size={18}/>:<RefreshCw size={18}/>}</button>
    </header>
    <BlueprintNav/>
-   {(msg||err)&&<div className={`mb-5 rounded-2xl border p-4 text-sm ${err?"border-rose-100 bg-rose-50 text-rose-700":"border-emerald-100 bg-emerald-50 text-emerald-700"}`}>{err||msg}</div>}\n   {notifications.length>0&&<div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-[.16em]">Account attention required</div><div className="mt-1 text-sm">One or more mailboxes need reconnection. Sending automatically continues with other connected accounts.</div></div><button onClick={async()=>{const ids=notifications.map(n=>n.id);await api("/api/mail-merge/notifications",{method:"PATCH",body:JSON.stringify({ids})});setNotifications([])}} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold">Dismiss</button></div><div className="mt-3 space-y-2">{notifications.map(n=><div key={n.id} className="rounded-xl border border-amber-200 bg-white p-3"><div className="text-sm font-bold">{n.title}</div><div className="mt-1 text-xs leading-5 text-amber-800">{n.message}</div></div>)}</div></div>}
+   {(msg||err)&&<div className={`mb-5 rounded-2xl border p-4 text-sm ${err?"border-rose-100 bg-rose-50 text-rose-700":"border-emerald-100 bg-emerald-50 text-emerald-700"}`}>{err||msg}</div>}
+   {notifications.length>0&&<div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-[.16em]">Account attention required</div><div className="mt-1 text-sm">One or more mailboxes need reconnection. Sending automatically continues with other connected accounts.</div></div><button onClick={async()=>{const ids=notifications.map(n=>n.id);await api("/api/mail-merge/notifications",{method:"PATCH",body:JSON.stringify({ids})});setNotifications([])}} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold">Dismiss</button></div><div className="mt-3 space-y-2">{notifications.map(n=><div key={n.id} className="rounded-xl border border-amber-200 bg-white p-3"><div className="text-sm font-bold">{n.title}</div><div className="mt-1 text-xs leading-5 text-amber-800">{n.message}</div></div>)}</div></div>}
 
    <div className="os-stagger mb-3 grid grid-cols-4 gap-2">{["Email Accounts","Leads","Campaign Builder","Review & Dispatch"].map((x,i)=><div key={x} className={`os-card rounded-2xl border p-4 text-center text-xs font-black ${stage===i+1?"border-indigo-300 bg-indigo-50 text-indigo-700 shadow-md shadow-indigo-100":"border-blue-100 bg-white text-slate-400"}`}><span className={`mr-2 inline-grid h-6 w-6 place-items-center rounded-full bg-white shadow-sm ${stage===i+1?"os-health-dot":""}`}>{stage>i+1?<CheckCircle2 size={15}/>:i+1}</span>{x}</div>)}</div><div className="os-progress-track mb-6 h-1.5 rounded-full bg-blue-100"><div className="os-progress-fill h-full rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-violet-500" style={{width:`${stage*25}%`}}/></div>
 
@@ -283,7 +291,8 @@ export default function MailMergePage(){
     <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
      <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">2. Upload or select leads</h2><p className="mt-1 text-sm text-slate-500">You need <b>{required}</b> eligible leads for the selected account allocation. You can paste directly from Excel / Google Sheets or upload a file.</p></div><label className="cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700"><Upload size={16} className="mr-1 inline"/>{uploading?"Importing…":"Upload CSV / Excel"}<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadLeads(f)}}/></label></div>
-      <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4"><div className="text-sm font-black text-slate-700">Paste from Excel / Google Sheets</div><p className="mt-1 text-xs text-slate-500">Copy the header row and lead rows from your spreadsheet, then paste them below. The same Master Lead Sheet validation, duplicate protection and reconciliation rules apply.</p><textarea value={paste} onChange={e=>setPaste(e.target.value)} placeholder="Paste your header row and lead rows here…" className="mt-3 min-h-32 w-full resize-y rounded-xl border border-blue-100 bg-white p-3 font-mono text-xs leading-6 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"/><div className="mt-3 flex items-center justify-between gap-3"><span className="text-[11px] text-slate-400">{paste.trim()?paste.trim().split(/\r?\n/).length+" pasted lines":"Waiting for spreadsheet data"}</span><button onClick={pasteLeads} disabled={uploading||!paste.trim()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{uploading?"Importing…":"Validate & Add Leads"}</button></div></div>
+      <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4"><div className="text-sm font-black text-slate-700">Paste from Excel / Google Sheets</div><p className="mt-1 text-xs text-slate-500">Copy the header row and lead rows from your spreadsheet, then paste them below. The same Master Lead Sheet validation, duplicate protection and reconciliation rules apply.</p><textarea value={paste} onChange={e=>setPaste(e.target.value)} placeholder="Paste your header row and lead rows here…" className="mt-3 min-h-32 w-full resize-y rounded-xl border border-blue-100 bg-white p-3 font-mono text-xs leading-6 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"/><div className="mt-3 flex items-center justify-between gap-3"><span className="text-[11px] text-slate-400">{paste.trim()?paste.trim().split(/\r?
+/).length+" pasted lines":"Waiting for spreadsheet data"}</span><button onClick={pasteLeads} disabled={uploading||!paste.trim()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{uploading?"Importing…":"Validate & Add Leads"}</button></div></div>
       <div className="mt-5 flex gap-2 rounded-2xl bg-slate-50 p-2"><button onClick={()=>{setSourceMode("fresh");setFollowupSubjects({});setForm(f=>({...f,campaign_group:"Fresh Outreach"}));loadFreshLeads()}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="fresh"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Fresh eligible leads</button><button onClick={()=>{setSourceMode("followup");setForm(f=>({...f,campaign_group:"Follow-up 1"}))}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="followup"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Follow-up from campaign</button></div>
       {sourceMode==="followup"&&<select value={followupSource} onChange={e=>{setFollowupSource(e.target.value);loadFollowup(e.target.value)}} className="mt-4 w-full rounded-xl border border-blue-100 p-3"><option value="">Select previous campaign</option>{campaigns.filter(c=>c.id!==campaignId).map(c=><option key={c.id} value={c.id}>{c.name} · {c.country} · {c.campaign_group}</option>)}</select>}
       <div className="mt-4 flex gap-3"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search email, company or person" className="flex-1 rounded-xl border border-blue-100 p-3"/><button onClick={sourceMode==="fresh"?loadFreshLeads:()=>loadFollowup(followupSource)} className="rounded-xl border border-blue-100 px-4 font-bold text-indigo-600">Refresh</button></div>
