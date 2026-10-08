@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
   const leads = (data || []).map((lead: any) => ({ ...lead, lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned", uploader_name: ownerNames.get(lead.lead_owner) || "Unassigned" }));
   if (exportCsv) {
-    const esc = (v: unknown) => \`"\${String(v ?? "").replace(/"/g, '""')}"\`;
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const headers = ["Company Name","Email","Country","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
     const rows = leads.map((lead: any) => [lead.company_name,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
     return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
