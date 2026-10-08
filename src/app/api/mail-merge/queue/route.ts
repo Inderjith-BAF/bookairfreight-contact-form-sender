@@ -44,8 +44,11 @@ export async function POST(request:Request){
   const allowed=Math.max(0,Math.min(10,items.length,remainingDaily.get(sender)||0,remainingHourly.get(sender)||0));
   const take=items.slice(0,allowed);
   if(take.length){
-   const now=new Date().toISOString();
-   await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,updated_at:now}).in("id",take.map((r:any)=>r.id));
+   const nowDate=new Date();
+   const now=nowDate.toISOString();
+   // Pace each sending account: one recipient at least every 60 seconds.
+   const updates=take.map((r:any,index:number)=>admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:new Date(nowDate.getTime()+index*60_000).toISOString(),updated_at:now}).eq("id",r.id));
+   await Promise.all(updates);
    queued+=take.length;
    remainingDaily.set(sender,(remainingDaily.get(sender)||0)-take.length);
    remainingHourly.set(sender,(remainingHourly.get(sender)||0)-take.length);
@@ -54,5 +57,5 @@ export async function POST(request:Request){
  }
  await admin.from("mail_merge_campaigns").update({status:queued?"Queued":"Paused",updated_at:new Date().toISOString()}).eq("id",campaignId);
  await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped}});
- return NextResponse.json({queued,skipped,reasons,message:queued?"Queued "+queued+" recipients. The 10-recipient message-batch cap was enforced; account daily/hourly limits remain enforced.":"No recipients could be queued. Check mailbox connection and account daily/hourly limits.",status:queued?"Queued":"Paused"});
+ return NextResponse.json({queued,skipped,reasons,message:queued?"Queued "+queued+" recipients. The 10-recipient message-batch cap and 60-second per-account pacing are enforced; account daily/hourly limits remain enforced.":"No recipients could be queued. Check mailbox connection and account daily/hourly limits.",status:queued?"Queued":"Paused"});
 }
