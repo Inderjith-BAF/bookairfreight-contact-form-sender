@@ -39,6 +39,7 @@ export default function MailMergePage(){
  const [err,setErr]=useState("");
  const [q,setQ]=useState("");
  const [uploading,setUploading]=useState(false);
+ const [paste,setPaste]=useState("");
  const [form,setForm]=useState({name:"",country:"USA",campaign_group:"Fresh Outreach"});
  const [addAccountOpen,setAddAccountOpen]=useState(false);
  const [connectionBusy,setConnectionBusy]=useState<"google"|"microsoft"|null>(null);
@@ -121,14 +122,14 @@ export default function MailMergePage(){
    setStage(2);
   }catch(e){setErr(e instanceof Error?e.message:"Could not create campaign draft.")}finally{setBusy(false)}
  }
- async function uploadLeads(file:File){
+ async function importLeadGrid(grid:unknown[][],sourceName:string){
   setUploading(true);setErr("");setMsg("");
   try{
-   const buffer=await file.arrayBuffer();
-   const wb=XLSX.read(buffer,{type:"array"});
-   const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}) as Record<string,unknown>[];
-   if(!rows.length)throw new Error("The uploaded file has no lead rows.");
-   const d=await api("/api/leads",{method:"POST",body:JSON.stringify({rows,fileName:file.name})});
+   if(grid.length<2)throw new Error("Paste a header row followed by at least one lead row.");
+   const headers=(grid[0]||[]).map(v=>String(v??"").trim());
+   const rows=grid.slice(1).filter(r=>(r as unknown[]).some(v=>String(v??"").trim())).map(r=>Object.fromEntries(headers.map((h,i)=>[h,String((r as unknown[])[i]??"")])));
+   if(!rows.length)throw new Error("No lead rows were found.");
+   const d=await api("/api/leads",{method:"POST",body:JSON.stringify({rows,fileName:sourceName})});
    const eligible=await loadFreshLeads();
    if(sourceMode==="fresh"&&eligible.length){
     setSelected(eligible.slice(0,required).map((x:Lead)=>x.id));
@@ -136,7 +137,20 @@ export default function MailMergePage(){
    } else {
     setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped.`);
    }
-  }catch(e){setErr(e instanceof Error?e.message:"Lead upload failed.")}finally{setUploading(false)}
+   setPaste("");
+  }catch(e){setErr(e instanceof Error?e.message:"Lead import failed.")}finally{setUploading(false)}
+ }
+ async function uploadLeads(file:File){
+  const buffer=await file.arrayBuffer();
+  const wb=XLSX.read(buffer,{type:"array"});
+  const grid=XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+  await importLeadGrid(grid,file.name);
+ }
+ async function pasteLeads(){
+  if(!paste.trim())return;
+  const wb=XLSX.read(paste,{type:"string"});
+  const grid=XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+  await importLeadGrid(grid,"Clipboard paste");
  }
  async function saveMessageBlocks(){
   if(!campaignId)return;
@@ -215,7 +229,8 @@ export default function MailMergePage(){
    {stage===2&&<section className="mx-auto max-w-7xl space-y-5 stagger">
     <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
      <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">2. Upload or select leads</h2><p className="mt-1 text-sm text-slate-500">You need <b>{required}</b> eligible leads for the selected account allocation.</p></div><label className="cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700"><Upload size={16} className="mr-1 inline"/>{uploading?"Uploading…":"Upload CSV"}<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadLeads(f)}}/></label></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">2. Upload or select leads</h2><p className="mt-1 text-sm text-slate-500">You need <b>{required}</b> eligible leads for the selected account allocation. You can paste directly from Excel / Google Sheets or upload a file.</p></div><label className="cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700"><Upload size={16} className="mr-1 inline"/>{uploading?"Importing…":"Upload CSV / Excel"}<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadLeads(f)}}/></label></div>
+      <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4"><div className="text-sm font-black text-slate-700">Paste from Excel / Google Sheets</div><p className="mt-1 text-xs text-slate-500">Copy the header row and lead rows from your spreadsheet, then paste them below. The same Master Lead Sheet validation, duplicate protection and reconciliation rules apply.</p><textarea value={paste} onChange={e=>setPaste(e.target.value)} placeholder="Paste your header row and lead rows here…" className="mt-3 min-h-32 w-full resize-y rounded-xl border border-blue-100 bg-white p-3 font-mono text-xs leading-6 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"/><div className="mt-3 flex items-center justify-between gap-3"><span className="text-[11px] text-slate-400">{paste.trim()?paste.trim().split(/\r?\n/).length+" pasted lines":"Waiting for spreadsheet data"}</span><button onClick={pasteLeads} disabled={uploading||!paste.trim()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{uploading?"Importing…":"Validate & Add Leads"}</button></div></div>
       <div className="mt-5 flex gap-2 rounded-2xl bg-slate-50 p-2"><button onClick={()=>{setSourceMode("fresh");setFollowupSubjects({});setForm(f=>({...f,campaign_group:"Fresh Outreach"}));loadFreshLeads()}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="fresh"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Fresh eligible leads</button><button onClick={()=>{setSourceMode("followup");setForm(f=>({...f,campaign_group:"Follow-up 1"}))}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="followup"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Follow-up from campaign</button></div>
       {sourceMode==="followup"&&<select value={followupSource} onChange={e=>{setFollowupSource(e.target.value);loadFollowup(e.target.value)}} className="mt-4 w-full rounded-xl border border-blue-100 p-3"><option value="">Select previous campaign</option>{campaigns.filter(c=>c.id!==campaignId).map(c=><option key={c.id} value={c.id}>{c.name} · {c.country} · {c.campaign_group}</option>)}</select>}
       <div className="mt-4 flex gap-3"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search email, company or person" className="flex-1 rounded-xl border border-blue-100 p-3"/><button onClick={sourceMode==="fresh"?loadFreshLeads:()=>loadFollowup(followupSource)} className="rounded-xl border border-blue-100 px-4 font-bold text-indigo-600">Refresh</button></div>
