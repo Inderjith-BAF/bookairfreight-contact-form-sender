@@ -27,9 +27,9 @@ function sanitizeEmailHtml(input:string){
  html=html.replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,"");
  html=html.replace(/<([^>]+)>/g,(full:string,raw:string)=>{
   const close=/^\s*\/\s*([a-z0-9]+)/i.exec(raw);
-  if(close){const n=close[1].toLowerCase();return ["b","strong","i","em","u","s","p","br","ul","ol","li","a","span","font"].includes(n)?"</"+n+">":""}
+  if(close){const n=close[1].toLowerCase();return ["b","strong","i","em","u","s","p","div","br","ul","ol","li","a","span","font"].includes(n)?"</"+n+">":""}
   const m=/^\s*([a-z0-9]+)/i.exec(raw);if(!m)return "";
-  const n=m[1].toLowerCase();if(!["b","strong","i","em","u","s","p","br","ul","ol","li","a","span","font"].includes(n))return "";
+  const n=m[1].toLowerCase();if(!["b","strong","i","em","u","s","p","div","br","ul","ol","li","a","span","font"].includes(n))return "";
   if(n==="a"){const href=/href\s*=\s*["']([^"']+)["']/i.exec(raw)?.[1]||"";return (/^https?:\/\//i.test(href)||/^mailto:/i.test(href))?'<a href="'+attr(href)+'">':"<a>";}
   if(n==="font"){const color=/color\s*=\s*["'](#[0-9a-f]{3,8})["']/i.exec(raw)?.[1]||"";return color?'<font color="'+attr(color)+'">':"<font>";}
   return "<"+n+">";
