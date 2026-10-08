@@ -170,6 +170,7 @@ export async function POST(request: Request) {
         business_personal_email: value(raw, "Business / Personal Email"),
         fresh_outreach_assigned_to: value(raw, "Assigned to (Fresh Outreach)", "Assigned to Fresh Outreach"),
         fresh_outreach_assigned_date: value(raw, "Assigned Date (Fresh Outreach)"),
+        current_status: "New",
         lead_owner: profile.id
       };
       const { data: lead, error } = await admin.from("master_leads").insert(record).select("id").single();
