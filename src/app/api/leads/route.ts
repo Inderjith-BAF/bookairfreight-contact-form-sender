@@ -20,11 +20,17 @@ export async function GET(request: Request) {
   const q = (searchParams.get("q") || "").trim();
   const country = searchParams.get("country") || "";
   const status = searchParams.get("status") || "";
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
+  const exportCsv = searchParams.get("export") === "csv";
   const page = Math.max(1, Number(searchParams.get("page") || 1));
   const pageSize = Math.min(100, Math.max(10, Number(searchParams.get("pageSize") || 50)));
-  let query = admin.from("master_leads").select("*", { count: "exact" }).order("created_at", { ascending: false }).range((page-1)*pageSize, page*pageSize-1);
+  let query = admin.from("master_leads").select("*", { count: "exact" }).order("created_at", { ascending: false });
+  if (!exportCsv) query = query.range((page-1)*pageSize, page*pageSize-1);
   if (country) query = query.eq("country", country);
   if (status) query = query.eq("current_status", status);
+  if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
+  if (dateTo) query = query.lt("created_at", `${dateTo}T00:00:00.000Z`);
   if (q) query = query.or("email.ilike.%"+q+"%,company_name.ilike.%"+q+"%,first_name.ilike.%"+q+"%,last_name.ilike.%"+q+"%,country.ilike.%"+q+"%");
   const [{ data, error, count }, { data: batches, error: batchError }] = await Promise.all([
     query,
@@ -34,7 +40,13 @@ export async function GET(request: Request) {
   const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
   const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
   const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
-  const leads = (data || []).map((lead: any) => ({ ...lead, lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned" }));
+  const leads = (data || []).map((lead: any) => ({ ...lead, lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned", uploader_name: ownerNames.get(lead.lead_owner) || "Unassigned" }));
+  if (exportCsv) {
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, """")}"`;
+    const headers = ["Company Name","Email","Country","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
+    const rows = leads.map((lead: any) => [lead.company_name,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
+    return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
+  }
   const { data: team } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   return NextResponse.json({ leads, total: count || 0, page, pageSize, batches: batches || [], team: team || [] });
 }
