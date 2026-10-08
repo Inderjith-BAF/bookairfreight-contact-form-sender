@@ -77,7 +77,7 @@ export default function MailMergePage(){
   setLeads(eligible);
  },[api]);
 
- useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}};return()=>{mounted=false;data.subscription.unsubscribe()} } , [supabase]);
+ useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase]);
  useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
 
  async function signIn(){setErr("");const {data,error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPassword});if(error){setErr(error.message);return}setToken(data.session?.access_token||"")}
