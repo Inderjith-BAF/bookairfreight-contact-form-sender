@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-type Provider="google"|"microsoft";
+export type Provider="google"|"microsoft";
 const key=()=>Buffer.from(process.env.MAIL_MERGE_TOKEN_ENCRYPTION_KEY||"","hex");
 function requireKey(){const k=key();if(k.length!==32)throw new Error("MAIL_MERGE_TOKEN_ENCRYPTION_KEY must be a 64-character hex key.");return k;}
 export function encryptSecret(value:string){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv("aes-256-gcm",requireKey(),iv);const out=Buffer.concat([cipher.update(value,"utf8"),cipher.final()]);return [iv,cipher.getAuthTag(),out].map(x=>x.toString("base64url")).join(".");}
