@@ -139,6 +139,7 @@ export async function POST(request: Request) {
   const seen = new Set<string>();
   const results: Array<Record<string, unknown>> = [];
   const addedLeads: Array<Record<string, unknown>> = [];
+  const resolvedLeads: Array<Record<string, unknown>> = [];
   let added = 0, existing = 0, inBatch = 0, invalid = 0, missingCountry = 0;
   for (let i = 0; i < rows.length; i++) {
     const raw = rows[i] as Record<string, unknown>;
@@ -173,17 +174,21 @@ export async function POST(request: Request) {
         current_status: "New",
         lead_owner: profile.id
       };
-      const { data: lead, error } = await admin.from("master_leads").insert(record).select("id").single();
+      const { data: lead, error } = await admin.from("master_leads").insert(record).select("*").single();
       if (!error && lead) {
         added++;
         await admin.from("lead_activity_events").insert({ lead_id: lead.id, actor_id: profile.id, event_type: "lead_imported", details: { batch_id: batch.id, row_number: i+1, source: body?.fileName || "Pasted data" } });
         reason = "Added";
-        addedLeads.push({ id: lead.id, email, company_name: company, first_name: record.first_name, last_name: record.last_name, country: record.country, current_status: "New", suppression_reason: null });
+        addedLeads.push(lead);
+        resolvedLeads.push(lead);
         results.push({ row_number: i+1, email, company_name: company, result: "added", reason });
         continue;
       }
-      if (error?.code === "23505") { existing++; reason = "Email already exists in Master Lead Sheet"; }
-      else { invalid++; reason = error?.message || "Could not save row"; }
+      if (error?.code === "23505") {
+        existing++; reason = "Email already exists in Master Lead Sheet";
+        const { data: existingLead } = await admin.from("master_leads").select("*").eq("email", email).maybeSingle();
+        if (existingLead) resolvedLeads.push(existingLead);
+      } else { invalid++; reason = error?.message || "Could not save row"; }
     }
     results.push({ row_number: i+1, email, company_name: company, result: "skipped", reason });
   }
@@ -192,7 +197,7 @@ export async function POST(request: Request) {
   const { error: updateError } = await admin.from("lead_import_batches").update(counts).eq("id", batch.id);
   const { error: resultError } = await admin.from("lead_import_results").insert(results.map(r => ({ ...r, batch_id: batch.id })));
   if (updateError || resultError) return NextResponse.json({ error: updateError?.message || resultError?.message, batchId: batch.id, partial: true }, { status: 500 });
-  return NextResponse.json({ batchId: batch.id, ...counts, results, added_leads: addedLeads }, { status: 201 });
+  return NextResponse.json({ batchId: batch.id, ...counts, results, added_leads: addedLeads, resolved_leads: resolvedLeads }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
