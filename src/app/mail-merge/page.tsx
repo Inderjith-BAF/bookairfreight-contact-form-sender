@@ -130,12 +130,11 @@ export default function MailMergePage(){
    const rows=grid.slice(1).filter(r=>(r as unknown[]).some(v=>String(v??"").trim())).map(r=>Object.fromEntries(headers.map((h,i)=>[h,String((r as unknown[])[i]??"")])));
    if(!rows.length)throw new Error("No lead rows were found.");
    const d=await api("/api/leads",{method:"POST",body:JSON.stringify({rows,fileName:sourceName})});
-   const imported=(d.added_leads||[]) as Lead[];
-   const eligible=await loadFreshLeads();
-   const visible=[...imported,...eligible.filter((x:Lead)=>!imported.some((y:Lead)=>y.id===x.id))];
-   setLeads(visible);
-   if(sourceMode==="fresh"&&visible.length){
-    const chosen=visible.slice(0,required).map((x:Lead)=>x.id);
+   const resolved=(d.resolved_leads||d.added_leads||[]) as Lead[];
+   const eligible=resolved.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+   setLeads(eligible);
+   if(sourceMode==="fresh"&&eligible.length){
+    const chosen=eligible.slice(0,required).map((x:Lead)=>x.id);
     setSelected(chosen);
     setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped. ${chosen.length} of ${required} leads selected.`);
    } else {
