@@ -22,16 +22,41 @@ export async function GET(request: Request) {
   const status = searchParams.get("status") || "";
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
+  const company = searchParams.get("company") || "";
+  const contact = searchParams.get("contact") || "";
+  const industry = searchParams.get("industry") || "";
+  const ecommerce = searchParams.get("ecommerce") || "";
+  const leadOwner = searchParams.get("leadOwner") || "";
+  const validation = searchParams.get("validation") || "";
+  const emailFinding = searchParams.get("emailFinding") || "";
+  const suppression = searchParams.get("suppression") || "";
+  const updatedDate = searchParams.get("updatedDate") || "";
+  const lastContactDate = searchParams.get("lastContactDate") || "";
+  const lastReplyDate = searchParams.get("lastReplyDate") || "";
   const exportCsv = searchParams.get("export") === "csv";
   const page = Math.max(1, Number(searchParams.get("page") || 1));
   const pageSize = Math.min(100, Math.max(10, Number(searchParams.get("pageSize") || 50)));
+  const { data: team, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
+  if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
   let query = admin.from("master_leads").select("*", { count: "exact" }).order("created_at", { ascending: false });
   if (!exportCsv) query = query.range((page-1)*pageSize, page*pageSize-1);
   if (country) query = query.eq("country", country);
   if (status) query = query.eq("current_status", status);
   if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
   if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59.999Z`);
-  if (q) query = query.or("email.ilike.%"+q+"%,company_name.ilike.%"+q+"%,first_name.ilike.%"+q+"%,last_name.ilike.%"+q+"%,country.ilike.%"+q+"%");
+  if (q) query = query.or("email.ilike.%"+q+"%,company_name.ilike.%"+q+"%,first_name.ilike.%"+q+"%,last_name.ilike.%"+q+"%,country.ilike.%"+q+"%,title.ilike.%"+q+"%,main_industry.ilike.%"+q+"%,ecommerce_platform_used.ilike.%"+q+"%,assigned_to.ilike.%"+q+"%,email_finding_assigned_to.ilike.%"+q+"%,fresh_outreach_assigned_to.ilike.%"+q+"%,current_status.ilike.%"+q+"%,suppression_reason.ilike.%"+q+"%");
+  if (company) query = query.or("company_name.ilike.%"+company+"%,email.ilike.%"+company+"%");
+  if (contact) query = query.or("first_name.ilike.%"+contact+"%,last_name.ilike.%"+contact+"%,title.ilike.%"+contact+"%");
+  if (industry) query = query.ilike("main_industry", "%"+industry+"%");
+  if (ecommerce) query = query.ilike("ecommerce_platform_used", "%"+ecommerce+"%");
+  if (leadOwner) { const ownerName = (team || []).find((member:any)=>member.id===leadOwner)?.full_name; if (ownerName) query = query.or("current_workflow_assignee.eq."+leadOwner+",fresh_outreach_assigned_to.eq."+ownerName); }
+  if (validation) query = query.ilike("assigned_to", "%"+validation+"%");
+  if (emailFinding) query = query.ilike("email_finding_assigned_to", "%"+emailFinding+"%");
+  if (suppression) query = query.ilike("suppression_reason", "%"+suppression+"%");
+  const dayBounds = (date:string) => ({from:`${date}T00:00:00.000Z`,to:`${date}T23:59:59.999Z`});
+  if (updatedDate) { const d=dayBounds(updatedDate); query=query.gte("updated_at",d.from).lte("updated_at",d.to); }
+  if (lastContactDate) { const d=dayBounds(lastContactDate); query=query.gte("last_contacted_at",d.from).lte("last_contacted_at",d.to); }
+  if (lastReplyDate) { const d=dayBounds(lastReplyDate); query=query.gte("last_replied_at",d.from).lte("last_replied_at",d.to); }
   const [{ data, error, count }, { data: batches, error: batchError }] = await Promise.all([
     query,
     admin.from("lead_import_batches").select("*").order("started_at", { ascending: false }).limit(20)
@@ -47,8 +72,9 @@ export async function GET(request: Request) {
     const rows = leads.map((lead: any) => [lead.company_name,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
     return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
   }
-  const { data: team } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
-  return NextResponse.json({ leads, total: count || 0, page, pageSize, batches: batches || [], team: team || [] });
+  const teamByName = new Map((team || []).map((member:any)=>[String(member.full_name||"").trim().toLowerCase(), member.id]));
+  const leadsWithOwners = leads.map((lead:any)=>({ ...lead, fresh_outreach_owner_id: teamByName.get(String(lead.fresh_outreach_assigned_to||"").trim().toLowerCase()) || null }));
+  return NextResponse.json({ leads: leadsWithOwners, total: count || 0, page, pageSize, batches: batches || [], team: team || [] });
 }
 
 export async function POST(request: Request) {
