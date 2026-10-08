@@ -23,7 +23,7 @@ function RichEmailEditor({value,onChange,placeholder}:{value:string;onChange:(va
  const ref=useRef<HTMLDivElement|null>(null);
  const [focused,setFocused]=useState(false);
  useEffect(()=>{if(ref.current&&!focused&&ref.current.innerHTML!==value)ref.current.innerHTML=value||""},[value,focused]);
- const command=(name:string,arg?:string)=>{ref.current?.focus();try{document.execCommand(name,false,arg)}catch{}if(ref.current)onChange(ref.current.innerHTML)};
+ const command=(name:string,arg?:string)=>{ref.current?.focus();try{if(name==="foreColor")document.execCommand("styleWithCSS",false,"false");document.execCommand(name,false,arg)}catch{}if(ref.current)onChange(ref.current.innerHTML)};
  const colors=["#111827","#4d5cff","#0f766e","#dc2626","#d97706","#7c3aed"];
  return <div className="overflow-hidden rounded-xl border border-blue-100 bg-white">
   <div className="flex flex-wrap items-center gap-1 border-b border-blue-100 bg-slate-50 p-2">
