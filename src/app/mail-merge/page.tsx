@@ -58,7 +58,14 @@ export default function MailMergePage(){
   setSelectedAccounts(prev=>prev);
  },[api,token]);
 
- const loadFreshLeads=useCallback(async()=>{\n  const d=await api("/api/leads?country="+encodeURIComponent(form.country)+"&page=1&pageSize=1000");\n  const eligible=(d.leads||[]).filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));\n  setLeads(eligible);\n  return eligible;\n },[api,form.country]);\n\n const loadFollowup=useCallback(async(id:string)=>{
+ const loadFreshLeads=useCallback(async()=>{
+  const d=await api("/api/leads?country="+encodeURIComponent(form.country)+"&page=1&pageSize=1000");
+  const eligible=(d.leads||[]).filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+  setLeads(eligible);
+  return eligible;
+ },[api,form.country]);
+
+ const loadFollowup=useCallback(async(id:string)=>{
   if(!id)return;
   const d=await api("/api/mail-merge?id="+encodeURIComponent(id));
   const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads);
@@ -122,7 +129,14 @@ export default function MailMergePage(){
    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}) as Record<string,unknown>[];
    if(!rows.length)throw new Error("The uploaded file has no lead rows.");
    const d=await api("/api/leads",{method:"POST",body:JSON.stringify({rows,fileName:file.name})});
-   const eligible=await loadFreshLeads();\n   if(sourceMode==="fresh"&&eligible.length){\n    setSelected(eligible.slice(0,required).map((x:Lead)=>x.id));\n    setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped. ${Math.min(required,eligible.length)} eligible leads selected.`);\n   } else {\n    setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped.`);\n   }\n  }catch(e){setErr(e instanceof Error?e.message:"Lead upload failed.")}finally{setUploading(false)}
+   const eligible=await loadFreshLeads();
+   if(sourceMode==="fresh"&&eligible.length){
+    setSelected(eligible.slice(0,required).map((x:Lead)=>x.id));
+    setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped. ${Math.min(required,eligible.length)} eligible leads selected.`);
+   } else {
+    setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped.`);
+   }
+  }catch(e){setErr(e instanceof Error?e.message:"Lead upload failed.")}finally{setUploading(false)}
  }
  async function saveMessageBlocks(){
   if(!campaignId)return;
