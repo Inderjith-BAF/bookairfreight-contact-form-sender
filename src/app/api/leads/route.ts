@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   const { data: team, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
   let query = admin.from("master_leads").select("*", { count: "exact" }).order("created_at", { ascending: false });
-  if (!exportCsv) query = query.range((page-1)*pageSize, page*pageSize-1);
+  if (!exportCsv && !leadOwner) query = query.range((page-1)*pageSize, page*pageSize-1);
   if (country) query = query.eq("country", country);
   if (status) query = query.eq("current_status", status);
   if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
@@ -51,15 +51,6 @@ export async function GET(request: Request) {
   if (contact) query = query.or("first_name.ilike.%"+contact+"%,last_name.ilike.%"+contact+"%,title.ilike.%"+contact+"%");
   if (industry) query = query.ilike("main_industry", "%"+industry+"%");
   if (ecommerce) query = query.ilike("ecommerce_platform_used", "%"+ecommerce+"%");
-  if (leadOwner) {
-    const owner = (team || []).find((member:any)=>member.id===leadOwner);
-    if (owner) {
-      // Lead Owner in the registry is Fresh Outreach Owner. Legacy imported rows
-      // store the assignee as a name (usually first name), not the profile UUID.
-      const firstName = String(owner.full_name || "").trim().split(/\\s+/)[0];
-      if (firstName) query = query.ilike("fresh_outreach_assigned_to", `%${firstName}%`);
-    }
-  }
   if (validation) query = query.ilike("assigned_to", "%"+validation+"%");
   if (emailFinding) query = query.ilike("email_finding_assigned_to", "%"+emailFinding+"%");
   if (suppression) query = query.ilike("suppression_reason", "%"+suppression+"%");
@@ -75,26 +66,49 @@ export async function GET(request: Request) {
   const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
   const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
   const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
-  const leads = (data || []).map((lead: any) => ({ ...lead, lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned", uploader_name: ownerNames.get(lead.lead_owner) || "Unassigned" }));
+
+  // Resolve the Fresh Outreach owner from the actual imported field first, then
+  // expose its profile ID. This makes filtering independent of database text
+  // matching quirks and handles legacy first-name-only spreadsheet values.
+  const normalized = (value: unknown) => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  const teamById = new Map((team || []).map((member:any) => [member.id, member]));
+  const freshOwnerId = (value: unknown) => {
+    const target = normalized(value);
+    if (!target) return null;
+    const exact = (team || []).find((member:any) => normalized(member.full_name) === target);
+    if (exact) return exact.id;
+    const first = (team || []).filter((member:any) => normalized(member.full_name).split(" ")[0] === target);
+    return first.length === 1 ? first[0].id : null;
+  };
+
+  let leads = (data || []).map((lead: any) => ({
+    ...lead,
+    lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned",
+    uploader_name: ownerNames.get(lead.lead_owner) || "Unassigned",
+    fresh_outreach_owner_id: freshOwnerId(lead.fresh_outreach_assigned_to)
+  }));
+
+  // Lead Owner is explicitly the Fresh Outreach Owner in this registry.
+  // When selected, filter the fully resolved dataset before pagination.
+  if (leadOwner) {
+    leads = leads.filter((lead:any) => lead.fresh_outreach_owner_id === leadOwner);
+  }
+
+  const filteredTotal = leads.length;
+
   if (exportCsv) {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const headers = ["Company Name","Website","Email","Country","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
     const rows = leads.map((lead: any) => [lead.company_name,lead.location_on_site,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
     return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
   }
-  const teamMembers = team || [];
-  const normalized = (value: unknown) => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
-  const ownerIdForFreshOutreach = (value: unknown) => {
-    const target = normalized(value);
-    if (!target) return null;
-    const exact = teamMembers.find((member:any) => normalized(member.full_name) === target);
-    if (exact) return exact.id;
-    const firstNameMatches = teamMembers.filter((member:any) => normalized(member.full_name).split(" ")[0] === target);
-    if (firstNameMatches.length === 1) return firstNameMatches[0].id;
-    return null;
-  };
-  const leadsWithOwners = leads.map((lead:any)=>({ ...lead, fresh_outreach_owner_id: ownerIdForFreshOutreach(lead.fresh_outreach_assigned_to) }));
-  return NextResponse.json({ leads: leadsWithOwners, total: count || 0, page, pageSize, batches: batches || [], team: team || [] });
+
+  if (leadOwner) {
+    const startIndex = (page - 1) * pageSize;
+    leads = leads.slice(startIndex, startIndex + pageSize);
+  }
+
+  return NextResponse.json({ leads, total: leadOwner ? filteredTotal : count || 0, page, pageSize, batches: batches || [], team: team || [] });
 }
 
 export async function POST(request: Request) {
