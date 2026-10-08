@@ -15,7 +15,7 @@ const emailOk = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 export async function GET(request: Request) {
   const auth = await requireOutboundUser(request);
   if ("error" in auth) return auth.error;
-  const { admin } = auth;
+  const { admin, profile } = auth;
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || "").trim();
   const country = searchParams.get("country") || "";
@@ -38,6 +38,8 @@ export async function GET(request: Request) {
   const page = Math.max(1, Number(searchParams.get("page") || 1));
   const pageSize = Math.min(1000, Math.max(10, Number(searchParams.get("pageSize") || 50)));
   const { data: team, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
+  const isFullLeadAccess = profile.role === "admin" || profile.role === "lead_generation_admin";
+  const memberLeadOwner = isFullLeadAccess ? "" : profile.id;
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
   let query = admin.from("master_leads").select("*", { count: "exact" }).order("created_at", { ascending: false });
   if (!exportCsv && !leadOwner) query = query.range((page-1)*pageSize, page*pageSize-1);
@@ -54,6 +56,8 @@ export async function GET(request: Request) {
     query = values.length === 1 ? query.ilike("country", values[0]) : query.or(values.map(v => "country.ilike."+v.replace(/[,()]/g, "")).join(","));
   }
   if (status) query = query.eq("current_status", status);
+  // Employees only see leads they own. Admin and Lead Generation Admin retain the complete registry.
+  if (memberLeadOwner) query = query.eq("lead_owner", memberLeadOwner);
   if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
   if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59.999Z`);
   if (q) query = query.or("email.ilike.%"+q+"%,company_name.ilike.%"+q+"%,location_on_site.ilike.%"+q+"%,first_name.ilike.%"+q+"%,last_name.ilike.%"+q+"%,country.ilike.%"+q+"%,title.ilike.%"+q+"%,main_industry.ilike.%"+q+"%,ecommerce_platform_used.ilike.%"+q+"%,assigned_to.ilike.%"+q+"%,email_finding_assigned_to.ilike.%"+q+"%,fresh_outreach_assigned_to.ilike.%"+q+"%,current_status.ilike.%"+q+"%,suppression_reason.ilike.%"+q+"%");
@@ -82,13 +86,14 @@ export async function GET(request: Request) {
   // expose its profile ID. This makes filtering independent of database text
   // matching quirks and handles legacy first-name-only spreadsheet values.
   const normalized = (value: unknown) => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
-  const teamById = new Map((team || []).map((member:any) => [member.id, member]));
+  const visibleTeam = isFullLeadAccess ? (team || []) : (team || []).filter((member:any) => member.id === profile.id);
+  const teamById = new Map(visibleTeam.map((member:any) => [member.id, member]));
   const freshOwnerId = (value: unknown) => {
     const target = normalized(value);
     if (!target) return null;
-    const exact = (team || []).find((member:any) => normalized(member.full_name) === target);
+    const exact = visibleTeam.find((member:any) => normalized(member.full_name) === target);
     if (exact) return exact.id;
-    const first = (team || []).filter((member:any) => normalized(member.full_name).split(" ")[0] === target);
+    const first = visibleTeam.filter((member:any) => normalized(member.full_name).split(" ")[0] === target);
     return first.length === 1 ? first[0].id : null;
   };
 
@@ -119,7 +124,7 @@ export async function GET(request: Request) {
     leads = leads.slice(startIndex, startIndex + pageSize);
   }
 
-  return NextResponse.json({ leads, total: leadOwner ? filteredTotal : count || 0, page, pageSize, batches: batches || [], team: team || [] });
+  return NextResponse.json({ leads, total: leadOwner ? filteredTotal : count || 0, page, pageSize, batches: isFullLeadAccess ? (batches || []) : [], team: visibleTeam });
 }
 
 export async function POST(request: Request) {
