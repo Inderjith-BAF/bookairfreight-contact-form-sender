@@ -85,7 +85,8 @@ export default function MailMergePage(){
  },[selected,selectedAccounts,volumes]);
 
  function toggleAccount(id:string){
-  const account=accounts.find(a=>a.id===id);\n  if(account?.connection_status!=="Connected"){setErr("Connect this mailbox before selecting it for outreach.");return;}
+  const account=accounts.find(a=>a.id===id);
+  if(account?.connection_status!=="Connected"){setErr("Connect this mailbox before selecting it for outreach.");return;}
   setSelectedAccounts(prev=>{
    if(prev.includes(id))return prev.filter(x=>x!==id);
    return [...prev,id];
