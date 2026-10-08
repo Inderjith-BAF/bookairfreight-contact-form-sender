@@ -17,7 +17,7 @@ export async function GET(request:Request){
 export async function POST(request:Request){
  const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; if(!manager(profile))return NextResponse.json({error:"Campaign creation requires leadership or Lead Generation Admin."},{status:403});
  const b=await request.json().catch(()=>null); const name=String(b?.name||"").trim(),country=String(b?.country||"").trim(),group=String(b?.campaign_group||"Fresh Outreach"),subject=String(b?.subject||"").trim(),body=String(b?.body||"");
- if(!name||!country||!GROUPS.includes(group as any)||!subject||!body)return NextResponse.json({error:"Name, country, campaign group, subject and body are required."},{status:400});
+ if(!name||!country||!GROUPS.includes(group as any))return NextResponse.json({error:"Name, country and campaign group are required."},{status:400});
  const {data:campaign,error}=await admin.from("mail_merge_campaigns").insert({name,country,campaign_group:group,subject,body,status:"Draft",created_by:profile.id}).select("*").single();
  if(error)return NextResponse.json({error:error.message},{status:500}); await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_created",entity_type:"campaign",entity_id:campaign.id,after_value:campaign}); return NextResponse.json({campaign},{status:201});
 }
