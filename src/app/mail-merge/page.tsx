@@ -84,7 +84,8 @@ export default function MailMergePage(){
   return selectedAccounts.map(id=>{const count=Math.min(100,Math.max(1,Number(volumes[id]||10)));const ids=selected.slice(cursor,cursor+count);cursor+=ids.length;return {accountId:id,leadIds:ids}});
  },[selected,selectedAccounts,volumes]);
 
- function toggleAccount(id:string){\n  const account=accounts.find(a=>a.id===id);\n  if(account?.connection_status!=="Connected"){setErr("Connect this mailbox before selecting it for outreach.");return;}
+ function toggleAccount(id:string){
+  const account=accounts.find(a=>a.id===id);\n  if(account?.connection_status!=="Connected"){setErr("Connect this mailbox before selecting it for outreach.");return;}
   setSelectedAccounts(prev=>{
    if(prev.includes(id))return prev.filter(x=>x!==id);
    return [...prev,id];
