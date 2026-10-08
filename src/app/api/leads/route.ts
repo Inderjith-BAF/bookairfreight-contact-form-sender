@@ -23,6 +23,7 @@ export async function GET(request: Request) {
   const dateFrom = searchParams.get("dateFrom") || "";
   const dateTo = searchParams.get("dateTo") || "";
   const company = searchParams.get("company") || "";
+  const website = searchParams.get("website") || "";
   const contact = searchParams.get("contact") || "";
   const industry = searchParams.get("industry") || "";
   const ecommerce = searchParams.get("ecommerce") || "";
@@ -44,8 +45,9 @@ export async function GET(request: Request) {
   if (status) query = query.eq("current_status", status);
   if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
   if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59.999Z`);
-  if (q) query = query.or("email.ilike.%"+q+"%,company_name.ilike.%"+q+"%,first_name.ilike.%"+q+"%,last_name.ilike.%"+q+"%,country.ilike.%"+q+"%,title.ilike.%"+q+"%,main_industry.ilike.%"+q+"%,ecommerce_platform_used.ilike.%"+q+"%,assigned_to.ilike.%"+q+"%,email_finding_assigned_to.ilike.%"+q+"%,fresh_outreach_assigned_to.ilike.%"+q+"%,current_status.ilike.%"+q+"%,suppression_reason.ilike.%"+q+"%");
+  if (q) query = query.or("email.ilike.%"+q+"%,company_name.ilike.%"+q+"%,location_on_site.ilike.%"+q+"%,first_name.ilike.%"+q+"%,last_name.ilike.%"+q+"%,country.ilike.%"+q+"%,title.ilike.%"+q+"%,main_industry.ilike.%"+q+"%,ecommerce_platform_used.ilike.%"+q+"%,assigned_to.ilike.%"+q+"%,email_finding_assigned_to.ilike.%"+q+"%,fresh_outreach_assigned_to.ilike.%"+q+"%,current_status.ilike.%"+q+"%,suppression_reason.ilike.%"+q+"%");
   if (company) query = query.or("company_name.ilike.%"+company+"%,email.ilike.%"+company+"%");
+  if (website) query = query.ilike("location_on_site", "%"+website+"%");
   if (contact) query = query.or("first_name.ilike.%"+contact+"%,last_name.ilike.%"+contact+"%,title.ilike.%"+contact+"%");
   if (industry) query = query.ilike("main_industry", "%"+industry+"%");
   if (ecommerce) query = query.ilike("ecommerce_platform_used", "%"+ecommerce+"%");
@@ -68,8 +70,8 @@ export async function GET(request: Request) {
   const leads = (data || []).map((lead: any) => ({ ...lead, lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned", uploader_name: ownerNames.get(lead.lead_owner) || "Unassigned" }));
   if (exportCsv) {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const headers = ["Company Name","Email","Country","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
-    const rows = leads.map((lead: any) => [lead.company_name,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
+    const headers = ["Company Name","Website","Email","Country","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
+    const rows = leads.map((lead: any) => [lead.company_name,lead.location_on_site,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
     return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
   }
   const teamByName = new Map((team || []).map((member:any)=>[String(member.full_name||"").trim().toLowerCase(), member.id]));
