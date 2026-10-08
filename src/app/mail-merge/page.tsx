@@ -58,12 +58,7 @@ export default function MailMergePage(){
   setSelectedAccounts(prev=>prev);
  },[api,token]);
 
- const loadFreshLeads=useCallback(async()=>{
-  const d=await api("/api/leads?country="+encodeURIComponent(form.country)+"&page=1&pageSize=1000");
-  setLeads((d.leads||[]).filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status)));
- },[api,form.country]);
-
- const loadFollowup=useCallback(async(id:string)=>{
+ const loadFreshLeads=useCallback(async()=>{\n  const d=await api("/api/leads?country="+encodeURIComponent(form.country)+"&page=1&pageSize=1000");\n  const eligible=(d.leads||[]).filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));\n  setLeads(eligible);\n  return eligible;\n },[api,form.country]);\n\n const loadFollowup=useCallback(async(id:string)=>{
   if(!id)return;
   const d=await api("/api/mail-merge?id="+encodeURIComponent(id));
   const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads);
