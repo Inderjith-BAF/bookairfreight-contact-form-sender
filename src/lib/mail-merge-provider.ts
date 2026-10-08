@@ -68,13 +68,13 @@ export async function sendThroughProvider(account:Account,input:{to:string;subje
   const message:any={raw:mimeMessage(account.email,input.to,input.subject,html,headers)};
   if(input.replyToThreadId)message.threadId=input.replyToThreadId;
   const r=await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",{method:"POST",headers:{Authorization:"Bearer "+access,"Content-Type":"application/json"},body:JSON.stringify(message)});
-  const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error?.message||"Gmail rejected the message.");
+  const d=await r.json().catch(()=>({}));if(!r.ok){const message=d.error?.message||"Gmail rejected the message.";if(r.status===401||r.status===403)await markConnectionFailure(account,admin,message);throw new Error(message);}
   return {messageId:String(d.id||""),threadId:String(d.threadId||"")};
  }
- if(input.replyToMessageId){const r=await fetch("https://graph.microsoft.com/v1.0/me/messages/"+encodeURIComponent(input.replyToMessageId)+"/reply",{method:"POST",headers:{Authorization:"Bearer "+access,"Content-Type":"application/json"},body:JSON.stringify({message:{body:{contentType:"HTML",content:html}}})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error?.message||"Microsoft could not send the reply.");}return {messageId:input.replyToMessageId,threadId:""};}
+ if(input.replyToMessageId){const r=await fetch("https://graph.microsoft.com/v1.0/me/messages/"+encodeURIComponent(input.replyToMessageId)+"/reply",{method:"POST",headers:{Authorization:"Bearer "+access,"Content-Type":"application/json"},body:JSON.stringify({message:{body:{contentType:"HTML",content:html}}})});if(!r.ok){const d=await r.json().catch(()=>({}));const message=d.error?.message||"Microsoft could not send the reply.";if(r.status===401||r.status===403)await markConnectionFailure(account,admin,message);throw new Error(message);}return {messageId:input.replyToMessageId,threadId:""};}
  const r=await fetch("https://graph.microsoft.com/v1.0/me/messages",{method:"POST",headers:{Authorization:"Bearer "+access,"Content-Type":"application/json"},body:JSON.stringify({subject:input.subject,body:{contentType:"HTML",content:html},toRecipients:[{emailAddress:{address:input.to}}]})});
- const draft=await r.json().catch(()=>({}));if(!r.ok)throw new Error(draft.error?.message||"Microsoft Graph rejected the message.");
+ const draft=await r.json().catch(()=>({}));if(!r.ok){const message=draft.error?.message||"Microsoft Graph rejected the message.";if(r.status===401||r.status===403)await markConnectionFailure(account,admin,message);throw new Error(message);}
  const send=await fetch("https://graph.microsoft.com/v1.0/me/messages/"+encodeURIComponent(draft.id)+"/send",{method:"POST",headers:{Authorization:"Bearer "+access}});
- if(!send.ok){const d=await send.json().catch(()=>({}));throw new Error(d.error?.message||"Microsoft Graph could not send the message.");}
+ if(!send.ok){const d=await send.json().catch(()=>({}));const message=d.error?.message||"Microsoft Graph could not send the message.";if(send.status===401||send.status===403)await markConnectionFailure(account,admin,message);throw new Error(message);}
  return {messageId:String(draft.id||""),threadId:""};
 }
