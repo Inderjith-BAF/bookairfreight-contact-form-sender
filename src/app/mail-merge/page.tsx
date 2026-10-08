@@ -127,9 +127,7 @@ export default function MailMergePage(){
    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}) as Record<string,unknown>[];
    if(!rows.length)throw new Error("The uploaded file has no lead rows.");
    const d=await api("/api/leads",{method:"POST",body:JSON.stringify({rows,fileName:file.name})});
-   setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped.`);
-   await loadFreshLeads();
-  }catch(e){setErr(e instanceof Error?e.message:"Lead upload failed.")}finally{setUploading(false)}
+   const eligible=await loadFreshLeads();\n   if(sourceMode==="fresh"&&eligible.length){\n    setSelected(eligible.slice(0,required).map((x:Lead)=>x.id));\n    setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped. ${Math.min(required,eligible.length)} eligible leads selected.`);\n   } else {\n    setMsg(`Lead import complete · ${d.added_count||0} added · ${d.skipped_existing||0} existing/skipped.`);\n   }\n  }catch(e){setErr(e instanceof Error?e.message:"Lead upload failed.")}finally{setUploading(false)}
  }
  async function saveMessageBlocks(){
   if(!campaignId)return;
