@@ -19,8 +19,7 @@ async function microsoftAccess(account:Account,admin:any){
 export async function getProviderAccess(account:Account,admin:any){return account.provider==="google"?googleAccess(account,admin):microsoftAccess(account,admin);}
 const esc=(s:string)=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 export function renderTrackedHtml(body:string,trackingBase:string,token:string){
- let html=esc(body).replace(/\r?
-/g,"<br>");
+ let html=esc(body).replace(/\\r?\\n/g,"<br>");
  html=html.replace(/https?:\/\/[^\s<]+/gi,(url)=>'<a href="'+trackingBase+'/click/'+token+'?url='+encodeURIComponent(url)+'">'+url+'</a>');
  return html+'<img src="'+trackingBase+'/open/'+token+'" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" />';
 }
