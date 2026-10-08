@@ -4,7 +4,9 @@ import {oauthRedirect,providerConfigured,signOAuthState,type Provider} from "@/l
 export const runtime="nodejs";
 export async function POST(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
- const provider=new URL(request.url).searchParams.get("provider") as Provider;
+ const queryProvider=new URL(request.url).searchParams.get("provider");
+ const body=await request.json().catch(()=>({}));
+ const provider=(body.provider||queryProvider) as Provider;
  if(provider!=="google"&&provider!=="microsoft")return NextResponse.json({error:"Unsupported email provider."},{status:400});
  if(!providerConfigured(provider))return NextResponse.json({error:`${provider==="google"?"Google Workspace":"Microsoft 365"} connection is not configured in this environment yet.`},{status:503});
  const state=signOAuthState({provider,profileId:auth.profile.id,nonce:crypto.randomUUID()});
