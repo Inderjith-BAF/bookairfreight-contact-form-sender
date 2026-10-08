@@ -51,7 +51,17 @@ export async function GET(request: Request) {
   if (contact) query = query.or("first_name.ilike.%"+contact+"%,last_name.ilike.%"+contact+"%,title.ilike.%"+contact+"%");
   if (industry) query = query.ilike("main_industry", "%"+industry+"%");
   if (ecommerce) query = query.ilike("ecommerce_platform_used", "%"+ecommerce+"%");
-  if (leadOwner) { const ownerName = (team || []).find((member:any)=>member.id===leadOwner)?.full_name; if (ownerName) query = query.or("current_workflow_assignee.eq."+leadOwner+",fresh_outreach_assigned_to.eq."+ownerName); }
+  if (leadOwner) {
+    const owner = (team || []).find((member:any)=>member.id===leadOwner);
+    if (owner) {
+      const ownerName = String(owner.full_name || "").trim();
+      const firstName = ownerName.split(/\\s+/)[0];
+      const ownerClauses = [`current_workflow_assignee.eq.${owner.id}`];
+      if (ownerName) ownerClauses.push(`fresh_outreach_assigned_to.eq.${ownerName}`);
+      if (firstName) ownerClauses.push(`fresh_outreach_assigned_to.eq.${firstName}`);
+      query = query.or(ownerClauses.join(","));
+    }
+  }
   if (validation) query = query.ilike("assigned_to", "%"+validation+"%");
   if (emailFinding) query = query.ilike("email_finding_assigned_to", "%"+emailFinding+"%");
   if (suppression) query = query.ilike("suppression_reason", "%"+suppression+"%");
