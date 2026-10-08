@@ -54,14 +54,10 @@ export async function GET(request: Request) {
   if (leadOwner) {
     const owner = (team || []).find((member:any)=>member.id===leadOwner);
     if (owner) {
-      const ownerName = String(owner.full_name || "").trim();
-      const firstName = ownerName.split(/\\s+/)[0];
-      const ownerTerms = [ownerName, firstName].filter(Boolean);
-      // Fresh Outreach is the source of truth for this filter. Legacy spreadsheet
-      // values may contain either the first name or the full name.
-      const clauses = ownerTerms.map((term:string) => `fresh_outreach_assigned_to.ilike.%${term}%`);
-      clauses.push(`current_workflow_assignee.eq.${owner.id}`);
-      query = query.or(clauses.join(","));
+      // Lead Owner in the registry is Fresh Outreach Owner. Legacy imported rows
+      // store the assignee as a name (usually first name), not the profile UUID.
+      const firstName = String(owner.full_name || "").trim().split(/\\s+/)[0];
+      if (firstName) query = query.ilike("fresh_outreach_assigned_to", `%${firstName}%`);
     }
   }
   if (validation) query = query.ilike("assigned_to", "%"+validation+"%");
