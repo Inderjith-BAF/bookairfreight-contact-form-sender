@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireOutboundUser } from "@/lib/outbound-auth";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
-export async function GET(request:Request){const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;const {admin}=auth;
+export async function GET(request:Request){const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;const {admin,profile}=auth;
 const [{data:accounts,error:aErr},{data:events,error:eErr}]=await Promise.all([
- admin.from("outbound_email_accounts").select("*").order("email"),
+ profile.role==="member" ? admin.from("outbound_email_accounts").select("*").eq("employee_id",profile.id).order("email") : admin.from("outbound_email_accounts").select("*").order("email"),
  admin.from("mail_merge_events").select("sender_account_id,event_type,created_at,details").order("created_at",{ascending:false}).limit(5000)
 ]);if(aErr||eErr)return NextResponse.json({error:aErr?.message||eErr?.message},{status:500});
 const now=Date.now(),day=now-86400000,week=now-7*86400000;
