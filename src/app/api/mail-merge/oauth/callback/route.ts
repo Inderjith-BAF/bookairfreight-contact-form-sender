@@ -29,5 +29,6 @@ export async function GET(request:Request){
  const existing=existingAccount;
  const result=existing?await admin.from("outbound_email_accounts").update(row).eq("id",existing.id).select("*").single():await admin.from("outbound_email_accounts").insert(row).select("*").single();
  if(result.error)return NextResponse.redirect(new URL("/mail-merge?connection=error&reason="+encodeURIComponent(result.error.message),request.url));
+ await admin.from("mail_merge_notifications").update({read_at:new Date().toISOString()}).eq("recipient_profile_id",parsed.profileId).eq("account_id",result.data.id).eq("notification_type","account_disconnected");
  return NextResponse.redirect(new URL("/mail-merge?connection=success&email="+encodeURIComponent(email),request.url));
 }
