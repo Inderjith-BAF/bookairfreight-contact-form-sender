@@ -74,7 +74,7 @@ export default function MailMergePage(){
   setLeads(eligible);
  },[api]);
 
- useEffect(()=>{supabase.auth.getSession().then(({data})=>{if(data.session)setToken(data.session.access_token)})},[supabase]);
+ useEffect(()=>{supabase.auth.getSession().then(({data})=>{if(data.session)setToken(data.session.access_token)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}} , [supabase]);
  useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
 
  const required=selectedAccounts.reduce((n,id)=>n+Math.min(100,Math.max(1,Number(volumes[id]||10))),0);
