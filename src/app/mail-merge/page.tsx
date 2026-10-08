@@ -7,7 +7,7 @@ import { AnimatedNumber } from "@/components/animated-number";
 import { CheckCircle2, ChevronLeft, ChevronRight, Plus, RefreshCw, Send, ShieldCheck, Upload } from "lucide-react";
 import * as XLSX from "xlsx";
 
-type Account={id:string;email:string;health_status:string;daily_send_limit:number;hourly_send_limit:number;total_sent:number;employee_id?:string};
+type Account={id:string;email:string;health_status:string;daily_send_limit:number;hourly_send_limit:number;total_sent:number;employee_id?:string;provider?:string|null;connection_status?:string;connection_error?:string|null;last_verified_at?:string|null};
 type Lead={id:string;email:string;company_name:string;first_name:string;last_name:string;country:string;current_status:string;suppression_reason:string|null};
 type Campaign={id:string;name:string;country:string;campaign_group:string;subject:string;body:string;status:string};
 type Block={batchId:string;accountId:string;leadIds:string[];subject:string;body:string};
@@ -38,7 +38,7 @@ export default function MailMergePage(){
  const [uploading,setUploading]=useState(false);
  const [form,setForm]=useState({name:"",country:"USA",campaign_group:"Fresh Outreach"});
  const [addAccountOpen,setAddAccountOpen]=useState(false);
- const [newAccountEmail,setNewAccountEmail]=useState("");
+ const [connectionBusy,setConnectionBusy]=useState<"google"|"microsoft"|null>(null);
 
  const api=useCallback(async(path:string,options?:RequestInit)=>{
   const r=await fetch(path,{...options,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(options?.headers||{})}});
@@ -84,7 +84,7 @@ export default function MailMergePage(){
   return selectedAccounts.map(id=>{const count=Math.min(100,Math.max(1,Number(volumes[id]||10)));const ids=selected.slice(cursor,cursor+count);cursor+=ids.length;return {accountId:id,leadIds:ids}});
  },[selected,selectedAccounts,volumes]);
 
- function toggleAccount(id:string){
+ function toggleAccount(id:string){\n  const account=accounts.find(a=>a.id===id);\n  if(account?.connection_status!=="Connected"){setErr("Connect this mailbox before selecting it for outreach.");return;}
   setSelectedAccounts(prev=>{
    if(prev.includes(id))return prev.filter(x=>x!==id);
    return [...prev,id];
@@ -93,20 +93,12 @@ export default function MailMergePage(){
  function setVolume(id:string,value:number){
   setVolumes(v=>({...v,[id]:Math.min(100,Math.max(1,Number.isFinite(value)?value:1))}));
  }
- async function addEmailAccount(){
-  const email=newAccountEmail.trim();
-  if(!email){setErr("Enter an email account address.");return;}
-  if(!/^\S+@\S+\.\S+$/.test(email)){setErr("Enter a valid email address.");return;}
-  setBusy(true);setErr("");setMsg("");
+ async function connectProvider(provider:"google"|"microsoft"){
+  setConnectionBusy(provider);setErr("");setMsg("");
   try{
-   const d=await api("/api/mail-merge",{method:"POST",body:JSON.stringify({action:"add_account",email})});
-   setAccounts(a=>[d.account,...a]);
-   setSelectedAccounts(x=>x.includes(d.account.id)?x:[...x,d.account.id]);
-   setVolumes(v=>({...v,[d.account.id]:10}));
-   setNewAccountEmail("");
-   setAddAccountOpen(false);
-   setMsg(`${email} added to your outreach accounts.`);
-  }catch(e){setErr(e instanceof Error?e.message:"Could not add email account.")}finally{setBusy(false)}
+   const d=await api("/api/mail-merge/oauth/start",{method:"POST",body:JSON.stringify({provider})});
+   window.location.href=d.url;
+  }catch(e){setErr(e instanceof Error?e.message:"Could not start mailbox connection.");setConnectionBusy(null)}
  }
  async function createDraft(){
   setBusy(true);setErr("");setMsg("");
@@ -197,8 +189,8 @@ export default function MailMergePage(){
 
    {stage===1&&<section className="mx-auto max-w-6xl space-y-5 stagger">
     <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
-     <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">1. Select outreach email accounts</h2><p className="mt-1 text-sm text-slate-500">Choose the accounts for this campaign. Set the outreach volume per account; backend limits remain enforced.</p></div><button onClick={()=>{setErr("");setNewAccountEmail("");setAddAccountOpen(true)}} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all hover:-translate-y-1 hover:shadow-indigo-300"><Plus size={16} className="mr-1 inline"/>Add email account</button></div>
-     <div className="mt-5 grid gap-4 md:grid-cols-2">{accounts.map(a=>{const checked=selectedAccounts.includes(a.id);const remaining=Math.max(0,Math.min(Number(a.daily_send_limit||0),Number(a.hourly_send_limit||0)));return <div key={a.id} className={`os-card lift rounded-2xl border p-5 transition-all duration-300 ${checked?"border-indigo-300 bg-indigo-50/40 ring-1 ring-indigo-200 shadow-lg shadow-indigo-100":"border-blue-100 bg-white"}`}><div className="flex items-start justify-between gap-3"><label className="flex items-center gap-3"><input type="checkbox" checked={checked} onChange={()=>toggleAccount(a.id)} className="h-5 w-5"/><div><div className="font-black">{a.email}</div><div className="mt-1 text-xs text-slate-500">{a.health_status} · {a.total_sent||0} sent</div></div></label><span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-slate-500">Backend remaining ≥ {remaining}</span></div>{checked&&<div className="mt-5"><div className="flex items-center justify-between text-xs font-bold"><span>Outreach volume for this campaign</span><span className="text-indigo-600">{volumes[a.id]||10} / 100</span></div><input type="range" min="1" max="100" value={volumes[a.id]||10} onChange={e=>setVolume(a.id,Number(e.target.value))} className="mt-3 w-full"/><p className="mt-2 text-[11px] text-slate-500">This is your campaign allocation only. You can allocate multiple 10-recipient message blocks; daily/hourly/provider limits are still enforced by the backend.</p></div>}</div>})}</div>
+     <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">1. Select outreach email accounts</h2><p className="mt-1 text-sm text-slate-500">Choose the accounts for this campaign. Set the outreach volume per account; backend limits remain enforced.</p></div><button onClick={()=>{setErr("");setAddAccountOpen(true)}} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all hover:-translate-y-1 hover:shadow-indigo-300"><Plus size={16} className="mr-1 inline"/>Add email account</button></div>
+     <div className="mt-5 grid gap-4 md:grid-cols-2">{accounts.map(a=>{const checked=selectedAccounts.includes(a.id);const connected=a.connection_status==="Connected";const remaining=Math.max(0,Math.min(Number(a.daily_send_limit||0),Number(a.hourly_send_limit||0)));return <div key={a.id} className={`os-card lift rounded-2xl border p-5 transition-all duration-300 ${checked?"border-indigo-300 bg-indigo-50/40 ring-1 ring-indigo-200 shadow-lg shadow-indigo-100":"border-blue-100 bg-white"}`}><div className="flex items-start justify-between gap-3"><label className="flex items-center gap-3"><input type="checkbox" checked={checked} disabled={!connected} onChange={()=>toggleAccount(a.id)} className="h-5 w-5"/><div><div className="font-black">{a.email}</div><div className="mt-1 flex items-center gap-2 text-xs text-slate-500"><span>{a.health_status} · {a.total_sent||0} sent</span><span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${connected?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-700"}`}>{connected?"Connected":"Needs connection"}</span></div></div></label><span className={`rounded-full px-3 py-1 text-[10px] font-black ${connected?"bg-white text-slate-500":"bg-amber-50 text-amber-700"}`}>{connected?"Backend remaining ≥ "+remaining:"Connect to enable sending"}</span></div>{checked&&<div className="mt-5"><div className="flex items-center justify-between text-xs font-bold"><span>Outreach volume for this campaign</span><span className="text-indigo-600">{volumes[a.id]||10} / 100</span></div><input type="range" min="1" max="100" value={volumes[a.id]||10} onChange={e=>setVolume(a.id,Number(e.target.value))} className="mt-3 w-full"/><p className="mt-2 text-[11px] text-slate-500">This is your campaign allocation only. You can allocate multiple 10-recipient message blocks; daily/hourly/provider limits are still enforced by the backend.</p></div>}</div>})}</div>
     </div>
     <div className="os-card rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><h2 className="font-black">Campaign setup</h2><div className="mt-4 grid gap-3 md:grid-cols-3"><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Campaign name" className="rounded-xl border border-blue-100 p-3"/><input value={form.country} onChange={e=>setForm({...form,country:e.target.value})} placeholder="Country" className="rounded-xl border border-blue-100 p-3"/><select value={form.campaign_group} onChange={e=>setForm({...form,campaign_group:e.target.value})} className="rounded-xl border border-blue-100 p-3">{groups.map(g=><option key={g}>{g}</option>)}</select></div><div className="mt-5 flex justify-end"><button onClick={createDraft} disabled={busy} className="rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white disabled:opacity-40">Continue to Leads <ChevronRight size={16} className="ml-1 inline"/></button></div></div>
    </section>}
@@ -233,21 +225,18 @@ export default function MailMergePage(){
    <div className="add-account-panel shimmer" onMouseDown={e=>e.stopPropagation()}>
     <div className="flex items-start justify-between gap-4">
      <div>
-      <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-[.18em] text-indigo-600"><Plus size={13}/> Outreach account</div>
+      <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-[.18em] text-indigo-600"><ShieldCheck size={13}/> Secure mailbox connection</div>
       <h2 id="add-account-title" className="text-2xl font-black">Connect an email account</h2>
-      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Add the sending address to this OS first. Provider authentication and backend safety limits remain controlled by the outbound infrastructure.</p>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Authenticate the real mailbox you want BookAirfreight OS to send from. An email address alone is never treated as a connected sending account.</p>
      </div>
      <button type="button" onClick={()=>setAddAccountOpen(false)} className="rounded-full border border-blue-100 bg-white p-2 text-slate-500 transition hover:rotate-90" aria-label="Close">×</button>
     </div>
-    <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
-     <label className="text-xs font-black uppercase tracking-wider text-indigo-700">Email account address</label>
-     <input autoFocus value={newAccountEmail} onChange={e=>setNewAccountEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addEmailAccount()}} placeholder="outreach@yourdomain.com" className="mt-2 w-full rounded-xl border border-indigo-100 bg-white p-3 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"/>
-     <p className="mt-2 text-[11px] text-slate-500">You can set the campaign outreach volume after the account is added.</p>
+    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+      <button type="button" onClick={()=>connectProvider("google")} disabled={!!connectionBusy} className="os-interactive rounded-2xl border border-blue-100 bg-white p-5 text-left shadow-sm disabled:opacity-50"><div className="text-sm font-black">Google Workspace</div><div className="mt-1 text-xs leading-5 text-slate-500">Connect Gmail with OAuth for sending and reply tracking.</div><div className="mt-4 text-xs font-black text-indigo-600">{connectionBusy==="google"?"Redirecting…":"Connect Google →"}</div></button>
+      <button type="button" onClick={()=>connectProvider("microsoft")} disabled={!!connectionBusy} className="os-interactive rounded-2xl border border-blue-100 bg-white p-5 text-left shadow-sm disabled:opacity-50"><div className="text-sm font-black">Microsoft 365</div><div className="mt-1 text-xs leading-5 text-slate-500">Connect Outlook / Microsoft 365 with OAuth for sending and reply tracking.</div><div className="mt-4 text-xs font-black text-indigo-600">{connectionBusy==="microsoft"?"Redirecting…":"Connect Microsoft →"}</div></button>
     </div>
-    <div className="mt-6 flex justify-end gap-3">
-     <button type="button" onClick={()=>setAddAccountOpen(false)} className="rounded-xl border border-blue-100 bg-white px-5 py-3 text-sm font-bold text-slate-600">Cancel</button>
-     <button type="button" onClick={addEmailAccount} disabled={busy} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 disabled:opacity-50">{busy?"Adding…":"Add account"} <ChevronRight size={15} className="ml-1 inline"/></button>
-    </div>
+    <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs leading-5 text-amber-800"><b>Security:</b> mailbox credentials are never stored in the browser. OAuth tokens are encrypted server-side.</div>
+    <div className="mt-6 flex justify-end"><button type="button" onClick={()=>setAddAccountOpen(false)} className="rounded-xl border border-blue-100 bg-white px-5 py-3 text-sm font-bold text-slate-600">Cancel</button></div>
    </div>
   </div>}
   </div>
