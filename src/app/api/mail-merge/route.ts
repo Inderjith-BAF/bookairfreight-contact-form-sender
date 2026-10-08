@@ -39,3 +39,20 @@ export async function PATCH(request:Request){
  const {data:campaign,error}=await admin.from("mail_merge_campaigns").update({...patch,updated_at:new Date().toISOString()}).eq("id",id).select("*").single(); if(error)return NextResponse.json({error:error.message},{status:500});
  await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_updated",entity_type:"campaign",entity_id:id,before_value:before,after_value:campaign}); return NextResponse.json({campaign});
 }
+
+
+export async function DELETE(request:Request){
+ const auth=await requireOutboundUser(request); if("error" in auth)return auth.error;
+ const {admin,profile}=auth; const id=new URL(request.url).searchParams.get("id")||"";
+ if(!id)return NextResponse.json({error:"Campaign ID is required."},{status:400});
+ const {data:campaign,error:read}=await admin.from("mail_merge_campaigns").select("*").eq("id",id).maybeSingle();
+ if(read||!campaign)return NextResponse.json({error:read?.message||"Campaign not found."},{status:404});
+ if(campaign.status!=="Draft")return NextResponse.json({error:"Only draft campaigns can be deleted."},{status:409});
+ if(profile.role==="member"||(!manager(profile)&&campaign.created_by!==profile.id))return NextResponse.json({error:"Not authorized."},{status:403});
+ const {error:recipientsError}=await admin.from("mail_merge_campaign_recipients").delete().eq("campaign_id",id);
+ if(recipientsError)return NextResponse.json({error:recipientsError.message},{status:500});
+ const {error:deleteError}=await admin.from("mail_merge_campaigns").delete().eq("id",id);
+ if(deleteError)return NextResponse.json({error:deleteError.message},{status:500});
+ await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_deleted",entity_type:"campaign",entity_id:id,before_value:campaign});
+ return NextResponse.json({deleted:true,id});
+}
