@@ -70,7 +70,7 @@ export default function MailMergePage(){
  const [form,setForm]=useState({name:"",country:"USA",campaign_group:"Fresh Outreach"});
  const [addAccountOpen,setAddAccountOpen]=useState(false);
  const [connectionBusy,setConnectionBusy]=useState<"google"|"microsoft"|null>(null);
- const [resumeLoaded,setResumeLoaded]=useState(false);
+ const [resumeLoaded,setResumeLoaded]=useState(false);\n const [notifications,setNotifications]=useState<Array<{id:string;title:string;message:string;created_at:string;account_id?:string|null}>>([]);
 
  const api=useCallback(async(path:string,options?:RequestInit)=>{
   const r=await fetch(path,{...options,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(options?.headers||{})}});
@@ -79,7 +79,7 @@ export default function MailMergePage(){
   return d;
  },[token]);
 
- const load=useCallback(async()=>{
+ const loadNotifications=useCallback(async()=>{\n  if(!token)return;\n  try{const d=await api("/api/mail-merge/notifications");setNotifications(d.notifications||[])}catch{}\n },[api,token]);\n const load=useCallback(async()=>{
   if(!token)return;
   const d=await api("/api/mail-merge");
   setCampaigns(d.campaigns||[]);
@@ -109,7 +109,7 @@ export default function MailMergePage(){
  },[api]);
 
  useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase]);
- useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
+ useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);\n useEffect(()=>{if(!token)return;loadNotifications();const timer=window.setInterval(loadNotifications,30000);return()=>window.clearInterval(timer)},[token,loadNotifications]);
  // resumeCampaign is intentionally excluded because it is a function declaration recreated on render; token/resumeLoaded are the actual triggers.
  // eslint-disable-next-line react-hooks/exhaustive-deps
  useEffect(()=>{if(!token||resumeLoaded)return;const id=new URLSearchParams(window.location.search).get("campaignId");if(id){setResumeLoaded(true);resumeCampaign(id).catch(e=>setErr(e.message))}else setResumeLoaded(true)},[token,resumeLoaded]);
@@ -224,39 +224,10 @@ export default function MailMergePage(){
   }catch(e){setErr(e instanceof Error?e.message:"Could not save campaign messages.")}finally{setBusy(false)}
  }
  async function queue(){
-  setBusy(true);setErr("");try{const d=await api("/api/mail-merge/queue",{method:"POST",body:JSON.stringify({campaignId})});const r=d.reasons||{};setMsg(d.message+(d.queued===0?" · Connection blocked: "+(r.disconnected||0)+"; cap blocked: "+(r.daily_hourly_cap||0)+"; already suppressed: "+(r.eligible_blocked||0)+".":""));await load()}catch(e){setErr(e instanceof Error?e.message:"Queue failed")}finally{setBusy(false)}
+  setBusy(true);setErr("");try{const d=await api("/api/mail-merge/queue",{method:"POST",body:JSON.stringify({campaignId})});const r=d.reasons||{};setMsg(d.message+(d.queued===0?" · Connection blocked: "+(r.disconnected||0)+"; cap blocked: "+(r.daily_hourly_cap||0)+"; already suppressed: "+(r.eligible_blocked||0)+".":" Browser can be closed after dispatch; the backend domain dispatcher owns delivery."));await load()}catch(e){setErr(e instanceof Error?e.message:"Queue failed")}finally{setBusy(false)}
  }
  async function syncReplies(){setBusy(true);setErr("");try{const d=await api("/api/mail-merge/sync-replies",{method:"POST"});setMsg(d.message);await load()}catch(e){setErr(e instanceof Error?e.message:"Reply sync failed")}finally{setBusy(false)}}
- async function send(){
-  setBusy(true);setErr("");setMsg("Paced dispatch started · minimum 60 seconds between emails from the same sending account.");
-  let totalSent=0,totalFailed=0;
-  try{
-   for(let attempt=0;attempt<200;attempt++){
-    try{
-     const d=await api("/api/mail-merge/send",{method:"POST",body:JSON.stringify({campaignId})});
-     totalSent+=Number(d.sent||0);totalFailed+=Number(d.failed||0);
-     if(!d.remaining){
-      setMsg(`Paced dispatch complete · ${totalSent} sent · ${totalFailed} failed.`);
-      await load();
-      break;
-     }
-     await load();
-     await new Promise(resolve=>setTimeout(resolve,15000));
-    }catch(e){
-     const next=(e as Error & {next_send_at?:string|null})?.next_send_at;
-     if(next){
-      const wait=Math.max(1000,Math.min(120000,Date.parse(String(next))-Date.now()+1000));
-      setMsg(`Paced dispatch active · next email scheduled for ${new Date(String(next)).toLocaleTimeString()}.`);
-      await new Promise(resolve=>setTimeout(resolve,wait));
-      continue;
-     }
-     throw e;
-    }
-   }
-  }catch(e){setErr(e instanceof Error?e.message:"Dispatch failed")}
-  finally{setBusy(false)}
- }
- function nextFromStage2(){
+ async function send(){await queue()}\n function nextFromStage2(){
   if(selected.length<required){setErr(`Select/upload at least ${required} eligible leads for the selected account volume. You currently have ${selected.length}.`);return}
   const alloc=selectedByAccount;
   const nextBlocks:Block[]=[];
@@ -296,7 +267,7 @@ export default function MailMergePage(){
     <button onClick={()=>load()} className="rounded-xl border border-blue-100 p-3 text-indigo-600">{busy?<RefreshCw className="animate-spin" size={18}/>:<RefreshCw size={18}/>}</button>
    </header>
    <BlueprintNav/>
-   {(msg||err)&&<div className={`mb-5 rounded-2xl border p-4 text-sm ${err?"border-rose-100 bg-rose-50 text-rose-700":"border-emerald-100 bg-emerald-50 text-emerald-700"}`}>{err||msg}</div>}
+   {(msg||err)&&<div className={`mb-5 rounded-2xl border p-4 text-sm ${err?"border-rose-100 bg-rose-50 text-rose-700":"border-emerald-100 bg-emerald-50 text-emerald-700"}`}>{err||msg}</div>}\n   {notifications.length>0&&<div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-[.16em]">Account attention required</div><div className="mt-1 text-sm">One or more mailboxes need reconnection. Sending automatically continues with other connected accounts.</div></div><button onClick={async()=>{const ids=notifications.map(n=>n.id);await api("/api/mail-merge/notifications",{method:"PATCH",body:JSON.stringify({ids})});setNotifications([])}} className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold">Dismiss</button></div><div className="mt-3 space-y-2">{notifications.map(n=><div key={n.id} className="rounded-xl border border-amber-200 bg-white p-3"><div className="text-sm font-bold">{n.title}</div><div className="mt-1 text-xs leading-5 text-amber-800">{n.message}</div></div>)}</div></div>}
 
    <div className="os-stagger mb-3 grid grid-cols-4 gap-2">{["Email Accounts","Leads","Campaign Builder","Review & Dispatch"].map((x,i)=><div key={x} className={`os-card rounded-2xl border p-4 text-center text-xs font-black ${stage===i+1?"border-indigo-300 bg-indigo-50 text-indigo-700 shadow-md shadow-indigo-100":"border-blue-100 bg-white text-slate-400"}`}><span className={`mr-2 inline-grid h-6 w-6 place-items-center rounded-full bg-white shadow-sm ${stage===i+1?"os-health-dot":""}`}>{stage>i+1?<CheckCircle2 size={15}/>:i+1}</span>{x}</div>)}</div><div className="os-progress-track mb-6 h-1.5 rounded-full bg-blue-100"><div className="os-progress-fill h-full rounded-full bg-gradient-to-r from-cyan-400 via-indigo-500 to-violet-500" style={{width:`${stage*25}%`}}/></div>
 
@@ -332,7 +303,7 @@ export default function MailMergePage(){
    {stage===4&&<section className="mx-auto max-w-6xl space-y-5 stagger">
     <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
      <div className="os-card rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">4. Review & Dispatch</h2><p className="mt-1 text-sm text-slate-500">{active?.name} · {active?.country} · {active?.campaign_group}</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{savedBlocks?"Ready for review":"Draft"}</span></div><div className="mt-5 space-y-4">{blocks.map((b,i)=><div key={b.batchId} className="rounded-2xl border border-blue-100 p-4"><div className="flex justify-between"><b>{accountName(b.accountId)}</b><span className="text-xs font-bold text-slate-500">{b.leadIds.length}/10</span></div><div className="mt-3 font-bold">{templatePreview(b.subject,leads.find(l=>l.id===b.leadIds[0]))}</div><div className="mt-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-700"><div className="mb-3 text-[10px] font-black uppercase tracking-wider text-indigo-500">Preview using first recipient · {leads.find(l=>l.id===b.leadIds[0])?.first_name||"No first name available"}</div><div className="leading-6" dangerouslySetInnerHTML={{__html:templatePreview(b.body,leads.find(l=>l.id===b.leadIds[0]))}} /></div></div>)}</div></div>
-     <aside className="space-y-5"><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><h3 className="font-black">Safety controls</h3><div className="mt-4 space-y-2 text-sm"><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Recipients / message block</span><b>10 max</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Blocks / sending account</span><b>Multiple</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Backend daily/hourly cap</span><b>Enforced</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Suppression recheck</span><b>Before queue/send</b></div></div></div><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><button onClick={queue} disabled={busy} className="w-full rounded-xl bg-indigo-600 p-3 font-bold text-white disabled:opacity-40">Queue campaign</button><button onClick={send} disabled={busy} className="os-interactive mt-3 w-full rounded-xl bg-emerald-600 p-3 font-bold text-white disabled:opacity-40"><Send size={16} className="mr-1 inline"/>Dispatch</button><button onClick={syncReplies} disabled={busy} className="os-interactive mt-3 w-full rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-700 disabled:opacity-40">Sync replies</button><button onClick={()=>setStage(3)} className="mt-3 w-full rounded-xl border border-blue-100 p-3 font-bold">Back to Builder</button></div></aside>
+     <aside className="space-y-5"><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><h3 className="font-black">Safety controls</h3><div className="mt-4 space-y-2 text-sm"><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Recipients / message block</span><b>10 max</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Blocks / sending account</span><b>Multiple</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Backend daily/hourly cap</span><b>Enforced</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Suppression recheck</span><b>Before queue/send</b></div></div></div><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><button onClick={send} disabled={busy} className="os-interactive w-full rounded-xl bg-emerald-600 p-3 font-bold text-white disabled:opacity-40"><Send size={16} className="mr-1 inline"/>Dispatch automatically</button><button onClick={syncReplies} disabled={busy} className="os-interactive mt-3 w-full rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-700 disabled:opacity-40">Sync replies</button><button onClick={()=>setStage(3)} className="mt-3 w-full rounded-xl border border-blue-100 p-3 font-bold">Back to Builder</button></div></aside>
     </div>
    </section>}
   {addAccountOpen&&<div className="add-account-backdrop" role="dialog" aria-modal="true" aria-labelledby="add-account-title" onMouseDown={e=>{if(e.target===e.currentTarget)setAddAccountOpen(false)}}>
