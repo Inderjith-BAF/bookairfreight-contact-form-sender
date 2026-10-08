@@ -36,12 +36,12 @@ export async function GET(request: Request) {
   const lastReplyDate = searchParams.get("lastReplyDate") || "";
   const exportCsv = searchParams.get("export") === "csv";
   const page = Math.max(1, Number(searchParams.get("page") || 1));
-  const pageSize = Math.min(100, Math.max(10, Number(searchParams.get("pageSize") || 50)));
+  const pageSize = Math.min(1000, Math.max(10, Number(searchParams.get("pageSize") || 50)));
   const { data: team, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
   let query = admin.from("master_leads").select("*", { count: "exact" }).order("created_at", { ascending: false });
   if (!exportCsv && !leadOwner) query = query.range((page-1)*pageSize, page*pageSize-1);
-  if (country) query = query.eq("country", country);
+  if (country) {\n    const aliases: Record<string,string[]> = {\n      usa: ["USA","US","United States","United States of America"],\n      uk: ["UK","GB","United Kingdom","Great Britain"],\n      uae: ["UAE","United Arab Emirates"],\n      australia: ["Australia","AU"],\n      canada: ["Canada","CA"],\n      india: ["India","IN"]\n    };\n    const values = aliases[country.trim().toLowerCase()] || [country];\n    query = values.length === 1 ? query.ilike("country", values[0]) : query.or(values.map(v => "country.ilike."+v.replace(/[,()]/g, "")).join(","));\n  }
   if (status) query = query.eq("current_status", status);
   if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`);
   if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59.999Z`);
