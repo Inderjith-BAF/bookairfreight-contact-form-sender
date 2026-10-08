@@ -21,20 +21,34 @@ export async function POST(request:Request){
   const k=`${r.sender_account_id||"unassigned"}::${r.batch_id||"legacy"}`;
   const a=byBatch.get(k)||[];a.push(r);byBatch.set(k,a);
  }
+ const remainingDaily=new Map<string,number>();
+ const remainingHourly=new Map<string,number>();
  let queued=0,skipped=0;
  for(const [batchKey,items] of byBatch){
-  const [sender,batchId]=batchKey.split("::");
+  const [sender]=batchKey.split("::");
   if(sender==="unassigned"){skipped+=items.length;continue;}
   const {data:account}=await admin.from("outbound_email_accounts").select("*").eq("id",sender).maybeSingle();
   if(!account||account.health_status==="Paused"){skipped+=items.length;continue;}
-  const now=new Date(); const dayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString(); const hourStart=new Date(now.getTime()-60*60*1000).toISOString();
-  const {count:sentToday}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",dayStart);
-  const {count:sentHour}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",hourStart);
-  const accountDaily=Math.max(0,Number(account.daily_send_limit||100)-Number(sentToday||0));
-  const accountHourly=Math.max(0,Number(account.hourly_send_limit||20)-Number(sentHour||0));
-  const allowed=Math.max(0,Math.min(items.length,accountDaily,accountHourly));
+  if(!remainingDaily.has(sender)||!remainingHourly.has(sender)){
+   const now=new Date();
+   const dayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
+   const hourStart=new Date(now.getTime()-60*60*1000).toISOString();
+   const [{count:sentToday},{count:sentHour}]=await Promise.all([
+    admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",dayStart),
+    admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",hourStart)
+   ]);
+   remainingDaily.set(sender,Math.max(0,Number(account.daily_send_limit||100)-Number(sentToday||0)));
+   remainingHourly.set(sender,Math.max(0,Number(account.hourly_send_limit||20)-Number(sentHour||0)));
+  }
+  const allowed=Math.max(0,Math.min(10,items.length,remainingDaily.get(sender)||0,remainingHourly.get(sender)||0));
   const take=items.slice(0,allowed);
-  if(take.length){await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:new Date().toISOString(),updated_at:new Date().toISOString()}).in("id",take.map((r:any)=>r.id));queued+=take.length;}
+  if(take.length){
+   const now=new Date().toISOString();
+   await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,updated_at:now}).in("id",take.map((r:any)=>r.id));
+   queued+=take.length;
+   remainingDaily.set(sender,(remainingDaily.get(sender)||0)-take.length);
+   remainingHourly.set(sender,(remainingHourly.get(sender)||0)-take.length);
+  }
   skipped+=Math.max(0,items.length-take.length);
  }
  await admin.from("mail_merge_campaigns").update({status:queued?"Queued":"Paused",updated_at:new Date().toISOString()}).eq("id",campaignId);
