@@ -39,11 +39,14 @@ export async function POST(request: Request) {
     .select("*,master_leads(*),outbound_email_accounts(*)")
     .eq("campaign_id", campaignId)
     .eq("status", "Queued")
+    .lte("send_not_before", new Date().toISOString())
+    .order("send_not_before", { ascending: true })
     .limit(100);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!rows?.length) {
-    return NextResponse.json({ error: "No queued recipients are ready to send." }, { status: 409 });
+    const { data: next } = await admin.from("mail_merge_campaign_recipients").select("send_not_before").eq("campaign_id", campaignId).eq("status", "Queued").order("send_not_before", { ascending: true }).limit(1).maybeSingle();
+    return NextResponse.json({ error: next?.send_not_before ? "Next email is paced for "+new Date(next.send_not_before).toLocaleTimeString()+"." : "No queued recipients are ready to send.", next_send_at: next?.send_not_before || null }, { status: 409 });
   }
 
   let sent = 0;
