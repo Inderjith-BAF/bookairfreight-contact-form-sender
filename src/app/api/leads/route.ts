@@ -3,7 +3,7 @@ import { requireOutboundUser } from "@/lib/outbound-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const ALLOWED = ["admin", "lead_generation_admin"] as const;
+const WRITE_ROLES = ["admin", "lead_generation_admin"] as const;
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 const value = (row: Record<string, unknown>, ...keys: string[]) => {
   const entries = new Map(Object.entries(row).map(([k,v]) => [norm(k), String(v ?? "").trim()]));
@@ -13,7 +13,7 @@ const value = (row: Record<string, unknown>, ...keys: string[]) => {
 const emailOk = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
 export async function GET(request: Request) {
-  const auth = await requireOutboundUser(request, [...ALLOWED]);
+  const auth = await requireOutboundUser(request);
   if ("error" in auth) return auth.error;
   const { admin } = auth;
   const { searchParams } = new URL(request.url);
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireOutboundUser(request, [...ALLOWED]);
+  const auth = await requireOutboundUser(request, [...WRITE_ROLES]);
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth;
   const body = await request.json().catch(() => null);
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const auth = await requireOutboundUser(request, [...ALLOWED]);
+  const auth = await requireOutboundUser(request, [...WRITE_ROLES]);
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth;
   const body = await request.json().catch(() => null);
