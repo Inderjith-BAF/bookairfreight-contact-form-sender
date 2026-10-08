@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"; import { requireOutboundUser } from "@/lib/outbound-auth";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
-export async function GET(request:Request){const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;const {admin}=auth;const {searchParams}=new URL(request.url);
+export async function GET(request:Request){const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;const {admin,profile}=auth;const {searchParams}=new URL(request.url);
 const country=searchParams.get("country")||"",group=searchParams.get("group")||"",account=searchParams.get("account")||"";
 const [{data:campaigns,error:cErr},{data:recipients,error:rErr},{data:leads,error:lErr},{data:accounts,error:aErr},{data:batches,error:bErr}]=await Promise.all([
- admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(500),
+ profile.role==="member" ? admin.from("mail_merge_campaigns").select("*").eq("created_by",profile.id).order("created_at",{ascending:false}).limit(500) : admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(500),
  admin.from("mail_merge_campaign_recipients").select("*").limit(10000),
  admin.from("master_leads").select("id,country,current_status,response_classification,suppression_status,last_contacted_at,last_replied_at"),
- admin.from("outbound_email_accounts").select("id,email,health_status"),
+ profile.role==="member" ? admin.from("outbound_email_accounts").select("id,email,health_status").eq("employee_id",profile.id) : admin.from("outbound_email_accounts").select("id,email,health_status"),
  admin.from("lead_import_batches").select("*").order("started_at",{ascending:false}).limit(200)
 ]);if(cErr||rErr||lErr||aErr||bErr)return NextResponse.json({error:cErr?.message||rErr?.message||lErr?.message||aErr?.message||bErr?.message},{status:500});
 const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||((recipients||[]).filter((r:any)=>r.campaign_id===c.id).some((r:any)=>r.sender_account_id===account))));
