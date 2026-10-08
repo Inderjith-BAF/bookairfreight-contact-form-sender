@@ -183,6 +183,9 @@ export default function MailMergePage(){
  const active=campaigns.find(c=>c.id===campaignId);
  const accountName=(id:string)=>accounts.find(a=>a.id===id)?.email||"Unknown account";
 
+ if(authLoading)return <main className="min-h-screen grid place-items-center bg-slate-50 p-6"><div className="text-sm font-semibold text-slate-500">Checking your outbound session…</div></main>;
+ if(!token)return <main className="min-h-screen grid place-items-center bg-slate-50 p-6 text-slate-900"><div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-xl"><div className="text-xs font-black uppercase tracking-[.25em] text-indigo-600">BookAirfreight</div><h1 className="mt-2 text-3xl font-black">Sign in to Mail Merge</h1><p className="mt-2 text-sm text-slate-500">Use your individual outbound team credentials to connect and send from a mailbox.</p><div className="mt-6 space-y-3"><input value={authEmail} onChange={e=>setAuthEmail(e.target.value)} placeholder="Work email" type="email" className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-indigo-400"/><input value={authPassword} onChange={e=>setAuthPassword(e.target.value)} placeholder="Password" type="password" onKeyDown={e=>{if(e.key==="Enter")signIn()}} className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-indigo-400"/>{err&&<div className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{err}</div>}<button onClick={signIn} className="w-full rounded-2xl bg-indigo-600 py-3 font-bold text-white">Sign in →</button></div></div></main>;
+
  return <main className="os-page-enter min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 text-slate-900">
   <div className="mx-auto max-w-[1500px] p-4 md:p-8">
    <header className="mb-5 flex items-center justify-between rounded-3xl border border-blue-100 bg-white/90 p-6 shadow-sm">
