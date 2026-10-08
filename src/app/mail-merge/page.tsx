@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { BlueprintNav } from "@/components/blueprint-nav";
 import { AnimatedNumber } from "@/components/animated-number";
-import { CheckCircle2, ChevronLeft, ChevronRight, Plus, RefreshCw, Send, ShieldCheck, Upload } from "lucide-react";
+import { Bold, CheckCircle2, ChevronLeft, ChevronRight, Italic, List, ListOrdered, Palette, Plus, RefreshCw, Send, ShieldCheck, Underline, Upload } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type Account={id:string;email:string;health_status:string;daily_send_limit:number;hourly_send_limit:number;total_sent:number;employee_id?:string;provider?:string|null;connection_status?:string;connection_error?:string|null;last_verified_at?:string|null};
@@ -14,6 +14,33 @@ type Block={batchId:string;accountId:string;leadIds:string[];subject:string;body
 
 const groups=["Fresh Outreach","Follow-up 1","Follow-up 2","Follow-up 3","Custom"];
 const blockedStatuses=["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"];
+
+function templatePreview(text:string,lead?:Lead){
+ if(!lead)return text;
+ return text.replace(/{{\\s*first[_ ]?name\\s*}}/gi,lead.first_name||"").replace(/{{\\s*last[_ ]?name\\s*}}/gi,lead.last_name||"").replace(/{{\\s*company(?:[_ ]?name)?\\s*}}/gi,lead.company_name||"").replace(/{{\\s*email\\s*}}/gi,lead.email||"").replace(/{{\\s*country\\s*}}/gi,lead.country||"");
+}
+function RichEmailEditor({value,onChange,placeholder}:{value:string;onChange:(value:string)=>void;placeholder:string}){
+ const ref=useRef<HTMLDivElement|null>(null);
+ const [focused,setFocused]=useState(false);
+ useEffect(()=>{if(ref.current&&!focused&&ref.current.innerHTML!==value)ref.current.innerHTML=value||""},[value,focused]);
+ const command=(name:string,arg?:string)=>{ref.current?.focus();try{document.execCommand(name,false,arg)}catch{}if(ref.current)onChange(ref.current.innerHTML)};
+ const colors=["#111827","#4d5cff","#0f766e","#dc2626","#d97706","#7c3aed"];
+ return <div className="overflow-hidden rounded-xl border border-blue-100 bg-white">
+  <div className="flex flex-wrap items-center gap-1 border-b border-blue-100 bg-slate-50 p-2">
+   <button type="button" title="Bold" onMouseDown={e=>e.preventDefault()} onClick={()=>command("bold")} className="rounded-lg p-2 hover:bg-white"><Bold size={15}/></button>
+   <button type="button" title="Italic" onMouseDown={e=>e.preventDefault()} onClick={()=>command("italic")} className="rounded-lg p-2 hover:bg-white"><Italic size={15}/></button>
+   <button type="button" title="Underline" onMouseDown={e=>e.preventDefault()} onClick={()=>command("underline")} className="rounded-lg p-2 hover:bg-white"><Underline size={15}/></button>
+   <span className="mx-1 h-5 w-px bg-blue-200"/>
+   <button type="button" title="Bulleted list" onMouseDown={e=>e.preventDefault()} onClick={()=>command("insertUnorderedList")} className="rounded-lg p-2 hover:bg-white"><List size={15}/></button>
+   <button type="button" title="Numbered list" onMouseDown={e=>e.preventDefault()} onClick={()=>command("insertOrderedList")} className="rounded-lg p-2 hover:bg-white"><ListOrdered size={15}/></button>
+   <span className="mx-1 h-5 w-px bg-blue-200"/>
+   <span className="inline-flex items-center gap-1 rounded-lg px-1" title="Text colour"><Palette size={14} className="text-slate-500"/>{colors.map(color=><button key={color} type="button" aria-label={"Text colour "+color} onMouseDown={e=>e.preventDefault()} onClick={()=>command("foreColor",color)} className="h-4 w-4 rounded-full border border-white shadow" style={{backgroundColor:color}}/>)}</span>
+   <button type="button" title="Clear formatting" onMouseDown={e=>e.preventDefault()} onClick={()=>command("removeFormat")} className="ml-auto rounded-lg px-2 py-1 text-[10px] font-bold text-slate-500 hover:bg-white">Clear</button>
+  </div>
+  <div ref={ref} contentEditable suppressContentEditableWarning onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onInput={()=>ref.current&&onChange(ref.current.innerHTML)} className="min-h-44 w-full p-4 text-sm leading-6 outline-none" />
+  <div className="border-t border-blue-50 px-3 py-2 text-[10px] text-slate-400">Formatting: bold · italic · underline · bullets · numbering · text colour. Personalization tokens remain supported.</div>
+ </div>;
+}
 
 export default function MailMergePage(){
  const supabase=useMemo(()=>getSupabaseBrowser(),[]);
@@ -43,6 +70,7 @@ export default function MailMergePage(){
  const [form,setForm]=useState({name:"",country:"USA",campaign_group:"Fresh Outreach"});
  const [addAccountOpen,setAddAccountOpen]=useState(false);
  const [connectionBusy,setConnectionBusy]=useState<"google"|"microsoft"|null>(null);
+ const [resumeLoaded,setResumeLoaded]=useState(false);
 
  const api=useCallback(async(path:string,options?:RequestInit)=>{
   const r=await fetch(path,{...options,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(options?.headers||{})}});
@@ -82,7 +110,30 @@ export default function MailMergePage(){
 
  useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase]);
  useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
+ useEffect(()=>{if(!token||resumeLoaded)return;const id=new URLSearchParams(window.location.search).get("campaignId");if(id){setResumeLoaded(true);resumeCampaign(id).catch(e=>setErr(e.message))}else setResumeLoaded(true)},[token,resumeLoaded]);
 
+ async function resumeCampaign(id:string){
+  setBusy(true);setErr("");
+  try{
+   const d=await api("/api/mail-merge?id="+encodeURIComponent(id));
+   const campaign=d.campaign;
+   const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads);
+   const uniqueLeads=new Map<string,Lead>();
+   for(const r of recipients)uniqueLeads.set(r.master_leads.id,r.master_leads);
+   const rows=[...uniqueLeads.values()].filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+   const byBatch=new Map<string,any[]>();
+   for(const r of recipients){const key=r.batch_id||("legacy-"+r.sender_account_id);const list=byBatch.get(key)||[];list.push(r);byBatch.set(key,list)}
+   const resumedBlocks:Block[]=[];
+   for(const [batchId,rs] of byBatch){const first=rs[0];resumedBlocks.push({batchId,accountId:first.sender_account_id,leadIds:rs.map((r:any)=>r.lead_id),subject:String(first.subject||campaign.subject||""),body:String(first.body||campaign.body||"")})}
+   const accountIds=[...new Set(resumedBlocks.map(b=>b.accountId))];
+   const volumeMap:Record<string,number>={}; for(const b of resumedBlocks)volumeMap[b.accountId]=(volumeMap[b.accountId]||0)+b.leadIds.length;
+   setCampaignId(campaign.id);setCampaigns(xs=>[campaign,...xs.filter(x=>x.id!==campaign.id)]);
+   setForm({name:campaign.name||"",country:campaign.country||"USA",campaign_group:campaign.campaign_group||"Fresh Outreach"});
+   setLeads(rows);setSelected(rows.map(x=>x.id));setSelectedAccounts(accountIds);setVolumes(volumeMap);setBlocks(resumedBlocks);setSavedBlocks(recipients.length>0);
+   setStage(resumedBlocks.length?3:2);
+   setMsg(recipients.length?"Resumed saved campaign · "+recipients.length+" recipients loaded.":"Saved campaign opened. Add recipients to continue.");
+  }catch(e){setErr(e instanceof Error?e.message:"Could not resume campaign.")}finally{setBusy(false)}
+ }
  async function signIn(){setErr("");const {data,error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPassword});if(error){setErr(error.message);return}setToken(data.session?.access_token||"")}
  const required=selectedAccounts.reduce((n,id)=>n+Math.min(100,Math.max(1,Number(volumes[id]||10))),0);
  const remaining=required-selected.length;
@@ -245,14 +296,14 @@ export default function MailMergePage(){
 
    {stage===3&&<section className="mx-auto max-w-6xl space-y-5 stagger">
     <div className="os-card rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">3. Campaign Builder</h2><p className="mt-1 text-sm text-slate-500">Each account can have multiple message blocks. Every subject + content block is limited to 10 recipients. Follow-ups inherit the previous subject line for each recipient batch and remain editable.</p></div><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{blocks.length} message blocks · {selected.length} recipients</span></div>
-    <div className="mt-5 space-y-5">{blocks.map((b,i)=><div key={b.batchId} className="os-card os-row-enter rounded-3xl border border-blue-100 bg-slate-50 p-5" style={{animationDelay:`${i*70}ms`}}><div className="flex items-center justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-500">Message Block {i+1} · Batch of 10 max</div><div className="mt-1 font-black">{accountName(b.accountId)}</div></div><span className="rounded-full bg-white px-3 py-1 text-xs font-bold">{b.leadIds.length}/10 recipients</span></div><div className="mt-4 grid gap-4 lg:grid-cols-2"><div><label className="text-xs font-black text-slate-500">Subject {sourceMode==="followup"&&<span className="font-normal text-emerald-600">· inherited from previous campaign</span>}</label><input value={b.subject} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,subject:e.target.value}:x))} placeholder="Subject line" className="mt-2 w-full rounded-xl border border-blue-100 bg-white p-3"/><div className="mt-2 text-[11px] text-slate-400">{sourceMode==="followup"?"The previous campaign subject is pre-filled for this recipient batch. Edit it if needed.":"Exactly this batch of up to 10 recipients uses this subject/content. Multiple batches can use the same sending account."}</div></div><div><label className="text-xs font-black text-slate-500">Email content</label><textarea value={b.body} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,body:e.target.value}:x))} placeholder="Write the email content. Use {{first_name}}, {{company_name}}, {{last_name}}, {{email}}." className="mt-2 min-h-40 w-full rounded-xl border border-blue-100 bg-white p-3 leading-6"/></div></div><div className="mt-4 rounded-2xl bg-white p-4"><div className="text-xs font-black uppercase text-slate-400">Recipients in this block</div><div className="mt-2 flex flex-wrap gap-2">{b.leadIds.map(id=>{const l=leads.find(x=>x.id===id);return <span key={id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{l?.email||id}</span>})}</div></div></div>)}</div>
+    <div className="mt-5 space-y-5">{blocks.map((b,i)=><div key={b.batchId} className="os-card os-row-enter rounded-3xl border border-blue-100 bg-slate-50 p-5" style={{animationDelay:`${i*70}ms`}}><div className="flex items-center justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-500">Message Block {i+1} · Batch of 10 max</div><div className="mt-1 font-black">{accountName(b.accountId)}</div></div><span className="rounded-full bg-white px-3 py-1 text-xs font-bold">{b.leadIds.length}/10 recipients</span></div><div className="mt-4 grid gap-4 lg:grid-cols-2"><div><label className="text-xs font-black text-slate-500">Subject {sourceMode==="followup"&&<span className="font-normal text-emerald-600">· inherited from previous campaign</span>}</label><input value={b.subject} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,subject:e.target.value}:x))} placeholder="Subject line" className="mt-2 w-full rounded-xl border border-blue-100 bg-white p-3"/><div className="mt-2 text-[11px] text-slate-400">{sourceMode==="followup"?"The previous campaign subject is pre-filled for this recipient batch. Edit it if needed.":"Exactly this batch of up to 10 recipients uses this subject/content. Multiple batches can use the same sending account."}</div></div><div><label className="text-xs font-black text-slate-500">Email content</label><div className="mt-2"><RichEmailEditor value={b.body} onChange={value=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,body:value}:x))} placeholder="Write the email content. Use {{first_name}}, {{company_name}}, {{last_name}}, {{email}}."/></div></div></div><div className="mt-4 rounded-2xl bg-white p-4"><div className="text-xs font-black uppercase text-slate-400">Recipients in this block</div><div className="mt-2 flex flex-wrap gap-2">{b.leadIds.map(id=>{const l=leads.find(x=>x.id===id);return <span key={id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{l?.email||id}</span>})}</div></div></div>)}</div>
     <div className="mt-5 flex justify-between"><button onClick={()=>setStage(2)} className="rounded-xl border border-blue-100 px-5 py-3 font-bold"><ChevronLeft size={16} className="mr-1 inline"/>Back</button><button onClick={saveMessageBlocks} disabled={busy||blocks.some(b=>!b.subject.trim()||!b.body.trim())} className="rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white disabled:opacity-40">Save & Review <ChevronRight size={16} className="ml-1 inline"/></button></div>
     </div>
    </section>}
 
    {stage===4&&<section className="mx-auto max-w-6xl space-y-5 stagger">
     <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-     <div className="os-card rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">4. Review & Dispatch</h2><p className="mt-1 text-sm text-slate-500">{active?.name} · {active?.country} · {active?.campaign_group}</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{savedBlocks?"Ready for review":"Draft"}</span></div><div className="mt-5 space-y-4">{blocks.map((b,i)=><div key={b.batchId} className="rounded-2xl border border-blue-100 p-4"><div className="flex justify-between"><b>{accountName(b.accountId)}</b><span className="text-xs font-bold text-slate-500">{b.leadIds.length}/10</span></div><div className="mt-3 font-bold">{b.subject}</div><div className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{b.body}</div></div>)}</div></div>
+     <div className="os-card rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">4. Review & Dispatch</h2><p className="mt-1 text-sm text-slate-500">{active?.name} · {active?.country} · {active?.campaign_group}</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{savedBlocks?"Ready for review":"Draft"}</span></div><div className="mt-5 space-y-4">{blocks.map((b,i)=><div key={b.batchId} className="rounded-2xl border border-blue-100 p-4"><div className="flex justify-between"><b>{accountName(b.accountId)}</b><span className="text-xs font-bold text-slate-500">{b.leadIds.length}/10</span></div><div className="mt-3 font-bold">{templatePreview(b.subject,leads.find(l=>l.id===b.leadIds[0]))}</div><div className="mt-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-700"><div className="mb-3 text-[10px] font-black uppercase tracking-wider text-indigo-500">Preview using first recipient · {leads.find(l=>l.id===b.leadIds[0])?.first_name||"No first name available"}</div><div className="leading-6" dangerouslySetInnerHTML={{__html:templatePreview(b.body,leads.find(l=>l.id===b.leadIds[0]))}} /></div></div>)}</div></div>
      <aside className="space-y-5"><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><h3 className="font-black">Safety controls</h3><div className="mt-4 space-y-2 text-sm"><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Recipients / message block</span><b>10 max</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Blocks / sending account</span><b>Multiple</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Backend daily/hourly cap</span><b>Enforced</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Suppression recheck</span><b>Before queue/send</b></div></div></div><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><button onClick={queue} disabled={busy} className="w-full rounded-xl bg-indigo-600 p-3 font-bold text-white disabled:opacity-40">Queue campaign</button><button onClick={send} disabled={busy} className="os-interactive mt-3 w-full rounded-xl bg-emerald-600 p-3 font-bold text-white disabled:opacity-40"><Send size={16} className="mr-1 inline"/>Dispatch</button><button onClick={syncReplies} disabled={busy} className="os-interactive mt-3 w-full rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-700 disabled:opacity-40">Sync replies</button><button onClick={()=>setStage(3)} className="mt-3 w-full rounded-xl border border-blue-100 p-3 font-bold">Back to Builder</button></div></aside>
     </div>
    </section>}
