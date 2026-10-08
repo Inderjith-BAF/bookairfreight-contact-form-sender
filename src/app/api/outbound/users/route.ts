@@ -7,7 +7,7 @@ export async function POST(request:Request){
   const body=await request.json().catch(()=>null);
   const email=String(body?.email??"").trim().toLowerCase(), password=String(body?.password??""), fullName=String(body?.full_name??"").trim();
   const role=["admin","manager","member","lead_generation_admin"].includes(body?.role)?body.role:"member";
-  const defaultTabs={intelligence:true,command:true,daily:true,weekly:true,monthly:true,my:true,forms:true,import:true};
+  const defaultTabs={intelligence:true,command:true,daily:true,weekly:true,monthly:true,my:true,forms:true,import:true,leadSheet:true,mailMerge:true,accountHealth:true,campaignIntelligence:true};
   const tabPermissions={...defaultTabs,...(body?.tab_permissions&&typeof body?.tab_permissions==="object"?body.tab_permissions:{})};
   if(!email||password.length<8||!fullName)return NextResponse.json({error:"Name, email and an 8+ character password are required."},{status:400});
   const {data,error}=await auth.admin.auth.admin.createUser({email,password,email_confirm:true,user_metadata:{full_name:fullName}});
@@ -28,7 +28,7 @@ export async function PATCH(request:Request){
   const fullName=String(body?.full_name??"").trim();
   const role=["admin","manager","member","lead_generation_admin"].includes(body?.role)?body.role:"member";
   const active=body?.active!==false;
-  const defaultTabs={intelligence:true,command:true,daily:true,weekly:true,monthly:true,my:true,forms:true,import:true};
+  const defaultTabs={intelligence:true,command:true,daily:true,weekly:true,monthly:true,my:true,forms:true,import:true,leadSheet:true,mailMerge:true,accountHealth:true,campaignIntelligence:true};
   const tabPermissions={...defaultTabs,...(body?.tab_permissions&&typeof body?.tab_permissions==="object"?body.tab_permissions:{})};
   if(!userId||!fullName)return NextResponse.json({error:"User ID and name are required."},{status:400});
   const {error:userError}=await auth.admin.auth.admin.updateUserById(userId,email?{email,email_confirm:true,user_metadata:{full_name:fullName}}:{user_metadata:{full_name:fullName}});
