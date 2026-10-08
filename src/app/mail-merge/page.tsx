@@ -110,6 +110,8 @@ export default function MailMergePage(){
 
  useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase]);
  useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
+ // resumeCampaign is intentionally excluded because it is a function declaration recreated on render; token/resumeLoaded are the actual triggers.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  useEffect(()=>{if(!token||resumeLoaded)return;const id=new URLSearchParams(window.location.search).get("campaignId");if(id){setResumeLoaded(true);resumeCampaign(id).catch(e=>setErr(e.message))}else setResumeLoaded(true)},[token,resumeLoaded]);
 
  async function resumeCampaign(id:string){
