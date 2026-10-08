@@ -4,7 +4,7 @@ type Account={id:string;email:string;provider:Provider;refresh_token_encrypted:s
 
 async function markConnectionFailure(account:Account,admin:any,message:string){
  await admin.from("outbound_email_accounts").update({connection_status:"Disconnected",connection_error:message,last_verified_at:new Date().toISOString()}).eq("id",account.id);
- if(account.employee_id) await admin.from("mail_merge_notifications").upsert({recipient_profile_id:account.employee_id,notification_type:"account_disconnected",account_id:account.id,title:"Email account disconnected",message:account.email+" is no longer connected and has been removed from the active sending pool. Reconnect the mailbox before its queued batches can resume."},{onConflict:"recipient_profile_id,account_id,notification_type"});
+ if(account.employee_id){const {data:existing}=await admin.from("mail_merge_notifications").select("id").eq("recipient_profile_id",account.employee_id).eq("account_id",account.id).eq("notification_type","account_disconnected").is("read_at",null).maybeSingle();if(!existing)await admin.from("mail_merge_notifications").insert({recipient_profile_id:account.employee_id,notification_type:"account_disconnected",account_id:account.id,title:"Email account disconnected",message:account.email+" is no longer connected and has been removed from the active sending pool. Reconnect the mailbox before its queued batches can resume."});}
 }
 
 async function googleAccess(account:Account,admin:any){
