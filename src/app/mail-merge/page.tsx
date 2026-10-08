@@ -17,7 +17,7 @@ const blockedStatuses=["Bounced","Unsubscribed","Suppressed","Positive","Neutral
 
 function templatePreview(text:string,lead?:Lead){
  if(!lead)return text;
- return text.replace(/{{\\s*first[_ ]?name\\s*}}/gi,lead.first_name||"").replace(/{{\\s*last[_ ]?name\\s*}}/gi,lead.last_name||"").replace(/{{\\s*company(?:[_ ]?name)?\\s*}}/gi,lead.company_name||"").replace(/{{\\s*email\\s*}}/gi,lead.email||"").replace(/{{\\s*country\\s*}}/gi,lead.country||"");
+ return text.replace(/{{\s*first[_ ]?name\s*}}/gi,lead.first_name||"").replace(/{{\s*last[_ ]?name\s*}}/gi,lead.last_name||"").replace(/{{\s*company(?:[_ ]?name)?\s*}}/gi,lead.company_name||"").replace(/{{\s*email\s*}}/gi,lead.email||"").replace(/{{\s*country\s*}}/gi,lead.country||"");
 }
 function RichEmailEditor({value,onChange,placeholder}:{value:string;onChange:(value:string)=>void;placeholder:string}){
  const ref=useRef<HTMLDivElement|null>(null);
