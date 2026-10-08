@@ -17,13 +17,13 @@ export async function GET(request:Request){
 export async function POST(request:Request){
  const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; if(!manager(profile))return NextResponse.json({error:"Campaign creation requires leadership or Lead Generation Admin."},{status:403});
  const b=await request.json().catch(()=>null);
- if(b?.action==="add_account"){
+ if(b?.action==="add_account"){return NextResponse.json({error:"Email addresses cannot be registered manually. Use Connect Email Account so the mailbox is authenticated before it can send."},{status:409}); /*
   const email=String(b?.email||"").trim().toLowerCase();
   if(!email||!email.includes("@"))return NextResponse.json({error:"A valid email account address is required."},{status:400});
   const daily=Math.max(1,Number(b?.daily_send_limit||100)); const hourly=Math.max(1,Number(b?.hourly_send_limit||20));
   const {data:account,error}=await admin.from("outbound_email_accounts").insert({email,employee_id:profile.id,active:true,daily_send_limit:daily,hourly_send_limit:hourly,health_status:"Healthy",total_sent:0}).select("id,email,employee_id,active,daily_send_limit,hourly_send_limit,health_status,total_sent").single();
   if(error)return NextResponse.json({error:error.code==="23505"?"That email account already exists.":error.message},{status:500});
-  return NextResponse.json({account},{status:201});
+  return NextResponse.json({account},{status:201}); */
  }
  const name=String(b?.name||"").trim(),country=String(b?.country||"").trim(),group=String(b?.campaign_group||"Fresh Outreach"),subject=String(b?.subject||"").trim(),body=String(b?.body||"");
  if(!name||!country||!GROUPS.includes(group as any))return NextResponse.json({error:"Name, country and campaign group are required."},{status:400});
