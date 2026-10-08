@@ -75,7 +75,7 @@ export default function MailMergePage(){
  const api=useCallback(async(path:string,options?:RequestInit)=>{
   const r=await fetch(path,{...options,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(options?.headers||{})}});
   const d=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(d.error||"Request failed");
+  if(!r.ok){const error=new Error(d.error||"Request failed") as Error & {next_send_at?:string|null};error.next_send_at=d.next_send_at||null;throw error;}
   return d;
  },[token]);
 
@@ -243,7 +243,7 @@ export default function MailMergePage(){
      await load();
      await new Promise(resolve=>setTimeout(resolve,15000));
     }catch(e){
-     const next=(e as any)?.next_send_at;
+     const next=(e as Error & {next_send_at?:string|null})?.next_send_at;
      if(next){
       const wait=Math.max(1000,Math.min(120000,Date.parse(String(next))-Date.now()+1000));
       setMsg(`Paced dispatch active · next email scheduled for ${new Date(String(next)).toLocaleTimeString()}.`);
