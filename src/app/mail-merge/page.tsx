@@ -36,6 +36,8 @@ export default function MailMergePage(){
  const [q,setQ]=useState("");
  const [uploading,setUploading]=useState(false);
  const [form,setForm]=useState({name:"",country:"USA",campaign_group:"Fresh Outreach"});
+ const [addAccountOpen,setAddAccountOpen]=useState(false);
+ const [newAccountEmail,setNewAccountEmail]=useState("");
 
  const api=useCallback(async(path:string,options?:RequestInit)=>{
   const r=await fetch(path,{...options,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(options?.headers||{})}});
@@ -89,6 +91,21 @@ export default function MailMergePage(){
  }
  function setVolume(id:string,value:number){
   setVolumes(v=>({...v,[id]:Math.min(100,Math.max(1,Number.isFinite(value)?value:1))}));
+ }
+ async function addEmailAccount(){
+  const email=newAccountEmail.trim();
+  if(!email){setErr("Enter an email account address.");return;}
+  if(!/^\\S+@\\S+\\.\\S+$/.test(email)){setErr("Enter a valid email address.");return;}
+  setBusy(true);setErr("");setMsg("");
+  try{
+   const d=await api("/api/mail-merge",{method:"POST",body:JSON.stringify({action:"add_account",email})});
+   setAccounts(a=>[d.account,...a]);
+   setSelectedAccounts(x=>x.includes(d.account.id)?x:[...x,d.account.id]);
+   setVolumes(v=>({...v,[d.account.id]:10}));
+   setNewAccountEmail("");
+   setAddAccountOpen(false);
+   setMsg(`${email} added to your outreach accounts.`);
+  }catch(e){setErr(e instanceof Error?e.message:"Could not add email account.")}finally{setBusy(false)}
  }
  async function createDraft(){
   setBusy(true);setErr("");setMsg("");
@@ -177,15 +194,15 @@ export default function MailMergePage(){
 
    <div className="mb-6 grid grid-cols-4 gap-2">{["Email Accounts","Leads","Campaign Builder","Review & Dispatch"].map((x,i)=><div key={x} className={`rounded-2xl border p-4 text-center text-xs font-black ${stage===i+1?"border-indigo-300 bg-indigo-50 text-indigo-700":stage>i+1?"border-emerald-200 bg-emerald-50 text-emerald-700":"border-blue-100 bg-white text-slate-400"}`}><span className="mr-2 inline-grid h-6 w-6 place-items-center rounded-full bg-white shadow-sm">{stage>i+1?<CheckCircle2 size={15}/>:i+1}</span>{x}</div>)}</div>
 
-   {stage===1&&<section className="mx-auto max-w-6xl space-y-5">
+   {stage===1&&<section className="mx-auto max-w-6xl space-y-5 stagger">
     <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
-     <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">1. Select outreach email accounts</h2><p className="mt-1 text-sm text-slate-500">Choose the accounts for this campaign. Set the outreach volume per account; backend limits remain enforced.</p></div><button onClick={()=>{const email=prompt("Email account address");if(email)api("/api/mail-merge",{method:"POST",body:JSON.stringify({action:"add_account",email})}).then(d=>{setAccounts(a=>[d.account,...a]);setSelectedAccounts(x=>[...x,d.account.id]);setVolumes(v=>({...v,[d.account.id]:10}));}).catch(e=>setErr(e.message))}} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white"><Plus size={16} className="mr-1 inline"/>Add email account</button></div>
-     <div className="mt-5 grid gap-4 md:grid-cols-2">{accounts.map(a=>{const checked=selectedAccounts.includes(a.id);const remaining=Math.max(0,Math.min(Number(a.daily_send_limit||0),Number(a.hourly_send_limit||0)));return <div key={a.id} className={`rounded-2xl border p-5 transition ${checked?"border-indigo-300 bg-indigo-50/40 ring-1 ring-indigo-200":"border-blue-100 bg-white"}`}><div className="flex items-start justify-between gap-3"><label className="flex items-center gap-3"><input type="checkbox" checked={checked} onChange={()=>toggleAccount(a.id)} className="h-5 w-5"/><div><div className="font-black">{a.email}</div><div className="mt-1 text-xs text-slate-500">{a.health_status} · {a.total_sent||0} sent</div></div></label><span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-slate-500">Backend remaining ≥ {remaining}</span></div>{checked&&<div className="mt-5"><div className="flex items-center justify-between text-xs font-bold"><span>Outreach volume for this campaign</span><span className="text-indigo-600">{volumes[a.id]||10} / 100</span></div><input type="range" min="1" max="100" value={volumes[a.id]||10} onChange={e=>setVolume(a.id,Number(e.target.value))} className="mt-3 w-full"/><p className="mt-2 text-[11px] text-slate-500">This is your campaign allocation only. You can allocate multiple 10-recipient message blocks; daily/hourly/provider limits are still enforced by the backend.</p></div>}</div>})}</div>
+     <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">1. Select outreach email accounts</h2><p className="mt-1 text-sm text-slate-500">Choose the accounts for this campaign. Set the outreach volume per account; backend limits remain enforced.</p></div><button onClick={()=>{setErr("");setNewAccountEmail("");setAddAccountOpen(true)}} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-all hover:-translate-y-1 hover:shadow-indigo-300"><Plus size={16} className="mr-1 inline"/>Add email account</button></div>
+     <div className="mt-5 grid gap-4 md:grid-cols-2">{accounts.map(a=>{const checked=selectedAccounts.includes(a.id);const remaining=Math.max(0,Math.min(Number(a.daily_send_limit||0),Number(a.hourly_send_limit||0)));return <div key={a.id} className={`lift rounded-2xl border p-5 transition-all duration-300 ${checked?"border-indigo-300 bg-indigo-50/40 ring-1 ring-indigo-200 shadow-lg shadow-indigo-100":"border-blue-100 bg-white"}`}><div className="flex items-start justify-between gap-3"><label className="flex items-center gap-3"><input type="checkbox" checked={checked} onChange={()=>toggleAccount(a.id)} className="h-5 w-5"/><div><div className="font-black">{a.email}</div><div className="mt-1 text-xs text-slate-500">{a.health_status} · {a.total_sent||0} sent</div></div></label><span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-slate-500">Backend remaining ≥ {remaining}</span></div>{checked&&<div className="mt-5"><div className="flex items-center justify-between text-xs font-bold"><span>Outreach volume for this campaign</span><span className="text-indigo-600">{volumes[a.id]||10} / 100</span></div><input type="range" min="1" max="100" value={volumes[a.id]||10} onChange={e=>setVolume(a.id,Number(e.target.value))} className="mt-3 w-full"/><p className="mt-2 text-[11px] text-slate-500">This is your campaign allocation only. You can allocate multiple 10-recipient message blocks; daily/hourly/provider limits are still enforced by the backend.</p></div>}</div>})}</div>
     </div>
     <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><h2 className="font-black">Campaign setup</h2><div className="mt-4 grid gap-3 md:grid-cols-3"><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Campaign name" className="rounded-xl border border-blue-100 p-3"/><input value={form.country} onChange={e=>setForm({...form,country:e.target.value})} placeholder="Country" className="rounded-xl border border-blue-100 p-3"/><select value={form.campaign_group} onChange={e=>setForm({...form,campaign_group:e.target.value})} className="rounded-xl border border-blue-100 p-3">{groups.map(g=><option key={g}>{g}</option>)}</select></div><div className="mt-5 flex justify-end"><button onClick={createDraft} disabled={busy} className="rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white disabled:opacity-40">Continue to Leads <ChevronRight size={16} className="ml-1 inline"/></button></div></div>
    </section>}
 
-   {stage===2&&<section className="mx-auto max-w-7xl space-y-5">
+   {stage===2&&<section className="mx-auto max-w-7xl space-y-5 stagger">
     <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
      <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">2. Upload or select leads</h2><p className="mt-1 text-sm text-slate-500">You need <b>{required}</b> eligible leads for the selected account allocation.</p></div><label className="cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700"><Upload size={16} className="mr-1 inline"/>{uploading?"Uploading…":"Upload CSV"}<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadLeads(f)}}/></label></div>
@@ -198,19 +215,40 @@ export default function MailMergePage(){
     </div>
    </section>}
 
-   {stage===3&&<section className="mx-auto max-w-6xl space-y-5">
+   {stage===3&&<section className="mx-auto max-w-6xl space-y-5 stagger">
     <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">3. Campaign Builder</h2><p className="mt-1 text-sm text-slate-500">Each account can have multiple message blocks. Every subject + content block is limited to 10 recipients. Follow-ups inherit the previous subject line for each recipient batch and remain editable.</p></div><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{blocks.length} message blocks · {selected.length} recipients</span></div>
     <div className="mt-5 space-y-5">{blocks.map((b,i)=><div key={b.batchId} className="rounded-3xl border border-blue-100 bg-slate-50 p-5"><div className="flex items-center justify-between"><div><div className="text-xs font-black uppercase tracking-wider text-indigo-500">Message Block {i+1} · Batch of 10 max</div><div className="mt-1 font-black">{accountName(b.accountId)}</div></div><span className="rounded-full bg-white px-3 py-1 text-xs font-bold">{b.leadIds.length}/10 recipients</span></div><div className="mt-4 grid gap-4 lg:grid-cols-2"><div><label className="text-xs font-black text-slate-500">Subject {sourceMode==="followup"&&<span className="font-normal text-emerald-600">· inherited from previous campaign</span>}</label><input value={b.subject} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,subject:e.target.value}:x))} placeholder="Subject line" className="mt-2 w-full rounded-xl border border-blue-100 bg-white p-3"/><div className="mt-2 text-[11px] text-slate-400">{sourceMode==="followup"?"The previous campaign subject is pre-filled for this recipient batch. Edit it if needed.":"Exactly this batch of up to 10 recipients uses this subject/content. Multiple batches can use the same sending account."}</div></div><div><label className="text-xs font-black text-slate-500">Email content</label><textarea value={b.body} onChange={e=>setBlocks(bs=>bs.map((x,j)=>j===i?{...x,body:e.target.value}:x))} placeholder="Write the email content. Use {{first_name}}, {{company_name}}, {{last_name}}, {{email}}." className="mt-2 min-h-40 w-full rounded-xl border border-blue-100 bg-white p-3 leading-6"/></div></div><div className="mt-4 rounded-2xl bg-white p-4"><div className="text-xs font-black uppercase text-slate-400">Recipients in this block</div><div className="mt-2 flex flex-wrap gap-2">{b.leadIds.map(id=>{const l=leads.find(x=>x.id===id);return <span key={id} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{l?.email||id}</span>})}</div></div></div>)}</div>
     <div className="mt-5 flex justify-between"><button onClick={()=>setStage(2)} className="rounded-xl border border-blue-100 px-5 py-3 font-bold"><ChevronLeft size={16} className="mr-1 inline"/>Back</button><button onClick={saveMessageBlocks} disabled={busy||blocks.some(b=>!b.subject.trim()||!b.body.trim())} className="rounded-xl bg-indigo-600 px-6 py-3 font-bold text-white disabled:opacity-40">Save & Review <ChevronRight size={16} className="ml-1 inline"/></button></div>
     </div>
    </section>}
 
-   {stage===4&&<section className="mx-auto max-w-6xl space-y-5">
+   {stage===4&&<section className="mx-auto max-w-6xl space-y-5 stagger">
     <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
      <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="text-xl font-black">4. Review & Dispatch</h2><p className="mt-1 text-sm text-slate-500">{active?.name} · {active?.country} · {active?.campaign_group}</p></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{savedBlocks?"Ready for review":"Draft"}</span></div><div className="mt-5 space-y-4">{blocks.map((b,i)=><div key={b.batchId} className="rounded-2xl border border-blue-100 p-4"><div className="flex justify-between"><b>{accountName(b.accountId)}</b><span className="text-xs font-bold text-slate-500">{b.leadIds.length}/10</span></div><div className="mt-3 font-bold">{b.subject}</div><div className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{b.body}</div></div>)}</div></div>
      <aside className="space-y-5"><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><h3 className="font-black">Safety controls</h3><div className="mt-4 space-y-2 text-sm"><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Recipients / message block</span><b>10 max</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Blocks / sending account</span><b>Multiple</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Backend daily/hourly cap</span><b>Enforced</b></div><div className="flex justify-between rounded-xl bg-emerald-50 p-3"><span>Suppression recheck</span><b>Before queue/send</b></div></div></div><div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><button onClick={queue} disabled={busy} className="w-full rounded-xl bg-indigo-600 p-3 font-bold text-white disabled:opacity-40">Queue campaign</button><button onClick={send} disabled={busy} className="mt-3 w-full rounded-xl bg-emerald-600 p-3 font-bold text-white disabled:opacity-40"><Send size={16} className="mr-1 inline"/>Dispatch</button><button onClick={()=>setStage(3)} className="mt-3 w-full rounded-xl border border-blue-100 p-3 font-bold">Back to Builder</button></div></aside>
     </div>
    </section>}
+  {addAccountOpen&&<div className="add-account-backdrop" role="dialog" aria-modal="true" aria-labelledby="add-account-title" onMouseDown={e=>{if(e.target===e.currentTarget)setAddAccountOpen(false)}}>
+   <div className="add-account-panel shimmer" onMouseDown={e=>e.stopPropagation()}>
+    <div className="flex items-start justify-between gap-4">
+     <div>
+      <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-[.18em] text-indigo-600"><Plus size={13}/> Outreach account</div>
+      <h2 id="add-account-title" className="text-2xl font-black">Connect an email account</h2>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Add the sending address to this OS first. Provider authentication and backend safety limits remain controlled by the outbound infrastructure.</p>
+     </div>
+     <button type="button" onClick={()=>setAddAccountOpen(false)} className="rounded-full border border-blue-100 bg-white p-2 text-slate-500 transition hover:rotate-90" aria-label="Close">×</button>
+    </div>
+    <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+     <label className="text-xs font-black uppercase tracking-wider text-indigo-700">Email account address</label>
+     <input autoFocus value={newAccountEmail} onChange={e=>setNewAccountEmail(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addEmailAccount()}} placeholder="outreach@yourdomain.com" className="mt-2 w-full rounded-xl border border-indigo-100 bg-white p-3 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"/>
+     <p className="mt-2 text-[11px] text-slate-500">You can set the campaign outreach volume after the account is added.</p>
+    </div>
+    <div className="mt-6 flex justify-end gap-3">
+     <button type="button" onClick={()=>setAddAccountOpen(false)} className="rounded-xl border border-blue-100 bg-white px-5 py-3 text-sm font-bold text-slate-600">Cancel</button>
+     <button type="button" onClick={addEmailAccount} disabled={busy} className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 disabled:opacity-50">{busy?"Adding…":"Add account"} <ChevronRight size={15} className="ml-1 inline"/></button>
+    </div>
+   </div>
+  </div>}
   </div>
  </main>
 }
