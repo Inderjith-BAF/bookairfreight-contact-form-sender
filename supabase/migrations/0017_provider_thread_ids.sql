@@ -1,0 +1,1 @@
+alter table public.mail_merge_campaign_recipients add column if not exists provider_thread_id text;
