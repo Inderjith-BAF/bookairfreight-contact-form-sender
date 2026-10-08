@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { BlueprintNav } from "@/components/blueprint-nav";
-import { CheckCircle2, ChevronLeft, ChevronRight, Mail, Plus, RefreshCw, Send, ShieldCheck, Upload, Users, X } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Plus, RefreshCw, Send, ShieldCheck, Upload } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type Account={id:string;email:string;health_status:string;daily_send_limit:number;hourly_send_limit:number;total_sent:number;employee_id?:string};
