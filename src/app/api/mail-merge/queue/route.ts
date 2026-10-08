@@ -25,6 +25,7 @@ export async function POST(request:Request){
  const remainingDaily=new Map<string,number>();
  const remainingHourly=new Map<string,number>();
  let queued=0,skipped=0;
+ const nextScheduleBySender=new Map<string,number>();
  for(const [batchKey,items] of byBatch){
   const [sender]=batchKey.split("::");
   if(sender==="unassigned"){skipped+=items.length;reasons.unassigned+=items.length;continue;}
@@ -47,7 +48,9 @@ export async function POST(request:Request){
    const nowDate=new Date();
    const now=nowDate.toISOString();
    // Pace each sending account: one recipient at least every 60 seconds.
-   const updates=take.map((r:any,index:number)=>admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:new Date(nowDate.getTime()+index*60_000).toISOString(),updated_at:now}).eq("id",r.id));
+   const scheduleStart=nextScheduleBySender.get(sender) ?? nowDate.getTime();
+   const updates=take.map((r:any,index:number)=>admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:new Date(scheduleStart+index*60_000).toISOString(),updated_at:now}).eq("id",r.id));
+   nextScheduleBySender.set(sender,scheduleStart+take.length*60_000);
    await Promise.all(updates);
    queued+=take.length;
    remainingDaily.set(sender,(remainingDaily.get(sender)||0)-take.length);
