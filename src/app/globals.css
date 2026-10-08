@@ -219,3 +219,19 @@ option{color:#10233f;background:#fff}
 .theme-night .freight-header .bg-white{background:#111827!important;color:#e2e8f0!important}
 .theme-night .freight-header .bg-white .text-slate-500{color:#94a3b8!important}
 
+
+/* Mail Merge OS interaction layer */
+.add-account-backdrop{
+  position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;
+  background:rgba(15,23,42,.42);backdrop-filter:blur(10px);
+  animation:modalBackdropIn .22s ease-out both;
+}
+.add-account-panel{
+  width:min(560px,100%);border:1px solid rgba(99,102,241,.22);border-radius:28px;
+  background:rgba(255,255,255,.97);box-shadow:0 30px 100px rgba(30,41,59,.22),0 8px 30px rgba(77,92,255,.12);
+  padding:28px;animation:modalPanelIn .38s cubic-bezier(.2,.9,.25,1.05) both;
+}
+.add-account-panel .shimmer:after{opacity:.7}
+@keyframes modalBackdropIn{from{opacity:0}to{opacity:1}}
+@keyframes modalPanelIn{from{opacity:0;transform:translateY(24px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media (prefers-reduced-motion:reduce){.add-account-backdrop,.add-account-panel{animation:none!important}}
