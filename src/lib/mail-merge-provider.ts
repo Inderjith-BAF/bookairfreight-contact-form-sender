@@ -18,11 +18,31 @@ async function microsoftAccess(account:Account,admin:any){
 }
 export async function getProviderAccess(account:Account,admin:any){return account.provider==="google"?googleAccess(account,admin):microsoftAccess(account,admin);}
 const esc=(s:string)=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const attr=(s:string)=>esc(s).replace(/'/g,"&#39;");
+function sanitizeEmailHtml(input:string){
+ const hasMarkup=/<\/?[a-z][^>]*>/i.test(input);
+ if(!hasMarkup)return esc(input).replace(/\r?\n/g,"<br>");
+ let html=input.replace(/<!--[\s\S]*?-->/g,"");
+ html=html.replace(/<\s*(script|style|iframe|object|embed|svg|math|form|input|button|meta|link|base)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,"");
+ html=html.replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,"");
+ html=html.replace(/<([^>]+)>/g,(full:string,raw:string)=>{
+  const close=/^\s*\/\s*([a-z0-9]+)/i.exec(raw);
+  if(close){const n=close[1].toLowerCase();return ["b","strong","i","em","u","s","p","br","ul","ol","li","a","span","font"].includes(n)?"</"+n+">":""}
+  const m=/^\s*([a-z0-9]+)/i.exec(raw);if(!m)return "";
+  const n=m[1].toLowerCase();if(!["b","strong","i","em","u","s","p","br","ul","ol","li","a","span","font"].includes(n))return "";
+  if(n==="a"){const href=/href\s*=\s*["']([^"']+)["']/i.exec(raw)?.[1]||"";return (/^https?:\/\//i.test(href)||/^mailto:/i.test(href))?'<a href="'+attr(href)+'">':"<a>";}
+  if(n==="font"){const color=/color\s*=\s*["'](#[0-9a-f]{3,8})["']/i.exec(raw)?.[1]||"";return color?'<font color="'+attr(color)+'">':"<font>";}
+  return "<"+n+">";
+ });
+ return html.replace(/\r?\n/g,"<br>");
+}
 export function renderTrackedHtml(body:string,trackingBase:string,token:string){
- let html=esc(body).replace(/\\r?\\n/g,"<br>");
- html=html.replace(/https?:\/\/[^\s<]+/gi,(url)=>'<a href="'+trackingBase+'/click/'+token+'?url='+encodeURIComponent(url)+'">'+url+'</a>');
+ let html=sanitizeEmailHtml(body);
+ html=html.replace(/<a href="(https?:\/\/[^"]+)">([\s\S]*?)<\/a>/gi,(match,url,text)=>'<a href="'+trackingBase+'/click/'+token+'?url='+encodeURIComponent(url)+'">'+text+"</a>");
+ html=html.replace(/(?<![="])https?:\/\/[^\s<]+/gi,(url)=>'<a href="'+trackingBase+'/click/'+token+'?url='+encodeURIComponent(url)+'">'+url+"</a>");
  return html+'<img src="'+trackingBase+'/open/'+token+'" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" />';
 }
+
 function b64url(v:string){return Buffer.from(v).toString("base64url");}
 function mimeMessage(from:string,to:string,subject:string,html:string,extra:Record<string,string>={}){
  const lines=["From: "+from,"To: "+to,"Subject: "+subject,"MIME-Version: 1.0","Content-Type: text/html; charset=UTF-8",...Object.entries(extra).map(([k,v])=>k+": "+v),"",html];
