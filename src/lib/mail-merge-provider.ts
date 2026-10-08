@@ -1,10 +1,17 @@
 import {decryptSecret,encryptSecret} from "@/lib/mail-merge-oauth";
 type Provider="google"|"microsoft";
-type Account={id:string;email:string;provider:Provider;refresh_token_encrypted:string;access_token_encrypted?:string|null;access_token_expires_at?:string|null;provider_account_id?:string|null;};
+type Account={id:string;email:string;provider:Provider;refresh_token_encrypted:string;access_token_encrypted?:string|null;access_token_expires_at?:string|null;provider_account_id?:string|null;employee_id?:string|null;};
+
+async function markConnectionFailure(account:Account,admin:any,message:string){
+ await admin.from("outbound_email_accounts").update({connection_status:"Disconnected",connection_error:message,last_verified_at:new Date().toISOString()}).eq("id",account.id);
+ if(account.employee_id) await admin.from("mail_merge_notifications").upsert({recipient_profile_id:account.employee_id,notification_type:"account_disconnected",account_id:account.id,title:"Email account disconnected",message:account.email+" is no longer connected and has been removed from the active sending pool. Reconnect the mailbox before its queued batches can resume."},{onConflict:"recipient_profile_id,account_id,notification_type"});
+}
+
 async function googleAccess(account:Account,admin:any){
  const refresh=decryptSecret(account.refresh_token_encrypted);
  const r=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID||"",client_secret:process.env.GOOGLE_CLIENT_SECRET||"",refresh_token:refresh,grant_type:"refresh_token"})});
- const d=await r.json();if(!r.ok||!d.access_token)throw new Error(d.error_description||"Google authorization expired. Reconnect this account.");
+ const d=await r.json();
+ if(!r.ok||!d.access_token){const message=d.error_description||"Google authorization expired. Reconnect this account.";if(["invalid_grant","unauthorized_client"].includes(String(d.error||"")))await markConnectionFailure(account,admin,message);throw new Error(message);}
  await admin.from("outbound_email_accounts").update({access_token_encrypted:encryptSecret(d.access_token),access_token_expires_at:new Date(Date.now()+Number(d.expires_in||3600)*1000).toISOString(),connection_status:"Connected",connection_error:null,last_verified_at:new Date().toISOString()}).eq("id",account.id);
  return d.access_token;
 }
@@ -12,11 +19,15 @@ async function microsoftAccess(account:Account,admin:any){
  const refresh=decryptSecret(account.refresh_token_encrypted);
  const tenant=process.env.MICROSOFT_TENANT_ID||"common";
  const r=await fetch("https://login.microsoftonline.com/"+encodeURIComponent(tenant)+"/oauth2/v2.0/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:process.env.MICROSOFT_CLIENT_ID||"",client_secret:process.env.MICROSOFT_CLIENT_SECRET||"",refresh_token:refresh,grant_type:"refresh_token",scope:"offline_access Mail.Send Mail.Read"})});
- const d=await r.json();if(!r.ok||!d.access_token)throw new Error(d.error_description||"Microsoft authorization expired. Reconnect this account.");
+ const d=await r.json();
+ if(!r.ok||!d.access_token){const message=d.error_description||"Microsoft authorization expired. Reconnect this account.";if(["invalid_grant","invalid_client","interaction_required"].includes(String(d.error||"")))await markConnectionFailure(account,admin,message);throw new Error(message);}
  await admin.from("outbound_email_accounts").update({access_token_encrypted:encryptSecret(d.access_token),access_token_expires_at:new Date(Date.now()+Number(d.expires_in||3600)*1000).toISOString(),connection_status:"Connected",connection_error:null,last_verified_at:new Date().toISOString()}).eq("id",account.id);
  return d.access_token;
 }
-export async function getProviderAccess(account:Account,admin:any){return account.provider==="google"?googleAccess(account,admin):microsoftAccess(account,admin);}
+export async function getProviderAccess(account:Account,admin:any){
+ try{return account.provider==="google"?await googleAccess(account,admin):await microsoftAccess(account,admin);}
+ catch(error){const message=error instanceof Error?error.message:"Mailbox authorization failed.";if(/authorization expired|invalid_grant|interaction_required|reconnect this account/i.test(message))await markConnectionFailure(account,admin,message);throw error;}
+}
 const esc=(s:string)=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const attr=(s:string)=>esc(s).replace(/'/g,"&#39;");
 function sanitizeEmailHtml(input:string){
