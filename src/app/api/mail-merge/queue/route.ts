@@ -28,7 +28,7 @@ export async function POST(request:Request){
   const [sender]=batchKey.split("::");
   if(sender==="unassigned"){skipped+=items.length;continue;}
   const {data:account}=await admin.from("outbound_email_accounts").select("*").eq("id",sender).maybeSingle();
-  if(!account||account.health_status==="Paused"){skipped+=items.length;continue;}
+  if(!account||account.health_status==="Paused"||account.connection_status!=="Connected"||!account.refresh_token_encrypted){skipped+=items.length;continue;}
   if(!remainingDaily.has(sender)||!remainingHourly.has(sender)){
    const now=new Date();
    const dayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
