@@ -74,8 +74,18 @@ export async function GET(request: Request) {
     const rows = leads.map((lead: any) => [lead.company_name,lead.location_on_site,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
     return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
   }
-  const teamByName = new Map((team || []).map((member:any)=>[String(member.full_name||"").trim().toLowerCase(), member.id]));
-  const leadsWithOwners = leads.map((lead:any)=>({ ...lead, fresh_outreach_owner_id: teamByName.get(String(lead.fresh_outreach_assigned_to||"").trim().toLowerCase()) || null }));
+  const teamMembers = team || [];
+  const normalized = (value: unknown) => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  const ownerIdForFreshOutreach = (value: unknown) => {
+    const target = normalized(value);
+    if (!target) return null;
+    const exact = teamMembers.find((member:any) => normalized(member.full_name) === target);
+    if (exact) return exact.id;
+    const firstNameMatches = teamMembers.filter((member:any) => normalized(member.full_name).split(" ")[0] === target);
+    if (firstNameMatches.length === 1) return firstNameMatches[0].id;
+    return null;
+  };
+  const leadsWithOwners = leads.map((lead:any)=>({ ...lead, fresh_outreach_owner_id: ownerIdForFreshOutreach(lead.fresh_outreach_assigned_to) }));
   return NextResponse.json({ leads: leadsWithOwners, total: count || 0, page, pageSize, batches: batches || [], team: team || [] });
 }
 
