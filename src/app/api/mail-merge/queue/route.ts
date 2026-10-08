@@ -59,7 +59,12 @@ export async function POST(request:Request){
    account=data;accountCache.set(sender,account);
   }
   if(!account||account.health_status==="Paused"||account.connection_status!=="Connected"||!account.refresh_token_encrypted){
-   reasons.disconnected+=items.length;continue;
+   reasons.disconnected+=items.length;
+   if(account?.employee_id){
+    const {data:existing}=await admin.from("mail_merge_notifications").select("id").eq("recipient_profile_id",account.employee_id).eq("account_id",account.id).eq("notification_type","account_disconnected").is("read_at",null).maybeSingle();
+    if(!existing)await admin.from("mail_merge_notifications").insert({recipient_profile_id:account.employee_id,notification_type:"account_disconnected",account_id:account.id,title:"Email account disconnected",message:account.email+" is not connected and cannot receive this campaign. Reconnect the mailbox before its batch can be dispatched."});
+   }
+   continue;
   }
   if(!remainingDaily.has(sender)||!remainingHourly.has(sender)){
    const now=new Date();
