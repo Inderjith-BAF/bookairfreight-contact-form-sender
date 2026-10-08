@@ -105,7 +105,7 @@ export async function POST(request: Request) {
         String(previous.subject || "").trim().toLowerCase() === String(row.subject || "").trim().toLowerCase();
 
       const origin = new URL(request.url).origin;
-      const trackingBase = origin + "/api/mail-merge/track";
+      const trackingBase = (process.env.MAIL_MERGE_TRACKING_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || origin) + "/api/mail-merge/track";
       const trackingToken = signTrackingToken(String(row.id));
 
       const response = await sendThroughProvider(
