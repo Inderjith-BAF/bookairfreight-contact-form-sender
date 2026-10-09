@@ -60,7 +60,7 @@ export async function GET(request:Request){
    const origin=new URL(request.url).origin;
    const trackingBase=(process.env.MAIL_MERGE_TRACKING_BASE_URL||process.env.NEXT_PUBLIC_APP_URL||origin)+"/api/mail-merge/track";
    const trackingToken=signTrackingToken(String(row.id));
-   const response=await sendThroughProvider(account,{to:lead.email,subject:String(row.subject||""),body:String(row.body||""),trackingBase,trackingToken,replyToMessageId:sameSubject?String(previous.provider_message_id):undefined,replyToThreadId:sameSubject?String(previous.provider_thread_id||""):undefined},admin);
+   const response=await sendThroughProvider(account,{to:lead.email,subject:String(row.subject||""),body:String(row.body||""),trackingBase,trackingToken,replyToMessageId:sameSubject&&previous?String(previous.provider_message_id):undefined,replyToThreadId:sameSubject&&previous?String(previous.provider_thread_id||""):undefined},admin);
    const now=new Date().toISOString();
    const providerId=String(response.messageId||"");
    const providerThreadId=String(response.threadId||"");
