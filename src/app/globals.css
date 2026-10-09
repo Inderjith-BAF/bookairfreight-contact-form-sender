@@ -305,3 +305,8 @@ option{color:#10233f;background:#fff}
 /* Keep sidebar labels visually consistent: inactive button tabs should use the same regular weight as link tabs. */
 .freight-sidebar button.flex.w-full.items-center{font-weight:500!important}
 .freight-sidebar button.flex.w-full.items-center.bg-lime-300{font-weight:700!important}
+
+
+/* One typography contract for every sidebar navigation item, regardless of Link vs button rendering. */
+.freight-sidebar .sidebar-nav-item{font-family:inherit!important;font-size:14px!important;font-weight:500!important;line-height:20px!important;letter-spacing:normal!important}
+.freight-sidebar .sidebar-nav-item.bg-lime-300{font-weight:700!important}
