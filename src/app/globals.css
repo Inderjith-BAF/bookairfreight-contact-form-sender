@@ -301,3 +301,7 @@ option{color:#10233f;background:#fff}
 .freight-sidebar button.team-access-nav.bg-lime-300{font-weight:700!important;color:#10233f!important;background:linear-gradient(105deg,#c7f4ff,#dce2ff,#e6f8b7)!important;background-size:220% 100%!important;animation:teamAccessIdleGlow 3s ease-in-out infinite,teamAccessPop .45s cubic-bezier(.2,.8,.2,1) both!important}
 @keyframes teamAccessIdleGlow{0%,100%{background-position:0% 50%;box-shadow:0 0 0 0 rgba(77,92,255,.04)}50%{background-position:100% 50%;box-shadow:0 3px 15px rgba(77,92,255,.12)}}
 @media(prefers-reduced-motion:reduce){.freight-sidebar button.team-access-nav{animation:none!important;background-position:50% 50%!important}.freight-sidebar button.team-access-nav::before{animation:none!important}}
+
+/* Keep sidebar labels visually consistent: inactive button tabs should use the same regular weight as link tabs. */
+.freight-sidebar button.flex.w-full.items-center{font-weight:500!important}
+.freight-sidebar button.flex.w-full.items-center.bg-lime-300{font-weight:700!important}
