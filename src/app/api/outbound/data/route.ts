@@ -98,7 +98,7 @@ export async function DELETE(request: Request) {
   }
   let query = admin.from("outbound_activities").delete()
     .eq("activity_date", activityDate).eq("channel", channel);
-  if (channel === "cold_email") query = query.eq("region", country);
+  if (country) query = query.eq("region", country);
   if (profile.role === "member") query = query.eq("employee_id", profile.id);
   const { data, error } = await query.select("id");
   if (error) {
