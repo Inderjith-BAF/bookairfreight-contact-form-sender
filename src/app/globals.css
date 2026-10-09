@@ -292,3 +292,12 @@ option{color:#10233f;background:#fff}
 @keyframes teamAccessShimmer{0%,100%{background-position:0% 50%;filter:saturate(1)}50%{background-position:100% 50%;filter:saturate(1.35)}}
 @keyframes teamAccessPop{0%{transform:scale(.97)}65%{transform:scale(1.015)}100%{transform:scale(1)}}
 @media(prefers-reduced-motion:reduce){.freight-sidebar button.team-access-nav,.freight-sidebar button.team-access-nav::before,.freight-sidebar button.team-access-nav::after{animation:none!important;transition:none!important}}
+
+/* Always-visible Team & Access highlight: users should see the accent without hovering or selecting it. */
+.freight-sidebar button.team-access-nav{font-weight:500!important;font-size:14px!important;line-height:1.25!important;color:#526b8a!important;border:1px solid rgba(77,92,255,.16);background:linear-gradient(110deg,rgba(24,182,255,.08),rgba(77,92,255,.07),rgba(183,243,74,.10));background-size:220% 100%;animation:teamAccessIdleGlow 5s ease-in-out infinite}
+.freight-sidebar button.team-access-nav::before{opacity:.45!important;animation:teamAccessShimmer 5s ease-in-out infinite!important}
+.freight-sidebar button.team-access-nav::after{opacity:.9!important;transform:scaleY(1)!important}
+.freight-sidebar button.team-access-nav:hover{font-weight:700!important;color:#243e67!important;box-shadow:0 5px 18px rgba(77,92,255,.15);border-color:rgba(77,92,255,.35)}
+.freight-sidebar button.team-access-nav.bg-lime-300{font-weight:700!important;color:#10233f!important;background:linear-gradient(105deg,#c7f4ff,#dce2ff,#e6f8b7)!important;background-size:220% 100%!important;animation:teamAccessIdleGlow 3s ease-in-out infinite,teamAccessPop .45s cubic-bezier(.2,.8,.2,1) both!important}
+@keyframes teamAccessIdleGlow{0%,100%{background-position:0% 50%;box-shadow:0 0 0 0 rgba(77,92,255,.04)}50%{background-position:100% 50%;box-shadow:0 3px 15px rgba(77,92,255,.12)}}
+@media(prefers-reduced-motion:reduce){.freight-sidebar button.team-access-nav{animation:none!important;background-position:50% 50%!important}.freight-sidebar button.team-access-nav::before{animation:none!important}}
