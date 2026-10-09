@@ -278,3 +278,17 @@ option{color:#10233f;background:#fff}
  .os-card,.os-interactive,.os-status,.os-progress-fill{transition:none!important}
  .os-progress-track::after{display:none}
 }
+
+/* Team & Access nav: match the shared sidebar typography and add a playful, restrained highlight. */
+.freight-sidebar button.team-access-nav{font-family:inherit;font-size:inherit;font-weight:700;letter-spacing:normal;line-height:1.25;position:relative;isolation:isolate;overflow:hidden}
+.freight-sidebar button.team-access-nav::before{content:"";position:absolute;inset:1px;border-radius:inherit;pointer-events:none;z-index:-1;opacity:0;background:linear-gradient(105deg,rgba(24,182,255,.22),rgba(77,92,255,.16),rgba(183,243,74,.25));background-size:220% 100%;transition:opacity .25s ease}
+.freight-sidebar button.team-access-nav::after{content:"";position:absolute;left:0;top:20%;bottom:20%;width:3px;border-radius:0 6px 6px 0;background:linear-gradient(180deg,#18b6ff,#4d5cff,#b7f34a);transform:scaleY(.2);opacity:0;transform-origin:center;transition:transform .25s ease,opacity .25s ease}
+.freight-sidebar button.team-access-nav:hover::before{opacity:.7;animation:teamAccessShimmer 2.8s ease-in-out infinite}
+.freight-sidebar button.team-access-nav:hover::after{opacity:.8;transform:scaleY(1)}
+.freight-sidebar button.team-access-nav:focus-visible{outline:2px solid #18b6ff;outline-offset:2px}
+.freight-sidebar button.team-access-nav.bg-lime-300{box-shadow:0 0 0 1px rgba(77,92,255,.14),0 6px 18px rgba(77,92,255,.12);animation:teamAccessPop .45s cubic-bezier(.2,.8,.2,1) both}
+.freight-sidebar button.team-access-nav.bg-lime-300::before{opacity:1;animation:teamAccessShimmer 3.2s ease-in-out infinite}
+.freight-sidebar button.team-access-nav.bg-lime-300::after{opacity:1;transform:scaleY(1)}
+@keyframes teamAccessShimmer{0%,100%{background-position:0% 50%;filter:saturate(1)}50%{background-position:100% 50%;filter:saturate(1.35)}}
+@keyframes teamAccessPop{0%{transform:scale(.97)}65%{transform:scale(1.015)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.freight-sidebar button.team-access-nav,.freight-sidebar button.team-access-nav::before,.freight-sidebar button.team-access-nav::after{animation:none!important;transition:none!important}}
