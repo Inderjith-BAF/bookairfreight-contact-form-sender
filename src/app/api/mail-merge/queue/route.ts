@@ -26,19 +26,29 @@ export async function POST(request:Request){
  const {data:rows,error}=await admin.from("mail_merge_campaign_recipients").select("*,master_leads(*)").eq("campaign_id",campaignId).eq("status","Ready");
  if(error)return NextResponse.json({error:error.message},{status:500});
 
+ const reasons={disconnected:0,daily_hourly_cap:0,unassigned:0,eligible_blocked:0,campaign_ineligible:0,lead_record_missing:0};
+ const trulyBlocked=(rows||[]).filter((r:any)=>{
+  const l=r.master_leads;
+  return Boolean(l&&(l.suppression_reason||blockedStatuses.includes(String(l.current_status||""))));
+ });
+ if(trulyBlocked.length){
+  reasons.eligible_blocked=trulyBlocked.length;
+  await admin.from("mail_merge_campaign_recipients").update({status:"Suppressed",error_message:"Lead has a suppression reason or a blocked response status.",updated_at:new Date().toISOString()}).in("id",trulyBlocked.map((r:any)=>r.id));
+ }
  const eligible=(rows||[]).filter((r:any)=>{
   const l=r.master_leads;
-  if(!l||l.suppression_reason||blockedStatuses.includes(l.current_status))return false;
+  if(!l||l.suppression_reason||blockedStatuses.includes(String(l.current_status||"")))return false;
   if(campaign.campaign_group==="Fresh Outreach"&&l.last_contacted_at)return false;
   if(["Follow-up 1","Follow-up 2","Follow-up 3"].includes(campaign.campaign_group)&&!l.last_contacted_at)return false;
   return true;
  });
- const reasons={disconnected:0,daily_hourly_cap:0,unassigned:0,eligible_blocked:0};
- const blocked=(rows||[]).filter((r:any)=>!eligible.some((x:any)=>x.id===r.id));
- if(blocked.length){
-  reasons.eligible_blocked=blocked.length;
-  await admin.from("mail_merge_campaign_recipients").update({status:"Suppressed",error_message:"Recipient is suppressed or has a response.",updated_at:new Date().toISOString()}).in("id",blocked.map((r:any)=>r.id));
- }
+ reasons.campaign_ineligible=(rows||[]).filter((r:any)=>{
+  const l=r.master_leads;
+  if(!l||l.suppression_reason||blockedStatuses.includes(String(l.current_status||"")))return false;
+  return (campaign.campaign_group==="Fresh Outreach"&&Boolean(l.last_contacted_at))||
+   (["Follow-up 1","Follow-up 2","Follow-up 3"].includes(campaign.campaign_group)&&!l.last_contacted_at);
+ }).length;
+ reasons.lead_record_missing=(rows||[]).filter((r:any)=>!r.master_leads).length;
 
  const byBatch=new Map<string,any[]>();
  for(const r of shuffle(eligible)){
