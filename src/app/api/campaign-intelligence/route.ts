@@ -18,7 +18,7 @@ export async function POST(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
  const {admin,profile}=auth;const body=await request.json().catch(()=>null);
  const ids=Array.isArray(body?.campaignIds)?[...new Set(body.campaignIds.map(String).filter(Boolean))]:[];
- const requestedDate=typeof body?.activityDate==="string"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(body.activityDate)?body.activityDate:null;
+ const requestedDate=typeof body?.activityDate==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(body.activityDate)?body.activityDate:null;
  if(body?.activityDate&&!requestedDate)return NextResponse.json({error:"Report date must be a valid YYYY-MM-DD date."},{status:400});
  if(!ids.length||ids.length>100)return NextResponse.json({error:"Select between 1 and 100 campaigns."},{status:400});
  const {data:campaigns,error:campaignError}=await admin.from("mail_merge_campaigns").select("*").in("id",ids);
@@ -38,7 +38,7 @@ export async function POST(request:Request){
   for(const row of sentRows){const account=accountOf(row);const key=String(row.sender_account_id||"");if(!account?.email||!key)continue;const list=byAccount.get(key)||[];list.push(row);byAccount.set(key,list);}
   for(const rows of byAccount.values()){
    const account=accountOf(rows[0]);const opens=rows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
-   const sentDates=rows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\\d{4}-\\d{2}-\\d{2}$/.test(d)).sort();
+   const sentDates=rows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
    const day=requestedDate||sentDates[0]||String(campaign.created_at||new Date().toISOString()).slice(0,10);
    const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id,activity_date").eq("channel","cold_email").eq("region",campaign.country).eq("company",campaign.name).eq("email_account_text",account.email).limit(1);
    if(existingError)return NextResponse.json({error:existingError.message},{status:500});
