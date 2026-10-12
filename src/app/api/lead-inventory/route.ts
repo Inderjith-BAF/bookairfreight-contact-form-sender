@@ -33,6 +33,7 @@ const fields = {
   email_finding_assigned_to: ["(Email Finding)     Assigned To", "(Email Finding) Assigned To"],
   email_finding_assigned_date: ["(Email Finding)     Assigned Date", "(Email Finding) Assigned Date"],
   business_personal_email: ["Business / Personal Email"],
+  contact_form: ["Contact form"],
   fresh_outreach_assigned_to: ["Assigned to(Fresh Outreach)", "Assigned to (Fresh Outreach)"],
   fresh_outreach_assigned_date: ["Assigned Date(Fresh Outreach)", "Assigned Date (Fresh Outreach)"]
 } as const;
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
     row.main_product_description,row.secondary_product_description,row.main_industry,row.main_additional_tag,
     row.secondary_industry,row.secondary_additional_tag,row.qualified_lead,row.assigned_to,row.assigned_date,
     row.ecommerce_platform_used,row.data_from_lead_generation_team,row.data_source,row.email_finding_assigned_to,
-    row.email_finding_assigned_date,row.business_personal_email,row.fresh_outreach_assigned_to,row.fresh_outreach_assigned_date
+    row.email_finding_assigned_date,row.business_personal_email,row.contact_form,row.fresh_outreach_assigned_to,row.fresh_outreach_assigned_date
   ].some(v => String(v || "").toLowerCase().includes(q)));
   return NextResponse.json({ leads, total: leads.length, team: members || [], currentRole: auth.profile.role });
 }
