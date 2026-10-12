@@ -68,30 +68,81 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const rows = Array.isArray(body?.rows) ? body.rows : [];
   if (!rows.length || rows.length > 5000) return NextResponse.json({ error: "Upload between 1 and 5,000 new lead rows." }, { status: 400 });
-  let added = 0, duplicate = 0, invalid = 0;
-  const results: { row: number; email: string; result: string; reason: string }[] = [];
+
+  type RowResult = { row: number; email: string; result: string; reason: string };
+  const results: RowResult[] = [];
+  const candidates: { index: number; email: string; record: Record<string, unknown> }[] = [];
+  const seenInRequest = new Set<string>();
+  let duplicate = 0;
+  let invalid = 0;
+
+  // Validate and normalize first. Keep the original row index so the UI can
+  // report exact spreadsheet rows even when invalid rows are skipped.
   for (let i = 0; i < rows.length; i++) {
     const raw = rows[i] as Record<string, unknown>;
     const record: Record<string, unknown> = {};
     for (const [field, headers] of Object.entries(fields)) record[field] = pick(raw, ...headers);
-    const email = clean(record.email);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const email = clean(record.email).toLowerCase();
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
       invalid++; results.push({ row: i + 1, email, result: "Skipped", reason: "Missing or invalid email" }); continue;
     }
     if (!clean(record.country)) {
       invalid++; results.push({ row: i + 1, email, result: "Skipped", reason: "Country is required" }); continue;
     }
+    if (seenInRequest.has(email)) {
+      duplicate++; results.push({ row: i + 1, email, result: "Skipped", reason: "Duplicate email in this upload" }); continue;
+    }
+    seenInRequest.add(email);
     record.email = email;
     record.imported_by = profile.id;
-    const { error } = await admin.from("central_lead_inventory").insert(record);
-    if (error?.code === "23505") {
-      duplicate++; results.push({ row: i + 1, email, result: "Skipped", reason: "Email already exists in Central Lead Inventory" });
-    } else if (error) {
-      invalid++; results.push({ row: i + 1, email, result: "Skipped", reason: error.message });
-    } else {
-      added++; results.push({ row: i + 1, email, result: "Added", reason: "New inventory lead" });
+    candidates.push({ index: i, email, record });
+  }
+
+  // Insert a whole batch in one database request. The unique normalized_email
+  // constraint is the final authority for duplicate safety; ignoreDuplicates
+  // never updates an existing lead or its assignments/status.
+  if (candidates.length) {
+    const { data: insertedRows, error } = await admin
+      .from("central_lead_inventory")
+      .upsert(candidates.map(item => item.record), {
+        onConflict: "normalized_email",
+        ignoreDuplicates: true,
+      })
+      .select("normalized_email");
+
+    if (!error) {
+      const insertedEmails = new Set((insertedRows || []).map((row: { normalized_email: string }) => row.normalized_email));
+      for (const item of candidates) {
+        if (insertedEmails.has(item.email)) {
+          results.push({ row: item.index + 1, email: item.email, result: "Added", reason: "New inventory lead" });
+        } else {
+          duplicate++;
+          results.push({ row: item.index + 1, email: item.email, result: "Skipped", reason: "Email already exists in Central Lead Inventory" });
+        }
+      }
+      const added = insertedEmails.size;
+      results.sort((a, b) => a.row - b.row);
+      return NextResponse.json({ added, duplicate, invalid, total: rows.length, results }, { status: 201 });
+    }
+
+    // Resilient fallback only if the bulk request fails (for example, a
+    // schema/constraint issue). This preserves per-row error reporting.
+    for (const item of candidates) {
+      const { error: insertError } = await admin.from("central_lead_inventory").insert(item.record);
+      if (!insertError) {
+        results.push({ row: item.index + 1, email: item.email, result: "Added", reason: "New inventory lead" });
+      } else if (insertError.code === "23505") {
+        duplicate++;
+        results.push({ row: item.index + 1, email: item.email, result: "Skipped", reason: "Email already exists in Central Lead Inventory" });
+      } else {
+        invalid++;
+        results.push({ row: item.index + 1, email: item.email, result: "Skipped", reason: insertError.message });
+      }
     }
   }
+
+  results.sort((a, b) => a.row - b.row);
+  const added = results.filter(item => item.result === "Added").length;
   return NextResponse.json({ added, duplicate, invalid, total: rows.length, results }, { status: 201 });
 }
 
