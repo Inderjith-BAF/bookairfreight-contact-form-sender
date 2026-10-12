@@ -137,6 +137,8 @@ export async function POST(request: Request) {
   const { admin, profile } = auth;
   const body = await request.json().catch(() => null);
   const rows = Array.isArray(body?.rows) ? body.rows : [];
+  const leadSource = String(body?.leadSource || "").trim();
+  if (!leadSource) return NextResponse.json({ error: "Enter the internal sheet name or lead source before importing." }, { status: 400 });
   if (!rows.length || rows.length > 5000) return NextResponse.json({ error: "Paste between 1 and 5,000 rows." }, { status: 400 });
 
   const { data: batch, error: batchError } = await admin.from("lead_import_batches").insert({
@@ -174,7 +176,7 @@ export async function POST(request: Request) {
         assigned_to: value(raw, "Assigned To"), assigned_date: value(raw, "Assigned Date"),
         ecommerce_platform_used: value(raw, "Ecommerce platform used"),
         data_from_lead_generation_team: value(raw, "Data from lead generation team"),
-        data_source: value(raw, "Data source (need to indicate which raw data sheet you are using)", "Data source") || String(body?.leadSource || "Unspecified"),
+        data_source: String(body?.leadSource || "").trim() || value(raw, "Data source (need to indicate which raw data sheet you are using)", "Data source") || "Unspecified",
         email_finding_assigned_to: value(raw, "(Email Finding) Assigned To", "Email Finding Assigned To"),
         email_finding_assigned_date: value(raw, "(Email Finding) Assigned Date", "Email Finding Assigned Date"),
         business_personal_email: value(raw, "Business / Personal Email", "Email Type"),
