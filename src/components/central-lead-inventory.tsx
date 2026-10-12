@@ -37,7 +37,7 @@ export function CentralLeadInventory() {
   const [dragFill, setDragFill] = useState<DragFill>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [columnFilters, setColumnFilters] = useState<Record<string,string>>({});
-  const [summary, setSummary] = useState<{added:number;duplicate:number;invalid:number;total:number}|null>(null);
+  const [summary, setSummary] = useState<{added:number;duplicate:number;invalid:number;total:number;results?:{row:number;email:string;result:string;reason:string}[]}|null>(null);
   const load = useCallback(async (t: string) => {
     const params = new URLSearchParams({ q, source });
     const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + t } });
@@ -66,7 +66,7 @@ export function CentralLeadInventory() {
       const res = await fetch("/api/lead-inventory", { method:"POST", headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"}, body:JSON.stringify({rows}) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
-      setSummary({added:data.added,duplicate:data.duplicate,invalid:data.invalid,total:data.total});
+      setSummary({added:data.added,duplicate:data.duplicate,invalid:data.invalid,total:data.total,results:data.results || []});
       setMessage("Inventory upload reconciled. Existing emails were skipped; no Master Lead Sheet records were changed.");
       setPaste(""); await load(token);
     } catch (e) { setError(e instanceof Error ? e.message : "Upload failed"); }
@@ -147,7 +147,7 @@ export function CentralLeadInventory() {
       <div className="flex items-center gap-2"><Upload size={18} className="text-indigo-500"/><h2 className="text-lg font-black">Upload new leads</h2></div>
       <p className="mt-1 text-sm text-slate-500">Paste or upload a spreadsheet with your exact universal column headers in row one. Only new email addresses are inserted; duplicate emails are skipped.</p>
       <textarea value={paste} onChange={e=>setPaste(e.target.value)} placeholder="Paste spreadsheet cells including the 24 headers…" className="mt-4 min-h-32 w-full rounded-xl border border-blue-100 bg-slate-50 p-3 font-mono text-xs"/>
-      <div className="mt-3 flex flex-wrap items-center gap-3"><button disabled={busy||!paste.trim()} onClick={()=>void parseAndUpload()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{busy?<LoaderCircle className="inline animate-spin" size={15}/>:<FileUp className="inline" size={15}/>} Validate & upload</button><label className="cursor-pointer rounded-xl border border-blue-100 px-4 py-2.5 text-sm font-bold text-indigo-600"><Upload className="mr-1 inline" size={15}/> Upload CSV / Excel<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f)void parseAndUpload(f);e.currentTarget.value="";}}/></label>{summary&&<span className="text-xs font-semibold text-slate-600">Processed {summary.total} · Added {summary.added} · Duplicate {summary.duplicate} · Invalid {summary.invalid}</span>}</div>
+      <div className="mt-3 flex flex-wrap items-center gap-3"><button disabled={busy||!paste.trim()} onClick={()=>void parseAndUpload()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{busy?<LoaderCircle className="inline animate-spin" size={15}/>:<FileUp className="inline" size={15}/>} Validate & upload</button><label className="cursor-pointer rounded-xl border border-blue-100 px-4 py-2.5 text-sm font-bold text-indigo-600"><Upload className="mr-1 inline" size={15}/> Upload CSV / Excel<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f)void parseAndUpload(f);e.currentTarget.value="";}}/></label>{summary&&<div className="text-xs font-semibold text-slate-600">Processed {summary.total} · Added {summary.added} · Duplicate {summary.duplicate} · Invalid {summary.invalid}{summary.invalid>0&&<div className="mt-2 max-h-40 overflow-auto rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800"><strong>Skipped rows and reasons</strong>{summary.results?.filter(item=>item.result==="Skipped"&&item.reason!=="Email already exists in Central Lead Inventory").map(item=><div key={item.row}>Row {item.row}{item.email?` (${item.email})`:""}: {item.reason}</div>)}</div>}</div>}</div>
       {message&&<p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}{error&&<p role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     </section>
     <section className="overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm">
