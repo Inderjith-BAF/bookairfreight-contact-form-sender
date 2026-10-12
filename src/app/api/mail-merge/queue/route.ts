@@ -21,7 +21,7 @@ export async function POST(request:Request){
 
  const {data:campaign,error:ce}=await admin.from("mail_merge_campaigns").select("*").eq("id",campaignId).maybeSingle();
  if(ce||!campaign)return NextResponse.json({error:ce?.message||"Campaign not found."},{status:404});
- if(profile.role==="member"&&campaign.created_by!==profile.id)return NextResponse.json({error:"Not authorized."},{status:403});
+ if(campaign.created_by!==profile.id)return NextResponse.json({error:"This saved campaign belongs to another user."},{status:403});
 
  const {data:rows,error}=await admin.from("mail_merge_campaign_recipients").select("*,master_leads(*)").eq("campaign_id",campaignId).eq("status","Ready");
  if(error)return NextResponse.json({error:error.message},{status:500});
