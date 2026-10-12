@@ -21,24 +21,32 @@ function templatePreview(text:string,lead?:Lead){
 }
 function RichEmailEditor({value,onChange,placeholder}:{value:string;onChange:(value:string)=>void;placeholder:string}){
  const ref=useRef<HTMLDivElement|null>(null);
+ const savedRange=useRef<Range|null>(null);
  const [focused,setFocused]=useState(false);
  useEffect(()=>{if(ref.current&&!focused&&ref.current.innerHTML!==value)ref.current.innerHTML=value||""},[value,focused]);
- const command=(name:string,arg?:string)=>{ref.current?.focus();try{if(name==="foreColor")document.execCommand("styleWithCSS",false,"false");document.execCommand(name,false,arg)}catch{}if(ref.current)onChange(ref.current.innerHTML)};
+ const saveSelection=()=>{const selection=window.getSelection();if(!selection||!ref.current||selection.rangeCount===0)return;const range=selection.getRangeAt(0);if(ref.current.contains(range.commonAncestorContainer))savedRange.current=range.cloneRange()};
+ const command=(name:string,arg?:string)=>{ref.current?.focus();if(savedRange.current){const selection=window.getSelection();selection?.removeAllRanges();selection?.addRange(savedRange.current)}try{if(name==="foreColor")document.execCommand("styleWithCSS",false,"false");document.execCommand(name,false,arg)}catch{}if(ref.current){saveSelection();onChange(ref.current.innerHTML)}};
+ const insertToken=(token:string)=>{if(!token||!ref.current)return;ref.current.focus();const selection=window.getSelection();if(selection){selection.removeAllRanges();if(savedRange.current&&ref.current.contains(savedRange.current.commonAncestorContainer)){selection.addRange(savedRange.current)}else{const range=document.createRange();range.selectNodeContents(ref.current);range.collapse(false);selection.addRange(range)}const range=selection.getRangeAt(0);range.deleteContents();const node=document.createTextNode(token);range.insertNode(node);range.setStartAfter(node);range.collapse(true);selection.removeAllRanges();selection.addRange(range);savedRange.current=range.cloneRange()}onChange(ref.current.innerHTML)};
  const colors=["#111827","#4d5cff","#0f766e","#dc2626","#d97706","#7c3aed"];
+ const tokens=[["{{first_name}}","First name"],["{{last_name}}","Last name"],["{{company_name}}","Company"],["{{email}}","Email"],["{{country}}","Country"]];
  return <div className="overflow-hidden rounded-xl border border-blue-100 bg-white">
   <div className="flex flex-wrap items-center gap-1 border-b border-blue-100 bg-slate-50 p-2">
-   <button type="button" title="Bold" onMouseDown={e=>e.preventDefault()} onClick={()=>command("bold")} className="rounded-lg p-2 hover:bg-white"><Bold size={15}/></button>
-   <button type="button" title="Italic" onMouseDown={e=>e.preventDefault()} onClick={()=>command("italic")} className="rounded-lg p-2 hover:bg-white"><Italic size={15}/></button>
-   <button type="button" title="Underline" onMouseDown={e=>e.preventDefault()} onClick={()=>command("underline")} className="rounded-lg p-2 hover:bg-white"><Underline size={15}/></button>
+   <button type="button" title="Bold" onMouseDown={e=>{saveSelection();e.preventDefault()}} onClick={()=>command("bold")} className="rounded-lg p-2 hover:bg-white"><Bold size={15}/></button>
+   <button type="button" title="Italic" onMouseDown={e=>{saveSelection();e.preventDefault()}} onClick={()=>command("italic")} className="rounded-lg p-2 hover:bg-white"><Italic size={15}/></button>
+   <button type="button" title="Underline" onMouseDown={e=>{saveSelection();e.preventDefault()}} onClick={()=>command("underline")} className="rounded-lg p-2 hover:bg-white"><Underline size={15}/></button>
    <span className="mx-1 h-5 w-px bg-blue-200"/>
-   <button type="button" title="Bulleted list" onMouseDown={e=>e.preventDefault()} onClick={()=>command("insertUnorderedList")} className="rounded-lg p-2 hover:bg-white"><List size={15}/></button>
-   <button type="button" title="Numbered list" onMouseDown={e=>e.preventDefault()} onClick={()=>command("insertOrderedList")} className="rounded-lg p-2 hover:bg-white"><ListOrdered size={15}/></button>
+   <button type="button" title="Bulleted list" onMouseDown={e=>{saveSelection();e.preventDefault()}} onClick={()=>command("insertUnorderedList")} className="rounded-lg p-2 hover:bg-white"><List size={15}/></button>
+   <button type="button" title="Numbered list" onMouseDown={e=>{saveSelection();e.preventDefault()}} onClick={()=>command("insertOrderedList")} className="rounded-lg p-2 hover:bg-white"><ListOrdered size={15}/></button>
    <span className="mx-1 h-5 w-px bg-blue-200"/>
-   <span className="inline-flex items-center gap-1 rounded-lg px-1" title="Text colour"><Palette size={14} className="text-slate-500"/>{colors.map(color=><button key={color} type="button" aria-label={"Text colour "+color} onMouseDown={e=>e.preventDefault()} onClick={()=>command("foreColor",color)} className="h-4 w-4 rounded-full border border-white shadow" style={{backgroundColor:color}}/>)}</span>
-   <button type="button" title="Clear formatting" onMouseDown={e=>e.preventDefault()} onClick={()=>command("removeFormat")} className="ml-auto rounded-lg px-2 py-1 text-[10px] font-bold text-slate-500 hover:bg-white">Clear</button>
+   <span className="inline-flex items-center gap-1 rounded-lg px-1" title="Text colour"><Palette size={14} className="text-slate-500"/>{colors.map(color=><button key={color} type="button" aria-label={"Text colour "+color} onMouseDown={e=>{saveSelection();e.preventDefault()}} onClick={()=>command("foreColor",color)} className="h-4 w-4 rounded-full border border-white shadow" style={{backgroundColor:color}}/>)}</span>
+   <select aria-label="Insert personalization field" title="Insert personalization field" defaultValue="" onMouseDown={saveSelection} onChange={e=>{insertToken(e.target.value);e.target.value=""}} className="max-w-40 rounded-lg border border-blue-100 bg-white px-2 py-2 text-xs font-semibold text-slate-700">
+    <option value="" disabled>Personalize…</option>
+    {tokens.map(([token,label])=><option key={token} value={token}>{label}</option>)}
+   </select>
+   <button type="button" title="Clear formatting" onMouseDown={e=>{saveSelection();e.preventDefault()}} onClick={()=>command("removeFormat")} className="ml-auto rounded-lg px-2 py-1 text-[10px] font-bold text-slate-500 hover:bg-white">Clear</button>
   </div>
-  <div ref={ref} contentEditable suppressContentEditableWarning onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onInput={()=>ref.current&&onChange(ref.current.innerHTML)} className="min-h-44 w-full p-4 text-sm leading-6 outline-none" />
-  <div className="border-t border-blue-50 px-3 py-2 text-[10px] text-slate-400">Formatting: bold · italic · underline · bullets · numbering · text colour. Personalization tokens remain supported.</div>
+  <div ref={ref} contentEditable suppressContentEditableWarning onFocus={()=>setFocused(true)} onMouseUp={saveSelection} onKeyUp={saveSelection} onBlur={()=>{saveSelection();setFocused(false)}} onInput={()=>{saveSelection();if(ref.current)onChange(ref.current.innerHTML)}} data-placeholder={placeholder} className="min-h-44 w-full p-4 text-sm leading-6 outline-none" />
+  <div className="border-t border-blue-50 px-3 py-2 text-[10px] text-slate-400">Formatting: bold · italic · underline · bullets · numbering · text colour. Use Personalize to insert first name, last name, company, email, or country at the cursor.</div>
  </div>;
 }
 
