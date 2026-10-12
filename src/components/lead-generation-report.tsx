@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { BarChart3, Globe2, MailCheck, PieChart, Rocket, Ship, Sparkles, Target, TrendingUp, Users } from "lucide-react";
 
-type Lead = { [key: string]: any };
+type ReportSummary = { total:number; addedToday:number; assigned:number; business:number; personal:number; sources:[string,number][]; rawSheets:[string,number][]; countries:[string,number][]; industries:[string,number][]; last7:{key:string;count:number}[] };
 const clean = (v: unknown) => String(v ?? "").trim() || "Not specified";
 const todayKey = () => { const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 const palette = ["#4f46e5","#06b6d4","#f97316","#22c55e","#e879f9","#eab308","#64748b"];
@@ -30,7 +30,7 @@ function Breakdown({title,items,total}:{title:string;items:[string,number][];tot
 }
 export function LeadGenerationReport() {
   const supabase = useMemo(() => getSupabaseBrowser(), []);
-  const [rows,setRows] = useState<Lead[]>([]);
+  const [report,setReport] = useState<ReportSummary | null>(null);
   const [busy,setBusy] = useState(true);
   const [error,setError] = useState("");
   const load = useCallback(async () => {
@@ -38,26 +38,24 @@ export function LeadGenerationReport() {
     try {
       const {data} = await supabase.auth.getSession();
       if (!data.session) throw new Error("Sign in through Outbound OS to view lead generation reporting.");
-      const res = await fetch("/api/lead-inventory", {headers:{Authorization:"Bearer "+data.session.access_token}});
+      const res = await fetch("/api/lead-inventory/report", {headers:{Authorization:"Bearer "+data.session.access_token}});
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "Could not load lead-generation metrics");
-      setRows(body.leads || []);
+      setReport(body);
     } catch(e) { setError(e instanceof Error ? e.message : "Could not load report"); }
     finally { setBusy(false); }
   },[supabase]);
   useEffect(()=>{void load()},[load]);
-  const total = rows.length;
-  const today = todayKey();
-  const todayRows = rows.filter(r=>String(r.created_at||"").slice(0,10)===today);
-  const assigned = rows.filter(r=>String(r.fresh_outreach_assigned_to||"").trim()).length;
-  const business = rows.filter(r=>/business/i.test(String(r.business_personal_email||""))).length;
-  const personal = rows.filter(r=>/personal/i.test(String(r.business_personal_email||""))).length;
-  const sources = countBy(rows,"data_from_lead_generation_team");
-  const rawSheets = countBy(rows,"data_source");
-  const countries = countBy(rows,"country");
-  const industries = countBy(rows,"main_industry");
+  const total = report?.total ?? 0;
+  const assigned = report?.assigned ?? 0;
+  const business = report?.business ?? 0;
+  const personal = report?.personal ?? 0;
+  const sources = report?.sources ?? [];
+  const rawSheets = report?.rawSheets ?? [];
+  const countries = report?.countries ?? [];
+  const industries = report?.industries ?? [];
   const emailTypes: [string, number][] = ([["Business Email",business],["Personal Email",personal],["Not specified",Math.max(0,total-business-personal)]] as [string, number][]).filter((x) => x[1] > 0);
-  const last7 = Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");return {key,label:d.toLocaleDateString("en",{weekday:"short"}),count:rows.filter(r=>String(r.created_at||"").slice(0,10)===key).length};});
+  const last7 = (report?.last7 ?? []).map(day=>({...day,label:new Date(day.key+"T12:00:00").toLocaleDateString("en",{weekday:"short"})}));
   const maxDaily=Math.max(1,...last7.map(x=>x.count));
   return <div className="mb-6 space-y-5">
     <style>{`@keyframes leadFlyAcross{0%{transform:translateX(-25px) translateY(7px) rotate(-9deg);opacity:.2}50%{opacity:1}100%{transform:translateX(18px) translateY(-5px) rotate(5deg);opacity:1}} @keyframes leadBoatBob{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-7px) rotate(2deg)}} @keyframes leadRocketLaunch{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-10px) rotate(3deg)}} @keyframes leadDonutIn{from{transform:scale(.7) rotate(-90deg);opacity:.25}to{transform:scale(1) rotate(0);opacity:1}} @keyframes leadBarGrow{from{width:0;opacity:.4}} @keyframes leadSpark{0%,100%{opacity:.45;transform:scale(.85)}50%{opacity:1;transform:scale(1.12)}} .lead-fly{animation:leadFlyAcross 2.6s ease-in-out infinite alternate}.lead-boat{animation:leadBoatBob 2s ease-in-out infinite}.lead-rocket{animation:leadRocketLaunch 1.6s ease-in-out infinite}.lead-spark{animation:leadSpark 1.8s ease-in-out infinite}`}</style>
@@ -73,7 +71,7 @@ export function LeadGenerationReport() {
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       {[
         {label:"Total leads in inventory",value:total,icon:Users,note:"All unique email addresses currently stored",accent:"from-indigo-500 to-violet-500"},
-        {label:"Added today",value:todayRows.length,icon:Rocket,note:"New records uploaded today",accent:"from-orange-400 to-rose-500"},
+        {label:"Added today",value:report?.addedToday ?? 0,icon:Rocket,note:"New records uploaded today",accent:"from-orange-400 to-rose-500"},
         {label:"Assigned for outreach",value:assigned,icon:Target,note:"Fresh Outreach assignment set",accent:"from-cyan-500 to-blue-500"},
         {label:"Still unassigned",value:total-assigned,icon:MailCheck,note:"Available for team assignment",accent:"from-emerald-400 to-teal-600"}
       ].map((card,i)=>{const Icon=card.icon;return <article key={card.label} className="group relative overflow-hidden rounded-2xl border border-blue-100 bg-white p-4 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg"><div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${card.accent}`}/><div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">{card.label}</span><Icon size={20} className={i===1?"lead-rocket text-orange-500":i===2?"lead-fly text-blue-500":"text-indigo-500"}/></div><div className="mt-3 text-3xl font-black tabular-nums text-slate-900">{busy?"…":card.value.toLocaleString()}</div><p className="mt-1 text-xs text-slate-500">{card.note}</p></article>})}
