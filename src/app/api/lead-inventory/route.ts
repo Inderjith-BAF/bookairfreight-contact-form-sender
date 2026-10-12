@@ -47,10 +47,17 @@ export async function GET(request: Request) {
   const source = clean(url.searchParams.get("source"));
   const { data: members, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
-  let query = admin.from("central_lead_inventory").select("*").order("created_at", { ascending: false }).limit(10000);
-  if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Page through the inventory instead of silently stopping at the API's default 1,000 rows.
+  const pageSize = 1000;
+  const data: any[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    let query = admin.from("central_lead_inventory").select("*").order("created_at", { ascending: false }).range(offset, offset + pageSize - 1);
+    if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
+    const { data: page, error } = await query;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    data.push(...(page || []));
+    if (!page || page.length < pageSize) break;
+  }
   const leads = (data || []).filter((row: any) => !q || [
     row.location_on_site,row.country,row.company_name,row.first_name,row.last_name,row.title,row.email,
     row.main_product_description,row.secondary_product_description,row.main_industry,row.main_additional_tag,
