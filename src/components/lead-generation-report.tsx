@@ -4,14 +4,7 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { BarChart3, Globe2, MailCheck, PieChart, Rocket, Ship, Sparkles, Target, TrendingUp, Users } from "lucide-react";
 
 type ReportSummary = { total:number; addedToday:number; assigned:number; business:number; personal:number; sources:[string,number][]; rawSheets:[string,number][]; countries:[string,number][]; industries:[string,number][]; last7:{key:string;count:number}[] };
-const clean = (v: unknown) => String(v ?? "").trim() || "Not specified";
-const todayKey = () => { const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 const palette = ["#4f46e5","#06b6d4","#f97316","#22c55e","#e879f9","#eab308","#64748b"];
-function countBy(rows: Lead[], field: string) {
-  const counts = new Map<string, number>();
-  rows.forEach(row => { const key = clean(row[field]); counts.set(key, (counts.get(key) || 0) + 1); });
-  return [...counts.entries()].sort((a,b)=>b[1]-a[1]);
-}
 function Donut({items, total}:{items:[string,number][];total:number}) {
   let cursor = 0;
   const stops = items.slice(0,7).map(([label,count],i)=>{const start=cursor;cursor += total ? count/total*100 : 0;return `${palette[i%palette.length]} ${start}% ${cursor}%`;});
