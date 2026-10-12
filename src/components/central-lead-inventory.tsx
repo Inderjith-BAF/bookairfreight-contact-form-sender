@@ -118,9 +118,9 @@ export function CentralLeadInventory() {
     if (!rows.length) return;
     const quote = (value: unknown) => {
       const text = String(value ?? "");
-      return /[\\t\\r\\n"]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+      return /[\t\r\n"]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
     };
-    const tsv = [COLUMNS.map(([,label]) => label).join("\\t"), ...rows.map(row => COLUMNS.map(([key]) => quote(row[key])).join("\\t"))].join("\\r\\n");
+    const tsv = [COLUMNS.map(([,label]) => label).join("\t"), ...rows.map(row => COLUMNS.map(([key]) => quote(row[key])).join("\t"))].join("\r\n");
     try {
       await navigator.clipboard.writeText(tsv);
       setMessage(`Copied ${rows.length} selected leads with the original column headers. Paste them into Mail Merge.`);
