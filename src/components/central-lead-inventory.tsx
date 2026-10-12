@@ -22,7 +22,7 @@ const COLUMNS = [
 ] as const;
 
 const COUNTRY_ALIASES: Record<string, string> = {
-  "australia":"Australia","commonwealth of australia":"Australia","uk":"EU","u k":"EU","gb":"EU","gbr":"EU","great britain":"EU","britain":"EU","england":"EU","scotland":"EU","wales":"EU","northern ireland":"EU","united kingdom":"EU",
+  "australia":"Australia","commonwealth of australia":"Australia","uk": "United Kingdom","u k": "United Kingdom","gb": "United Kingdom","gbr": "United Kingdom","great britain": "United Kingdom","britain": "United Kingdom","england": "United Kingdom","scotland": "United Kingdom","wales": "United Kingdom","northern ireland": "United Kingdom","united kingdom": "United Kingdom",
   "albania":"EU","andorra":"EU","austria":"EU","belarus":"EU","belgium":"EU","bosnia and herzegovina":"EU","bulgaria":"EU","croatia":"EU","cyprus":"EU","czechia":"EU","denmark":"EU","estonia":"EU","finland":"EU","france":"EU","germany":"EU","greece":"EU","hungary":"EU","iceland":"EU","ireland":"EU","italy":"EU","kosovo":"EU","latvia":"EU","liechtenstein":"EU","lithuania":"EU","luxembourg":"EU","malta":"EU","monaco":"EU","montenegro":"EU","north macedonia":"EU","norway":"EU","poland":"EU","portugal":"EU","romania":"EU","san marino":"EU","serbia":"EU","slovakia":"EU","slovenia":"EU","spain":"EU","sweden":"EU","switzerland":"EU","ukraine":"EU","vatican city":"EU","us":"United States","u s":"United States","usa":"United States","u s a":"United States","united states of america":"United States","america":"United States",
   "uae":"United Arab Emirates","u a e":"United Arab Emirates","emirates":"United Arab Emirates",
   "south korea":"South Korea","republic of korea":"South Korea","korea south":"South Korea","kr":"South Korea",
