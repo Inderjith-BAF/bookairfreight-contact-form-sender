@@ -18,6 +18,8 @@ export async function POST(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
  const {admin,profile}=auth;const body=await request.json().catch(()=>null);
  const ids=Array.isArray(body?.campaignIds)?[...new Set(body.campaignIds.map(String).filter(Boolean))]:[];
+ const requestedDate=typeof body?.activityDate==="string"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(body.activityDate)?body.activityDate:null;
+ if(body?.activityDate&&!requestedDate)return NextResponse.json({error:"Report date must be a valid YYYY-MM-DD date."},{status:400});
  if(!ids.length||ids.length>100)return NextResponse.json({error:"Select between 1 and 100 campaigns."},{status:400});
  const {data:campaigns,error:campaignError}=await admin.from("mail_merge_campaigns").select("*").in("id",ids);
  if(campaignError)return NextResponse.json({error:campaignError.message},{status:500});
@@ -27,7 +29,7 @@ export async function POST(request:Request){
  if(recipientError)return NextResponse.json({error:recipientError.message},{status:500});
  const {data:profiles}=await admin.from("outbound_profiles").select("id,full_name");
  const names=new Map((profiles||[]).map((p:any)=>[p.id,p.full_name]));
- const day=new Date().toISOString().slice(0,10);let added=0,alreadyPresent=0,noSent=0;
+ let added=0,alreadyPresent=0,noSent=0;
  for(const campaign of campaigns){
   const sentRows=(recipients||[]).filter((r:any)=>r.campaign_id===campaign.id);
   if(!sentRows.length){noSent++;continue;}
@@ -36,7 +38,9 @@ export async function POST(request:Request){
   for(const row of sentRows){const account=accountOf(row);const key=String(row.sender_account_id||"");if(!account?.email||!key)continue;const list=byAccount.get(key)||[];list.push(row);byAccount.set(key,list);}
   for(const rows of byAccount.values()){
    const account=accountOf(rows[0]);const opens=rows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
-   const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id").eq("activity_date",day).eq("channel","cold_email").eq("region",campaign.country).eq("campaign",campaign.name).eq("email_account_text",account.email).limit(1);
+   const sentDates=rows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\\d{4}-\\d{2}-\\d{2}$/.test(d)).sort();
+   const day=requestedDate||sentDates[0]||String(campaign.created_at||new Date().toISOString()).slice(0,10);
+   const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id,activity_date").eq("channel","cold_email").eq("region",campaign.country).eq("company",campaign.name).eq("email_account_text",account.email).limit(1);
    if(existingError)return NextResponse.json({error:existingError.message},{status:500});
    if(existing?.length){alreadyPresent++;continue;}
    const row={activity_date:day,employee_id:account.employee_id||campaign.created_by,employee_name:String(names.get(account.employee_id)||profile.full_name||""),email_account_text:account.email,prospect_email:account.email,company:campaign.name,region:campaign.country,lead_source:"Mail Merge",campaign:campaign.campaign_group||campaign.name,stage:campaign.campaign_group,subject:String(rows[0]?.subject||campaign.subject||""),content:String(rows[0]?.body||campaign.body||""),outreach_volume:rows.length,open_count:opens,open_rate:rows.length?opens/rows.length*100:0,positive_replies:0,neutral_replies:0,negative_replies:0,unsubscribes:0,bounced:0,auto_responses:0,clicks:0,bounce_rate:0,qualified_leads:0,follow_ups:0,freshness:"fresh",response_note:"",channel:"cold_email"};
@@ -45,5 +49,5 @@ export async function POST(request:Request){
   }
  }
  await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaigns_added_to_my_outbound",entity_type:"campaign",after_value:{campaign_ids:ids,added,already_present:alreadyPresent,no_sent:noSent}});
- return NextResponse.json({added,alreadyPresent,noSent,message:"Added "+added+" campaign account record(s) to My Outbound. "+alreadyPresent+" already existed; "+noSent+" selected campaign(s) had no sent emails."});
+ return NextResponse.json({added,alreadyPresent,noSent,message:"Added "+added+" campaign account record(s) to My Outbound. "+alreadyPresent+" already existed in a report; "+noSent+" selected campaign(s) had no sent emails. Delete the existing campaign row from its report date to make it eligible to add again."});
 }
