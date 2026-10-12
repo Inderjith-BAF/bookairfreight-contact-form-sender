@@ -12,10 +12,10 @@ function Donut({items, total}:{items:[string,number][];total:number}) {
     <div className="absolute inset-5 grid place-content-center rounded-full bg-white text-center shadow-inner"><b className="text-2xl text-slate-900">{total.toLocaleString()}</b><span className="text-[9px] font-black uppercase tracking-wider text-slate-500">Leads</span></div>
   </div>;
 }
-function Breakdown({title,items,total}:{title:string;items:[string,number][];total:number}) {
+function Breakdown({title,items,total,limit=7}:{title:string;items:[string,number][];total:number;limit?:number}) {
   return <section className="rounded-2xl border border-blue-100 bg-white/90 p-4 shadow-sm">
     <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-slate-800"><BarChart3 size={16} className="text-indigo-500"/>{title}</h3>
-    {items.length ? <div className="space-y-3">{items.slice(0,7).map(([label,count],i)=><div key={label}>
+    {items.length ? <div className="space-y-3">{items.slice(0,limit).map(([label,count],i)=><div key={label}>
       <div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate font-semibold text-slate-600" title={label}>{label}</span><b className="shrink-0 tabular-nums text-slate-900">{count.toLocaleString()} <span className="font-normal text-slate-400">({total?Math.round(count/total*100):0}%)</span></b></div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:(total?count/total*100:0)+"%",background:palette[i%palette.length],animation:"leadBarGrow .9s ease-out both"}}/></div>
     </div>)}</div> : <p className="text-xs text-slate-400">Metrics appear after new leads are uploaded.</p>}
@@ -75,7 +75,7 @@ export function LeadGenerationReport() {
       <Breakdown title="Leads by raw data sheet" items={rawSheets} total={total}/>
     </div>
     <div className="grid gap-4 xl:grid-cols-3">
-      <Breakdown title="Country-wise lead count" items={countries} total={total}/>
+      <Breakdown title="Country-wise lead count" items={countries} total={total} limit={12}/>
       <Breakdown title="Industry-wise lead count" items={industries} total={total}/>
       <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"><h3 className="mb-1 flex items-center gap-2 text-sm font-black"><TrendingUp size={16} className="text-indigo-500"/>Last 7 days · uploads</h3><p className="mb-4 text-xs text-slate-500">Daily additions to Central Lead Inventory</p><div className="flex h-32 items-end justify-between gap-2">{last7.map((day,i)=><div key={day.key} className="flex h-full flex-1 flex-col items-center justify-end gap-1"><span className="text-[10px] font-bold text-slate-600">{day.count}</span><div className="flex w-full flex-1 items-end"><div title={day.key+": "+day.count+" leads"} className="w-full rounded-t-lg bg-gradient-to-t from-indigo-600 to-cyan-400 transition-all duration-700" style={{height:Math.max(day.count?8:2,day.count/maxDaily*100)+"%",animation:"leadBarGrow .8s ease-out both",animationDelay:(i*70)+"ms"}}/></div><span className="text-[10px] text-slate-400">{day.label}</span></div>)}</div><div className="mt-3 flex items-center gap-2 rounded-xl bg-cyan-50 p-2 text-xs text-cyan-800"><Globe2 size={15}/>Only records created in the last seven calendar days are counted.</div></section>
     </div>
