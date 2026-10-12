@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     const record: Record<string, unknown> = {};
     for (const [field, headers] of Object.entries(fields)) record[field] = pick(raw, ...headers);
     const email = clean(record.email).toLowerCase();
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       invalid++; results.push({ row: i + 1, email, result: "Skipped", reason: "Missing or invalid email" }); continue;
     }
     if (!clean(record.country)) {
