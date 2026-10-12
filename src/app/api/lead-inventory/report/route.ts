@@ -10,13 +10,24 @@ const normalizeCountry = (value: unknown) => {
   if (!raw) return "Not specified";
   const key = raw.toLowerCase().replace(/[._-]/g, " ").replace(/\s+/g, " ").trim();
   const aliases: Record<string, string> = {
-    "australia":"Australia","commonwealth of australia":"Australia","eu":"EU","europe":"EU","netherlands":"EU","the netherlands":"EU","holland":"EU","czechia":"EU","czech republic":"EU","hungary":"EU","romania":"EU","uk":"EU","u k":"EU","gb":"EU","gbr":"EU","great britain":"EU","britain":"EU","england":"EU","scotland":"EU","wales":"EU","northern ireland":"EU","united kingdom":"EU",
-    "albania":"EU","andorra":"EU","austria":"EU","belarus":"EU","belgium":"EU","bosnia and herzegovina":"EU","bulgaria":"EU","croatia":"EU","cyprus":"EU","denmark":"EU","estonia":"EU","finland":"EU","france":"EU","germany":"EU","greece":"EU","iceland":"EU","ireland":"EU","italy":"EU","kosovo":"EU","latvia":"EU","liechtenstein":"EU","lithuania":"EU","luxembourg":"EU","malta":"EU","monaco":"EU","montenegro":"EU","north macedonia":"EU","norway":"EU","poland":"EU","portugal":"EU","san marino":"EU","serbia":"EU","slovakia":"EU","slovenia":"EU","spain":"EU","sweden":"EU","switzerland":"EU","ukraine":"EU","vatican city":"EU","us":"United States","u s":"United States","usa":"United States","u s a":"United States","united states of america":"United States","america":"United States",
-    "uae":"United Arab Emirates","u a e":"United Arab Emirates","emirates":"United Arab Emirates",
-    "south korea":"South Korea","republic of korea":"South Korea","korea south":"South Korea","kr":"South Korea",
-    "north korea":"North Korea","korea north":"North Korea","kp":"North Korea",
-    "viet nam":"Vietnam","turkey":"Türkiye","turkiye":"Türkiye","czech republic":"Czechia","holland":"Netherlands","the netherlands":"Netherlands",
-    "mainland china":"China","pr china":"China","hong kong sar":"Hong Kong","macau":"Macao","russian federation":"Russia","burma":"Myanmar","swaziland":"Eswatini"
+    "australia": "Australia", "commonwealth of australia": "Australia", "eu": "EU", "europe": "EU", "netherlands": "EU",
+    "the netherlands": "EU", "holland": "EU", "czechia": "EU", "czech republic": "EU", "hungary": "EU",
+    "romania": "EU", "uk": "EU", "u k": "EU", "gb": "EU", "gbr": "EU",
+    "great britain": "EU", "britain": "EU", "england": "EU", "scotland": "EU", "wales": "EU",
+    "northern ireland": "EU", "united kingdom": "EU", "albania": "EU", "andorra": "EU", "austria": "EU",
+    "belarus": "EU", "belgium": "EU", "bosnia and herzegovina": "EU", "bulgaria": "EU", "croatia": "EU",
+    "cyprus": "EU", "denmark": "EU", "estonia": "EU", "finland": "EU", "france": "EU",
+    "germany": "EU", "greece": "EU", "iceland": "EU", "ireland": "EU", "italy": "EU",
+    "kosovo": "EU", "latvia": "EU", "liechtenstein": "EU", "lithuania": "EU", "luxembourg": "EU",
+    "malta": "EU", "monaco": "EU", "montenegro": "EU", "north macedonia": "EU", "norway": "EU",
+    "poland": "EU", "portugal": "EU", "san marino": "EU", "serbia": "EU", "slovakia": "EU",
+    "slovenia": "EU", "spain": "EU", "sweden": "EU", "switzerland": "EU", "ukraine": "EU",
+    "vatican city": "EU", "us": "United States", "u s": "United States", "usa": "United States", "u s a": "United States",
+    "united states of america": "United States", "america": "United States", "uae": "United Arab Emirates", "u a e": "United Arab Emirates", "emirates": "United Arab Emirates",
+    "south korea": "South Korea", "republic of korea": "South Korea", "korea south": "South Korea", "kr": "South Korea", "north korea": "North Korea",
+    "korea north": "North Korea", "kp": "North Korea", "viet nam": "Vietnam", "turkey": "Türkiye", "turkiye": "Türkiye",
+    "mainland china": "China", "pr china": "China", "hong kong sar": "Hong Kong", "macau": "Macao", "russian federation": "Russia",
+    "burma": "Myanmar", "swaziland": "Eswatini"
   };
   return aliases[key] || raw.toLocaleLowerCase().replace(/\b[a-z]/g, letter => letter.toUpperCase());
 };
