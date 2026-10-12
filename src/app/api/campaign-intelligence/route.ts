@@ -32,9 +32,10 @@ export async function POST(request:Request){
   const sentRows=(recipients||[]).filter((r:any)=>r.campaign_id===campaign.id);
   if(!sentRows.length){noSent++;continue;}
   const byAccount=new Map<string,any[]>();
-  for(const row of sentRows){const account=row.outbound_email_accounts;const key=String(row.sender_account_id||"");if(!account?.email||!key)continue;const list=byAccount.get(key)||[];list.push(row);byAccount.set(key,list);}
+  const accountOf=(row:any)=>Array.isArray(row.outbound_email_accounts)?row.outbound_email_accounts[0]:row.outbound_email_accounts;
+  for(const row of sentRows){const account=accountOf(row);const key=String(row.sender_account_id||"");if(!account?.email||!key)continue;const list=byAccount.get(key)||[];list.push(row);byAccount.set(key,list);}
   for(const rows of byAccount.values()){
-   const account=rows[0].outbound_email_accounts;const opens=rows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
+   const account=accountOf(rows[0]);const opens=rows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
    const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id").eq("activity_date",day).eq("channel","cold_email").eq("region",campaign.country).eq("campaign",campaign.name).eq("email_account_text",account.email).limit(1);
    if(existingError)return NextResponse.json({error:existingError.message},{status:500});
    if(existing?.length){alreadyPresent++;continue;}
