@@ -238,7 +238,7 @@ export default function MailMergePage(){
   }catch(e){setErr(e instanceof Error?e.message:"Could not save campaign messages.")}finally{setBusy(false)}
  }
  async function queue(){
-  setBusy(true);setErr("");try{const d=await api("/api/mail-merge/queue",{method:"POST",body:JSON.stringify({campaignId})});const r=d.reasons||{};setMsg(d.message+(d.queued===0?" · Connection blocked: "+(r.disconnected||0)+"; cap blocked: "+(r.daily_hourly_cap||0)+"; already suppressed: "+(r.eligible_blocked||0)+".":" Browser can be closed after dispatch; the backend domain dispatcher owns delivery."));await load()}catch(e){setErr(e instanceof Error?e.message:"Queue failed")}finally{setBusy(false)}
+  setBusy(true);setErr("");try{const d=await api("/api/mail-merge/queue",{method:"POST",body:JSON.stringify({campaignId})});const r=d.reasons||{};setMsg(d.message+(d.queued===0?" · Connection blocked: "+(r.disconnected||0)+"; cap blocked: "+(r.daily_hourly_cap||0)+"; truly suppressed: "+(r.eligible_blocked||0)+"; campaign-ineligible: "+(r.campaign_ineligible||0)+"; missing lead record: "+(r.lead_record_missing||0)+".":" Browser can be closed after dispatch; the backend domain dispatcher owns delivery."));await load()}catch(e){setErr(e instanceof Error?e.message:"Queue failed")}finally{setBusy(false)}
  }
  async function syncReplies(){setBusy(true);setErr("");try{const d=await api("/api/mail-merge/sync-replies",{method:"POST"});setMsg(d.message);await load()}catch(e){setErr(e instanceof Error?e.message:"Reply sync failed")}finally{setBusy(false)}}
  async function send(){await queue()}
