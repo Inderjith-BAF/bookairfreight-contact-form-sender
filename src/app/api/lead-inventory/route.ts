@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     row.ecommerce_platform_used,row.data_from_lead_generation_team,row.data_source,row.email_finding_assigned_to,
     row.email_finding_assigned_date,row.business_personal_email,row.fresh_outreach_assigned_to,row.fresh_outreach_assigned_date
   ].some(v => String(v || "").toLowerCase().includes(q)));
-  return NextResponse.json({ leads, total: leads.length, team: members || [] });
+  return NextResponse.json({ leads, total: leads.length, team: members || [], currentRole: auth.profile.role });
 }
 
 export async function POST(request: Request) {
