@@ -54,12 +54,12 @@ const COUNTRY_ALIASES: Record<string, string> = {
   "vatican":"Vatican City","holy see":"Vatican City"
 };
 function normalizeCountry(value: unknown): string {
-  const raw = String(value ?? "").trim().replace(/\\s+/g, " ");
+  const raw = String(value ?? "").trim().replace(/\s+/g, " ");
   if (!raw) return "";
-  const key = raw.toLowerCase().replace(/[._-]/g, " ").replace(/\\s+/g, " ").trim();
+  const key = raw.toLowerCase().replace(/[._-]/g, " ").replace(/\s+/g, " ").trim();
   const alias = COUNTRY_ALIASES[key];
   if (alias) return alias;
-  return raw.toLocaleLowerCase().replace(/\\b[a-z]/g, letter => letter.toUpperCase());
+  return raw.toLocaleLowerCase().replace(/\b[a-z]/g, letter => letter.toUpperCase());
 }
 
 type AssignmentField = "fresh_outreach_assigned_to" | "fresh_outreach_assigned_date";
