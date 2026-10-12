@@ -68,15 +68,42 @@ export function CentralLeadInventory() {
   async function uploadRows(rows: Record<string, unknown>[]) {
     if (!token || !rows.length) return;
     setBusy(true); setError(""); setMessage(""); setSummary(null);
+    const batchSize = 400;
+    let added = 0, duplicate = 0, invalid = 0, processed = 0;
+    const results: {row:number;email:string;result:string;reason:string}[] = [];
     try {
-      const res = await fetch("/api/lead-inventory", { method:"POST", headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"}, body:JSON.stringify({rows}) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setSummary({added:data.added,duplicate:data.duplicate,invalid:data.invalid,total:data.total,results:data.results || []});
-      setMessage("Inventory upload reconciled. Existing emails were skipped; no Master Lead Sheet records were changed.");
-      setPaste(""); await load(token);
-    } catch (e) { setError(e instanceof Error ? e.message : "Upload failed"); }
-    finally { setBusy(false); }
+      for (let offset = 0; offset < rows.length; offset += batchSize) {
+        const batch = rows.slice(offset, offset + batchSize);
+        const res = await fetch("/api/lead-inventory", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: batch })
+        });
+        const responseText = await res.text();
+        let data: any;
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          const detail = responseText.trim().slice(0, 180);
+          throw new Error("Upload batch " + (Math.floor(offset / batchSize) + 1) + " failed (HTTP " + res.status + "). " + (detail || "The server returned a non-JSON response."));
+        }
+        if (!res.ok) throw new Error(data.error || "Upload batch " + (Math.floor(offset / batchSize) + 1) + " failed.");
+        added += Number(data.added || 0);
+        duplicate += Number(data.duplicate || 0);
+        invalid += Number(data.invalid || 0);
+        processed += batch.length;
+        for (const item of data.results || []) results.push({ ...item, row: Number(item.row || 0) + offset });
+        setMessage("Processing leads: " + processed.toLocaleString() + " of " + rows.length.toLocaleString() + "…");
+      }
+      setSummary({ added, duplicate, invalid, total: rows.length, results });
+      setMessage("Upload complete. Added " + added.toLocaleString() + ", skipped duplicates " + duplicate.toLocaleString() + ", invalid " + invalid.toLocaleString() + ". Existing Master Lead Sheet records were not changed.");
+      setPaste("");
+      await load(token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
   }
   async function parseAndUpload(file?: File) {
     if (file) {
