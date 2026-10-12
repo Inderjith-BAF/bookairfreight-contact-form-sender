@@ -110,7 +110,7 @@ export function CentralLeadInventory() {
     const ids = leads.slice(lo, hi + 1).map(row => row.id);
     void fillAssignment(ids, field, dragFill.value);
   }
-  const excelFilterKeys = ["country", "fresh_outreach_assigned_to"];
+  const excelFilterKeys = ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"];
   const excelFilterOptions = (key: string) => Array.from(new Set(leads.map(row => String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b));
   const visible = leads.filter(row => COLUMNS.every(([key]) => {
     const textFilter = columnFilters[key]?.trim();
