@@ -43,7 +43,9 @@ function sanitizeEmailHtml(input:string){
   const n=m[1].toLowerCase();if(!["b","strong","i","em","u","s","p","div","br","ul","ol","li","a","span","font"].includes(n))return "";
   if(n==="a"){const href=/href\s*=\s*["']([^"']+)["']/i.exec(raw)?.[1]||"";return (/^https?:\/\//i.test(href)||/^mailto:/i.test(href))?'<a href="'+attr(href)+'">':"<a>";}
   if(n==="font"){const color=/color\s*=\s*["'](#[0-9a-f]{3,8})["']/i.exec(raw)?.[1]||"";return color?'<font color="'+attr(color)+'">':"<font>";}
-  return "<"+n+">";
+  const styleRaw=/\sstyle\s*=\s*(["'])(.*?)\1/i.exec(raw)?.[2]||"";
+  const safeStyle=styleRaw.split(";").map(part=>{const m=/^\s*(font-weight|font-style|text-decoration|color)\s*:\s*([^;]+)\s*$/i.exec(part);if(!m)return "";const prop=m[1].toLowerCase(),value=m[2].trim();if(prop==="font-weight"&&!/^(normal|bold|[1-9]00)$/i.test(value))return "";if(prop==="font-style"&&!/^(normal|italic|oblique)$/i.test(value))return "";if(prop==="text-decoration"&&!/^(none|underline|line-through)$/i.test(value))return "";if(prop==="color"&&!/^(#[0-9a-f]{3,8}|[a-z]{1,20})$/i.test(value))return "";return prop+":"+value}).filter(Boolean).join(";");
+  return "<"+n+(safeStyle?' style="'+attr(safeStyle)+'"':"")+">";
  });
  return html.replace(/\r?\n/g,"<br>");
 }
