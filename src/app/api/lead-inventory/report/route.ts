@@ -5,10 +5,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const clean = (value: unknown) => String(value ?? "").trim() || "Not specified";
+const normalizeCountry = (value: unknown) => {
+  const raw = String(value ?? "").trim().replace(/\\s+/g, " ");
+  if (!raw) return "Not specified";
+  const key = raw.toLowerCase().replace(/[._-]/g, " ").replace(/\\s+/g, " ").trim();
+  const aliases: Record<string, string> = {
+    "uk":"United Kingdom","u k":"United Kingdom","gb":"United Kingdom","gbr":"United Kingdom","great britain":"United Kingdom","britain":"United Kingdom","england":"United Kingdom","scotland":"United Kingdom","wales":"United Kingdom","northern ireland":"United Kingdom",
+    "us":"United States","u s":"United States","usa":"United States","u s a":"United States","united states of america":"United States","america":"United States",
+    "uae":"United Arab Emirates","u a e":"United Arab Emirates","emirates":"United Arab Emirates",
+    "south korea":"South Korea","republic of korea":"South Korea","korea south":"South Korea","kr":"South Korea",
+    "north korea":"North Korea","korea north":"North Korea","kp":"North Korea",
+    "viet nam":"Vietnam","turkey":"Türkiye","turkiye":"Türkiye","czech republic":"Czechia","holland":"Netherlands","the netherlands":"Netherlands",
+    "mainland china":"China","pr china":"China","hong kong sar":"Hong Kong","macau":"Macao","russian federation":"Russia","burma":"Myanmar","swaziland":"Eswatini"
+  };
+  return aliases[key] || raw.toLocaleLowerCase().replace(/\\b[a-z]/g, letter => letter.toUpperCase());
+};
 const countBy = (rows: Record<string, unknown>[], field: string) => {
   const counts = new Map<string, number>();
   for (const row of rows) {
-    const key = clean(row[field]);
+    const key = field === "country" ? normalizeCountry(row[field]) : clean(row[field]);
     counts.set(key, (counts.get(key) || 0) + 1);
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
