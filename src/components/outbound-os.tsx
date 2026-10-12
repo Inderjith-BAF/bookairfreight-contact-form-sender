@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
-import { AlertTriangle, BarChart3, CalendarDays, ChevronDown, CircleHelp, FileSpreadsheet, Gauge, HeartPulse, History, LogOut, Mail, Menu, Plus, RefreshCw, Send, Shield, Sparkles, Target, Users, X } from "lucide-react";
+import { AlertTriangle, BarChart3, CalendarDays, ChevronDown, CircleHelp, Database, FileSpreadsheet, Gauge, HeartPulse, History, LogOut, Mail, Menu, Plus, RefreshCw, Send, Shield, Sparkles, Target, Users, X } from "lucide-react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import type { OutboundActivity, OutboundProfile, Sequence } from "@/lib/outbound-types";
 import { MarketIntelligenceEngine } from "@/components/market-intelligence-engine";
@@ -103,7 +103,7 @@ export function OutboundOS(){
  const filtered=activities; const stats=aggregate(filtered); const openRate=pct(stats.open,stats.outreach),replyRate=pct(stats.positive+stats.neutral+stats.negative,stats.outreach),bounceRate=pct(stats.bounce,stats.outreach);
  const employeeStats=team.map(p=>({p,...aggregate(activities.filter(a=>a.employee_id===p.id))}));
  function selectTab(id:Tab){const now=new Date();const fmt=(d:Date)=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");return y+"-"+m+"-"+day};if(id==="weekly"){const d=new Date(now);const day=d.getDay();const diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);setDateFrom(fmt(d));setDateTo(fmt(now));}else if(id==="monthly"){setDateFrom(fmt(new Date(now.getFullYear(),now.getMonth(),1)));setDateTo(fmt(now));}else if(id==="daily"||id==="command"||id==="my"){setDateFrom(fmt(now));setDateTo(fmt(now));}setTab(id)}
- const allNav:NavItem[]=[["intelligence","Marketing Intelligence",Sparkles],["command","Command Center",Gauge],["daily","Daily Report",CalendarDays],["weekly","Weekly Report",BarChart3],["monthly","Monthly Report",History],["my","My Outbound",Send],["forms","Contact Forms",Mail],["import","Historical Data",FileSpreadsheet],["leadSheet","Master Lead Sheet",Users,"/leads"],["mailMerge","Mail Merge",Mail,"/mail-merge"],["accountHealth","Account Health",HeartPulse,"/account-health"],["campaignIntelligence","Campaign Intelligence",BarChart3,"/campaign-intelligence"],["team","Team & Access",Users]]; const nav=profile?allNav.filter(([id]:any)=>tabAllowed(profile,id)):[];
+ const allNav:NavItem[]=[["intelligence","Marketing Intelligence",Sparkles],["command","Command Center",Gauge],["daily","Daily Report",CalendarDays],["weekly","Weekly Report",BarChart3],["monthly","Monthly Report",History],["my","My Outbound",Send],["forms","Contact Forms",Mail],["import","Historical Data",FileSpreadsheet],["leadSheet","Master Lead Sheet",Users,"/leads"],["leadInventory","Central Lead Inventory",Database,"/lead-inventory"],["mailMerge","Mail Merge",Mail,"/mail-merge"],["accountHealth","Account Health",HeartPulse,"/account-health"],["campaignIntelligence","Campaign Intelligence",BarChart3,"/campaign-intelligence"],["team","Team & Access",Users]]; const nav=profile?allNav.filter(([id]:any)=>tabAllowed(profile,id)):[];
  if(loading)return <div className="freight-shell min-h-screen grid place-items-center text-slate-600"><div className="animate-pulse font-black tracking-[.3em]">LOADING OUTBOUND OS</div></div>;
  if(!session||!profile)return <Login email={email} password={password} setEmail={setEmail} setPassword={setPassword} error={authError} onLogin={signIn}/>;
 
