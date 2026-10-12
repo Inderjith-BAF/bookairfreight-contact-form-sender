@@ -229,7 +229,7 @@ export async function POST(request: Request) {
         const events = (inserted || []).map((lead: Record<string, any>) => {
           const item = chunk.find(candidate => candidate.email.toLowerCase() === String(lead.normalized_email || String(lead.email || "").trim().toLowerCase()));
           return item ? { lead_id: lead.id, actor_id: profile.id, event_type: "lead_imported", details: { batch_id: batch.id, row_number: item.row_number, source: sourceName } } : null;
-        }).filter(Boolean);
+        }).filter((event): event is NonNullable<typeof event> => event !== null);
         if (events.length) {
           const { error: activityError } = await admin.from("lead_activity_events").insert(events);
           if (activityError) console.error("Master Lead Sheet import activity logging failed", { batchId: batch.id, message: activityError.message });
