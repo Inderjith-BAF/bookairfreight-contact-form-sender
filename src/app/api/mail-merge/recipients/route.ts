@@ -10,6 +10,7 @@ export async function POST(request:Request){
  if(leadIds.length>1000)return NextResponse.json({error:"Select at most 1,000 recipients at a time."},{status:400});
  const [{data:campaign,error:ce},{data:account,error:ae}]=await Promise.all([admin.from("mail_merge_campaigns").select("*").eq("id",campaignId).maybeSingle(),admin.from("outbound_email_accounts").select("*").eq("id",senderAccountId).maybeSingle()]);
  if(ce||!campaign)return NextResponse.json({error:ce?.message||"Campaign not found."},{status:404});
+ if(campaign.created_by!==profile.id)return NextResponse.json({error:"This saved campaign belongs to another user."},{status:403});
  if(ae||!account||!account.active||account.health_status==="Paused")return NextResponse.json({error:"Sender account is unavailable or paused."},{status:400});
  if(account.employee_id!==profile.id&&!["admin","manager","lead_generation_admin"].includes(profile.role))return NextResponse.json({error:"You can only use sender accounts assigned to you."},{status:403});
  const {data:leads,error}=await admin.from("master_leads").select("*").in("id",leadIds); if(error)return NextResponse.json({error:error.message},{status:500});
