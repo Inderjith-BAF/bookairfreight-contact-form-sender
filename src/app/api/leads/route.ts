@@ -10,7 +10,8 @@ const value = (row: Record<string, unknown>, ...keys: string[]) => {
   for (const key of keys) { const v = entries.get(norm(key)); if (v) return v; }
   return "";
 };
-const emailOk = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+const cleanEmail = (s: string) => s.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+const emailOk = (s: string) => /^[A-Z0-9.!#$%&'*+\-/=?^_`{|}~]+@[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?)+$/i.test(cleanEmail(s));
 
 export async function GET(request: Request) {
   const auth = await requireOutboundUser(request);
@@ -158,7 +159,7 @@ export async function POST(request: Request) {
   // case/whitespace variations in one upload cannot create duplicate attempts.
   for (let i = 0; i < rows.length; i++) {
     const raw = rows[i] as Record<string, unknown>;
-    const email = value(raw, "Email", "Recipient Email").trim();
+    const email = cleanEmail(value(raw, "Email", "Email Address", "E-mail", "E-mail Address", "Recipient Email", "Recipient Email Address", "Contact Email", "Business Email", "Work Email", "Email ID", "Email Id"));
     const normalized = email.toLowerCase();
     const company = value(raw, "Company Name", "Company");
     let reason = "";
