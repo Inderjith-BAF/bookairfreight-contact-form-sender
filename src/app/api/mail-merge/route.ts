@@ -7,10 +7,11 @@ const manager=(p:any)=>["admin","manager","lead_generation_admin"].includes(p.ro
 export async function GET(request:Request){
  const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; const sp=new URL(request.url).searchParams; const id=sp.get("id");
  if(id){const {data:campaign,error}=await admin.from("mail_merge_campaigns").select("*").eq("id",id).maybeSingle(); if(error||!campaign)return NextResponse.json({error:error?.message||"Campaign not found."},{status:404});
+  if(campaign.created_by!==profile.id)return NextResponse.json({error:"This saved campaign belongs to another user."},{status:404});
   const accountQuery=admin.from("outbound_email_accounts").select("id,email,employee_id,active,daily_send_limit,hourly_send_limit,health_status,total_sent,provider,connection_status,connection_error,last_verified_at").eq("active",true); if(profile.role==="member")accountQuery.eq("employee_id",profile.id); const [{data:recipients,error:re},{data:accounts}]=await Promise.all([admin.from("mail_merge_campaign_recipients").select("*,master_leads(id,email,company_name,first_name,last_name,country,current_status,suppression_reason,lead_owner)").eq("campaign_id",id).order("created_at"),accountQuery]);
   if(re)return NextResponse.json({error:re.message},{status:500}); const visible=profile.role==="member"?(recipients||[]).filter((r:any)=>r.master_leads?.lead_owner===profile.id):recipients||[]; return NextResponse.json({campaign,recipients:visible,accounts:accounts||[]});
  }
- let q=admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(100); if(profile.role==="member")q=q.eq("created_by",profile.id);
+ let q=admin.from("mail_merge_campaigns").select("*").eq("created_by",profile.id).order("created_at",{ascending:false}).limit(100);
  const accountQuery=admin.from("outbound_email_accounts").select("id,email,employee_id,active,daily_send_limit,hourly_send_limit,health_status,total_sent,provider,connection_status,connection_error,last_verified_at").eq("active",true); if(profile.role==="member")accountQuery.eq("employee_id",profile.id); const [{data:campaigns,error},{data:accounts}]=await Promise.all([q,accountQuery]);
  if(error)return NextResponse.json({error:error.message},{status:500}); return NextResponse.json({campaigns:campaigns||[],accounts:accounts||[],canManage:manager(profile)});
 }
@@ -33,7 +34,7 @@ export async function POST(request:Request){
 export async function PATCH(request:Request){
  const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; const b=await request.json().catch(()=>null); const id=String(b?.id||""); if(!id)return NextResponse.json({error:"Campaign ID is required."},{status:400});
  const {data:before,error:read}=await admin.from("mail_merge_campaigns").select("*").eq("id",id).maybeSingle(); if(read||!before)return NextResponse.json({error:read?.message||"Campaign not found."},{status:404});
- if(profile.role==="member"||(!manager(profile)&&before.created_by!==profile.id))return NextResponse.json({error:"Not authorized."},{status:403});
+ if(before.created_by!==profile.id)return NextResponse.json({error:"This saved campaign belongs to another user."},{status:403});
  const patch:any={}; for(const k of ["name","country","subject","body","status"])if(b?.[k]!==undefined)patch[k]=String(b[k]); if(b?.campaign_group!==undefined)patch.campaign_group=String(b.campaign_group);
  if(patch.status&&!STATUSES.includes(patch.status))return NextResponse.json({error:"Unsupported campaign status."},{status:400}); if(patch.campaign_group&&!GROUPS.includes(patch.campaign_group))return NextResponse.json({error:"Unsupported campaign group."},{status:400});
  const {data:campaign,error}=await admin.from("mail_merge_campaigns").update({...patch,updated_at:new Date().toISOString()}).eq("id",id).select("*").single(); if(error)return NextResponse.json({error:error.message},{status:500});
@@ -48,7 +49,7 @@ export async function DELETE(request:Request){
  const {data:campaign,error:read}=await admin.from("mail_merge_campaigns").select("*").eq("id",id).maybeSingle();
  if(read||!campaign)return NextResponse.json({error:read?.message||"Campaign not found."},{status:404});
  if(campaign.status!=="Draft")return NextResponse.json({error:"Only draft campaigns can be deleted."},{status:409});
- if(profile.role==="member"||(!manager(profile)&&campaign.created_by!==profile.id))return NextResponse.json({error:"Not authorized."},{status:403});
+ if(campaign.created_by!==profile.id)return NextResponse.json({error:"This saved campaign belongs to another user."},{status:403});
  const {error:recipientsError}=await admin.from("mail_merge_campaign_recipients").delete().eq("campaign_id",id);
  if(recipientsError)return NextResponse.json({error:recipientsError.message},{status:500});
  const {error:deleteError}=await admin.from("mail_merge_campaigns").delete().eq("id",id);
