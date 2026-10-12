@@ -198,7 +198,7 @@ export async function POST(request: Request) {
       if (error?.code === "23505") {
         existing++; reason = "Email already exists in Master Lead Sheet";
         const { data: existingLead } = await admin.from("master_leads").select("*").eq("email", email).maybeSingle();
-        if (existingLead) resolvedLeads.push(existingLead);
+        if (existingLead && (profile.role !== "member" || existingLead.lead_owner === profile.id)) resolvedLeads.push(existingLead);
       } else { invalid++; reason = error?.message || "Could not save row"; }
     }
     results.push({ row_number: i+1, email, company_name: company, result: "skipped", reason });
