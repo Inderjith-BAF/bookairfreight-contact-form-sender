@@ -20,6 +20,48 @@ const COLUMNS = [
   ["business_personal_email","Business / Personal Email"],["contact_form","Contact form"],["fresh_outreach_assigned_to","Assigned to(Fresh Outreach)"],
   ["fresh_outreach_assigned_date","Assigned Date(Fresh Outreach)"]
 ] as const;
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  "uk":"United Kingdom","u k":"United Kingdom","gb":"United Kingdom","gbr":"United Kingdom","great britain":"United Kingdom","britain":"United Kingdom","england":"United Kingdom","scotland":"United Kingdom","wales":"United Kingdom","northern ireland":"United Kingdom",
+  "us":"United States","u s":"United States","usa":"United States","u s a":"United States","united states of america":"United States","america":"United States",
+  "uae":"United Arab Emirates","u a e":"United Arab Emirates","emirates":"United Arab Emirates",
+  "south korea":"South Korea","republic of korea":"South Korea","korea south":"South Korea","kr":"South Korea",
+  "north korea":"North Korea","korea north":"North Korea","kp":"North Korea",
+  "russia":"Russia","russian federation":"Russia",
+  "viet nam":"Vietnam",
+  "ivory coast":"Côte d’Ivoire","cote d ivoire":"Côte d’Ivoire",
+  "turkiye":"Türkiye","turkey":"Türkiye",
+  "czech republic":"Czechia",
+  "holland":"Netherlands","the netherlands":"Netherlands",
+  "mainland china":"China","pr china":"China","people s republic of china":"China","p r china":"China",
+  "hong kong sar":"Hong Kong","hong kong s a r":"Hong Kong",
+  "taiwan roc":"Taiwan","republic of china":"Taiwan",
+  "macau":"Macao",
+  "tanzania":"Tanzania","united republic of tanzania":"Tanzania",
+  "bolivia":"Bolivia","bolivia plurinational state of":"Bolivia",
+  "venezuela":"Venezuela","venezuela bolivarian republic of":"Venezuela",
+  "iran":"Iran","iran islamic republic of":"Iran",
+  "syria":"Syria","syrian arab republic":"Syria",
+  "moldova":"Moldova","moldova republic of":"Moldova",
+  "laos":"Laos","lao people s democratic republic":"Laos",
+  "brunei darussalam":"Brunei",
+  "cape verde":"Cabo Verde",
+  "swaziland":"Eswatini",
+  "macedonia":"North Macedonia",
+  "burma":"Myanmar",
+  "côte d ivoire":"Côte d’Ivoire",
+  "palestine":"Palestine","state of palestine":"Palestine",
+  "vatican":"Vatican City","holy see":"Vatican City"
+};
+function normalizeCountry(value: unknown): string {
+  const raw = String(value ?? "").trim().replace(/\\s+/g, " ");
+  if (!raw) return "";
+  const key = raw.toLowerCase().replace(/[._-]/g, " ").replace(/\\s+/g, " ").trim();
+  const alias = COUNTRY_ALIASES[key];
+  if (alias) return alias;
+  return raw.toLocaleLowerCase().replace(/\\b[a-z]/g, letter => letter.toUpperCase());
+}
+
 type AssignmentField = "fresh_outreach_assigned_to" | "fresh_outreach_assigned_date";
 type DragFill = { field: AssignmentField; value: string } | null;
 
@@ -142,12 +184,12 @@ export function CentralLeadInventory() {
     void fillAssignment(ids, field, dragFill.value);
   }
   const excelFilterKeys = ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"];
-  const excelFilterOptions = (key: string) => Array.from(new Set(leads.map(row => String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b));
+  const excelFilterOptions = (key: string) => Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b));
   const visible = leads.filter(row => COLUMNS.every(([key]) => {
     const textFilter = columnFilters[key]?.trim();
     if (textFilter && !String(row[key] ?? "").toLowerCase().includes(textFilter.toLowerCase())) return false;
     const selectedValues = excelFilters[key];
-    if (excelFilterKeys.includes(key) && selectedValues?.length && !selectedValues.includes(String(row[key] ?? "").trim())) return false;
+    if (excelFilterKeys.includes(key) && selectedValues?.length) { const value = key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim(); if (!selectedValues.includes(value)) return false; }
     return true;
   }));
   const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
