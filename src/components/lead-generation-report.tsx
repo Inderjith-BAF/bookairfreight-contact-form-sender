@@ -56,7 +56,7 @@ export function LeadGenerationReport() {
   const rawSheets = countBy(rows,"data_source");
   const countries = countBy(rows,"country");
   const industries = countBy(rows,"main_industry");
-  const emailTypes:[string,number][] = [["Business Email",business],["Personal Email",personal],["Not specified",Math.max(0,total-business-personal)]].filter(x=>x[1]>0);
+  const emailTypes: [string, number][] = ([["Business Email",business],["Personal Email",personal],["Not specified",Math.max(0,total-business-personal)]] as [string, number][]).filter((x) => x[1] > 0);
   const last7 = Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");return {key,label:d.toLocaleDateString("en",{weekday:"short"}),count:rows.filter(r=>String(r.created_at||"").slice(0,10)===key).length};});
   const maxDaily=Math.max(1,...last7.map(x=>x.count));
   return <div className="mb-6 space-y-5">
