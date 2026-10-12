@@ -143,9 +143,21 @@ export function CentralLeadInventory() {
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Selected Leads"); XLSX.writeFile(wb,"central-lead-inventory-selection.xlsx");
   };
   async function copyFilteredContactForms() {
-    const values = ["Contact form", ...visible.map(row => String(row.contact_form ?? ""))];
-    try { await navigator.clipboard.writeText(values.join(String.fromCharCode(13,10))); setMessage(`Copied Contact form values for ${visible.length} filtered leads, including blank cells.`); setError(""); }
-    catch { setError("Clipboard access was blocked by the browser. Allow clipboard access and try again."); }
+    const values = visible
+      .map(row => String(row.contact_form ?? "").trim())
+      .filter(value => value.length > 0);
+    if (!values.length) {
+      setMessage("");
+      setError("No contact form URLs found in the filtered leads.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(values.join(String.fromCharCode(13,10)));
+      setMessage("Copied " + values.length + " contact form URL(s), skipped " + (visible.length - values.length) + " blank cell(s).");
+      setError("");
+    } catch {
+      setError("Clipboard access was blocked by the browser. Allow clipboard access and try again.");
+    }
   }
   async function copySelectedForMailMerge() {
     const rows = visible.filter(row => selected.includes(row.id));
