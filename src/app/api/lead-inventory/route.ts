@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireOutboundUser(request, ["admin", "lead_generation_admin", "member"]);
+  const auth = await requireOutboundUser(request, ["admin", "lead_generation_admin"]);
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth;
   const body = await request.json().catch(() => null);
