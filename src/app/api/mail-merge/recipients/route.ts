@@ -14,6 +14,7 @@ export async function POST(request:Request){
  if(ae||!account||!account.active||account.health_status==="Paused")return NextResponse.json({error:"Sender account is unavailable or paused."},{status:400});
  if(account.employee_id!==profile.id&&!["admin","manager","lead_generation_admin"].includes(profile.role))return NextResponse.json({error:"You can only use sender accounts assigned to you."},{status:403});
  const {data:leads,error}=await admin.from("master_leads").select("*").in("id",leadIds); if(error)return NextResponse.json({error:error.message},{status:500});
+ if(profile.role==="member"&&(leads||[]).some((lead:any)=>lead.lead_owner!==profile.id))return NextResponse.json({error:"Members can only add leads they uploaded to a campaign."},{status:403});
  const blocked=(leads||[]).filter((l:any)=>l.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"].includes(l.current_status));
  const eligible=(leads||[]).filter((l:any)=>!blocked.some((x:any)=>x.id===l.id)); if(!eligible.length)return NextResponse.json({error:"No selected recipients are eligible to send."},{status:409});
  const {data:existing}=await admin.from("mail_merge_campaign_recipients").select("lead_id").eq("campaign_id",campaignId).in("lead_id",eligible.map((l:any)=>l.id)); const seen=new Set((existing||[]).map((x:any)=>x.lead_id)); const fresh=eligible.filter((l:any)=>!seen.has(l.id));
