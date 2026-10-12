@@ -147,11 +147,15 @@ export async function POST(request: Request) {
   }).select("id").single();
   if (batchError || !batch) return NextResponse.json({ error: batchError?.message || "Could not create import batch." }, { status: 500 });
 
+  type ImportResult = { row_number: number; email: string; company_name: string; result: "added" | "skipped"; reason: string };
   const seen = new Set<string>();
-  const results: Array<Record<string, unknown>> = [];
-  const addedLeads: Array<Record<string, unknown>> = [];
-  const resolvedLeads: Array<Record<string, unknown>> = [];
-  let added = 0, existing = 0, inBatch = 0, invalid = 0, missingCountry = 0;
+  const results: ImportResult[] = [];
+  const candidates: Array<{ row_number: number; email: string; company_name: string; record: Record<string, unknown> }> = [];
+  let existing = 0, inBatch = 0, invalid = 0, missingCountry = 0, added = 0;
+  const sourceName = String(body?.fileName || "Pasted data");
+
+  // Validate the full sheet before writing. Normalize emails consistently so
+  // case/whitespace variations in one upload cannot create duplicate attempts.
   for (let i = 0; i < rows.length; i++) {
     const raw = rows[i] as Record<string, unknown>;
     const email = value(raw, "Email", "Recipient Email").trim();
@@ -163,7 +167,7 @@ export async function POST(request: Request) {
     else if (seen.has(normalized)) { inBatch++; reason = "Duplicate email within this import"; }
     else {
       seen.add(normalized);
-      const record = {
+      const record: Record<string, unknown> = {
         email, location_on_site: value(raw, "Location On Site", "Website"),
         country: value(raw, "Country"), company_name: company,
         first_name: value(raw, "First Name"), last_name: value(raw, "Last Name"), title: value(raw, "Title"),
@@ -176,7 +180,7 @@ export async function POST(request: Request) {
         assigned_to: value(raw, "Assigned To"), assigned_date: value(raw, "Assigned Date"),
         ecommerce_platform_used: value(raw, "Ecommerce platform used"),
         data_from_lead_generation_team: value(raw, "Data from lead generation team"),
-        data_source: String(body?.leadSource || "").trim() || value(raw, "Data source (need to indicate which raw data sheet you are using)", "Data source") || "Unspecified",
+        data_source: leadSource || value(raw, "Data source (need to indicate which raw data sheet you are using)", "Data source") || "Unspecified",
         email_finding_assigned_to: value(raw, "(Email Finding) Assigned To", "Email Finding Assigned To"),
         email_finding_assigned_date: value(raw, "(Email Finding) Assigned Date", "Email Finding Assigned Date"),
         business_personal_email: value(raw, "Business / Personal Email", "Email Type"),
@@ -185,28 +189,97 @@ export async function POST(request: Request) {
         current_status: "New",
         lead_owner: profile.id
       };
-      const { data: lead, error } = await admin.from("master_leads").insert(record).select("*").single();
+      candidates.push({ row_number: i + 1, email, company_name: company, record });
+      continue;
+    }
+    results.push({ row_number: i + 1, email, company_name: company, result: "skipped", reason });
+  }
+
+  const addedLeads: Array<Record<string, unknown>> = [];
+  const resolvedLeads: Array<Record<string, unknown>> = [];
+  const chunkSize = 400;
+
+  // Insert batches rather than making a separate database round-trip per lead.
+  // The unique normalized_email constraint is authoritative; conflicts are
+  // ignored, never updated, so existing lead ownership/status is preserved.
+  for (let offset = 0; offset < candidates.length; offset += chunkSize) {
+    const chunk = candidates.slice(offset, offset + chunkSize);
+    const { data: inserted, error: insertError } = await admin
+      .from("master_leads")
+      .upsert(chunk.map(item => item.record), { onConflict: "normalized_email", ignoreDuplicates: true })
+      .select("*");
+
+    if (!insertError) {
+      const insertedByEmail = new Map((inserted || []).map((lead: Record<string, any>) => [String(lead.normalized_email || String(lead.email || "").trim().toLowerCase()), lead]));
+      const insertedIds: string[] = [];
+      for (const item of chunk) {
+        const lead = insertedByEmail.get(item.email.toLowerCase());
+        if (lead) {
+          added++;
+          addedLeads.push(lead);
+          resolvedLeads.push(lead);
+          insertedIds.push(String(lead.id));
+          results.push({ row_number: item.row_number, email: item.email, company_name: item.company_name, result: "added", reason: "Added" });
+        } else {
+          existing++;
+          results.push({ row_number: item.row_number, email: item.email, company_name: item.company_name, result: "skipped", reason: "Email already exists in Master Lead Sheet" });
+        }
+      }
+      if (insertedIds.length) {
+        const events = (inserted || []).map((lead: Record<string, any>) => {
+          const item = chunk.find(candidate => candidate.email.toLowerCase() === String(lead.normalized_email || String(lead.email || "").trim().toLowerCase()));
+          return item ? { lead_id: lead.id, actor_id: profile.id, event_type: "lead_imported", details: { batch_id: batch.id, row_number: item.row_number, source: sourceName } } : null;
+        }).filter(Boolean);
+        if (events.length) {
+          const { error: activityError } = await admin.from("lead_activity_events").insert(events);
+          if (activityError) console.error("Master Lead Sheet import activity logging failed", { batchId: batch.id, message: activityError.message });
+        }
+      }
+      continue;
+    }
+
+    // If bulk insert fails, retain the previous safe per-row path so one
+    // problematic row does not discard the entire chunk.
+    for (const item of chunk) {
+      const { data: lead, error } = await admin.from("master_leads").insert(item.record).select("*").single();
       if (!error && lead) {
         added++;
-        await admin.from("lead_activity_events").insert({ lead_id: lead.id, actor_id: profile.id, event_type: "lead_imported", details: { batch_id: batch.id, row_number: i+1, source: body?.fileName || "Pasted data" } });
-        reason = "Added";
         addedLeads.push(lead);
         resolvedLeads.push(lead);
-        results.push({ row_number: i+1, email, company_name: company, result: "added", reason });
-        continue;
-      }
-      if (error?.code === "23505") {
-        existing++; reason = "Email already exists in Master Lead Sheet";
-        const { data: existingLead } = await admin.from("master_leads").select("*").eq("email", email).maybeSingle();
+        results.push({ row_number: item.row_number, email: item.email, company_name: item.company_name, result: "added", reason: "Added" });
+        const { error: activityError } = await admin.from("lead_activity_events").insert({ lead_id: lead.id, actor_id: profile.id, event_type: "lead_imported", details: { batch_id: batch.id, row_number: item.row_number, source: sourceName } });
+        if (activityError) console.error("Master Lead Sheet import activity logging failed", { batchId: batch.id, rowNumber: item.row_number, message: activityError.message });
+      } else if (error?.code === "23505") {
+        existing++;
+        results.push({ row_number: item.row_number, email: item.email, company_name: item.company_name, result: "skipped", reason: "Email already exists in Master Lead Sheet" });
+        const { data: existingLead } = await admin.from("master_leads").select("*").eq("normalized_email", item.email.toLowerCase()).maybeSingle();
         if (existingLead) resolvedLeads.push(existingLead);
-      } else { invalid++; reason = error?.message || "Could not save row"; }
+      } else {
+        invalid++;
+        results.push({ row_number: item.row_number, email: item.email, company_name: item.company_name, result: "skipped", reason: error?.message || "Could not save row" });
+      }
     }
-    results.push({ row_number: i+1, email, company_name: company, result: "skipped", reason });
   }
+
+  // Resolve duplicate rows in bounded queries for the response without changing
+  // any existing record. This is only for callers that display resolved leads.
+  const duplicateEmails = results.filter(item => item.reason === "Email already exists in Master Lead Sheet").map(item => item.email.toLowerCase());
+  for (let offset = 0; offset < duplicateEmails.length; offset += chunkSize) {
+    const emails = duplicateEmails.slice(offset, offset + chunkSize);
+    if (!emails.length) continue;
+    const { data: found } = await admin.from("master_leads").select("*").in("normalized_email", emails);
+    if (found) resolvedLeads.push(...found);
+  }
+
+  results.sort((a, b) => a.row_number - b.row_number);
   const completedAt = new Date().toISOString();
   const counts = { total_rows: rows.length, added_count: added, skipped_existing: existing, skipped_in_batch: inBatch, skipped_invalid: invalid, skipped_missing_country: missingCountry, completed_at: completedAt };
   const { error: updateError } = await admin.from("lead_import_batches").update(counts).eq("id", batch.id);
-  const { error: resultError } = await admin.from("lead_import_results").insert(results.map(r => ({ ...r, batch_id: batch.id })));
+  let resultError: { message: string } | null = null;
+  for (let offset = 0; offset < results.length; offset += 1000) {
+    const { error } = await admin.from("lead_import_results").insert(results.slice(offset, offset + 1000).map(item => ({ ...item, batch_id: batch.id })));
+    if (error) { resultError = error; break; }
+  }
   if (updateError || resultError) return NextResponse.json({ error: updateError?.message || resultError?.message, batchId: batch.id, partial: true }, { status: 500 });
   return NextResponse.json({ batchId: batch.id, ...counts, results, added_leads: addedLeads, resolved_leads: resolvedLeads }, { status: 201 });
 }
