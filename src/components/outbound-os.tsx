@@ -17,7 +17,7 @@ const RESPONSE_OPTIONS=Array.from({length:21},(_,i)=>String(i));
 const RESPONSE_PC_OPTIONS=Array.from({length:21},(_,i)=>i>0?String(i)+"pc":null).filter(Boolean) as string[];
 const RESPONSE_CHOICES=["0",...RESPONSE_OPTIONS.slice(1),"PC_SEPARATOR",...RESPONSE_PC_OPTIONS];
 const COUNTRIES=["US","AU","EU","Saudi","UK","Canada","UAE"];
-function tabAllowed(p:OutboundProfile,id:string){if(p.role==="lead_generation_admin")return false;if(id==="team")return p.role==="admin";if(id==="import")return p.role!=="member"&&p.tab_permissions?.[id]!==false;return p.tab_permissions?.[id]!==false;}
+function tabAllowed(p:OutboundProfile,id:string){if(id==="team")return p.role==="admin";if(id==="import")return p.role!=="member"&&p.tab_permissions?.[id]!==false;return p.tab_permissions?.[id]!==false;}
 function sequenceLabel(s:Sequence){const m:Record<string,string>={"Email 1":"Fresh Outreach","Email 2":"Follow-Up 2","Follow-up 1":"Follow-Up 3","Follow-up 2":"Follow-Up 4","Follow-up 3":"Follow-Up 5"};return m[s.name]||s.name}
 function allowedSequences(list:Sequence[]){return list.filter(s=>["Fresh Outreach","Follow-Up 2","Follow-Up 3","Follow-Up 4","Follow-Up 5","Email 1","Email 2","Follow-up 1","Follow-up 2","Follow-up 3"].includes(s.name))}
 function responseCount(v:string){return n(v.replace(/pc$/i,""))}
