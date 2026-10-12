@@ -75,7 +75,7 @@ export function LeadGenerationReport() {
       <Breakdown title="Leads by raw data sheet" items={rawSheets} total={total}/>
     </div>
     <div className="grid gap-4 xl:grid-cols-3">
-      <Breakdown title="Country-wise lead count" items={countries} total={total} limit={12}/>
+      <Breakdown title="Country-wise lead count" items={countries} total={total} limit={250}/>
       <Breakdown title="Industry-wise lead count" items={industries} total={total}/>
       <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"><h3 className="mb-1 flex items-center gap-2 text-sm font-black"><TrendingUp size={16} className="text-indigo-500"/>Last 7 days · uploads</h3><p className="mb-4 text-xs text-slate-500">Daily additions to Central Lead Inventory</p><div className="flex h-32 items-end justify-between gap-2">{last7.map((day,i)=><div key={day.key} className="flex h-full flex-1 flex-col items-center justify-end gap-1"><span className="text-[10px] font-bold text-slate-600">{day.count}</span><div className="flex w-full flex-1 items-end"><div title={day.key+": "+day.count+" leads"} className="w-full rounded-t-lg bg-gradient-to-t from-indigo-600 to-cyan-400 transition-all duration-700" style={{height:Math.max(day.count?8:2,day.count/maxDaily*100)+"%",animation:"leadBarGrow .8s ease-out both",animationDelay:(i*70)+"ms"}}/></div><span className="text-[10px] text-slate-400">{day.label}</span></div>)}</div><div className="mt-3 flex items-center gap-2 rounded-xl bg-cyan-50 p-2 text-xs text-cyan-800"><Globe2 size={15}/>Only records created in the last seven calendar days are counted.</div></section>
     </div>
