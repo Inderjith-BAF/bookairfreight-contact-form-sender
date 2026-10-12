@@ -12,9 +12,9 @@ const normalizeCountry = (value: unknown) => {
   const aliases: Record<string, string> = {
     "australia": "Australia", "commonwealth of australia": "Australia", "eu": "EU", "europe": "EU", "netherlands": "EU",
     "the netherlands": "EU", "holland": "EU", "czechia": "EU", "czech republic": "EU", "hungary": "EU",
-    "romania": "EU", "uk": "EU", "u k": "EU", "gb": "EU", "gbr": "EU",
-    "great britain": "EU", "britain": "EU", "england": "EU", "scotland": "EU", "wales": "EU",
-    "northern ireland": "EU", "united kingdom": "EU", "albania": "EU", "andorra": "EU", "austria": "EU",
+    "romania": "EU", "uk": "United Kingdom", "u k": "United Kingdom", "gb": "United Kingdom", "gbr": "United Kingdom",
+    "great britain": "United Kingdom", "britain": "United Kingdom", "england": "United Kingdom", "scotland": "United Kingdom", "wales": "United Kingdom",
+    "northern ireland": "United Kingdom", "united kingdom": "United Kingdom", "albania": "EU", "andorra": "EU", "austria": "EU",
     "belarus": "EU", "belgium": "EU", "bosnia and herzegovina": "EU", "bulgaria": "EU", "croatia": "EU",
     "cyprus": "EU", "denmark": "EU", "estonia": "EU", "finland": "EU", "france": "EU",
     "germany": "EU", "greece": "EU", "iceland": "EU", "ireland": "EU", "italy": "EU",
