@@ -26,12 +26,16 @@ export async function PATCH(request:Request){
   const userId=String(body?.user_id??"").trim();
   const email=String(body?.email??"").trim().toLowerCase();
   const fullName=String(body?.full_name??"").trim();
+  const newPassword=String(body?.password??"");
   const role=["admin","manager","member","lead_generation_admin"].includes(body?.role)?body.role:"member";
   const active=body?.active!==false;
   const defaultTabs={intelligence:true,command:true,daily:true,weekly:true,monthly:true,my:true,forms:true,import:true,leadSheet:true,mailMerge:true,accountHealth:true,campaignIntelligence:true};
   const tabPermissions={...defaultTabs,...(body?.tab_permissions&&typeof body?.tab_permissions==="object"?body.tab_permissions:{})};
   if(!userId||!fullName)return NextResponse.json({error:"User ID and name are required."},{status:400});
-  const {error:userError}=await auth.admin.auth.admin.updateUserById(userId,email?{email,email_confirm:true,user_metadata:{full_name:fullName}}:{user_metadata:{full_name:fullName}});
+  if(newPassword&&newPassword.length<8)return NextResponse.json({error:"New password must be at least 8 characters."},{status:400});
+  const authUpdate:any=email?{email,email_confirm:true,user_metadata:{full_name:fullName}}:{user_metadata:{full_name:fullName}};
+  if(newPassword)authUpdate.password=newPassword;
+  const {error:userError}=await auth.admin.auth.admin.updateUserById(userId,authUpdate);
   if(userError)return NextResponse.json({error:userError.message},{status:400});
   const {error:profileError}=await auth.admin.from("outbound_profiles").update({full_name:fullName,role,active,tab_permissions:tabPermissions}).eq("id",userId);
   if(profileError)return NextResponse.json({error:profileError.message},{status:500});
@@ -39,5 +43,5 @@ export async function PATCH(request:Request){
   const {error:deleteAccountsError}=await auth.admin.from("outbound_email_accounts").delete().eq("employee_id",userId);
   if(deleteAccountsError)return NextResponse.json({error:deleteAccountsError.message},{status:500});
   if(accounts.length){const {error:accountError}=await auth.admin.from("outbound_email_accounts").upsert(accounts.map((account:string)=>({email:account,employee_id:userId})),{onConflict:"email"});if(accountError)return NextResponse.json({error:accountError.message},{status:500});}
-  return NextResponse.json({updated:true});
+  return NextResponse.json({updated:true,passwordChanged:Boolean(newPassword)});
 }
