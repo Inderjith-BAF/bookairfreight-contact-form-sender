@@ -16,7 +16,7 @@ export async function GET(request:Request){
  if(error)return NextResponse.json({error:error.message},{status:500}); return NextResponse.json({campaigns:campaigns||[],accounts:accounts||[],canManage:manager(profile)});
 }
 export async function POST(request:Request){
- const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; if(!manager(profile))return NextResponse.json({error:"Campaign creation requires leadership or Lead Generation Admin."},{status:403});
+ const auth=await requireOutboundUser(request); if("error" in auth)return auth.error; const {admin,profile}=auth; // Members may create and send their own campaigns; ownership and mailbox checks remain enforced on every campaign/recipient/dispatch endpoint.
  const b=await request.json().catch(()=>null);
  if(b?.action==="add_account"){return NextResponse.json({error:"Email addresses cannot be registered manually. Use Connect Email Account so the mailbox is authenticated before it can send."},{status:409}); /*
   const email=String(b?.email||"").trim().toLowerCase();
