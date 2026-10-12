@@ -3,7 +3,7 @@ import { requireOutboundUser } from "@/lib/outbound-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const WRITE_ROLES = ["admin", "lead_generation_admin"] as const;
+const WRITE_ROLES = ["admin", "lead_generation_admin", "member"] as const;
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 const value = (row: Record<string, unknown>, ...keys: string[]) => {
   const entries = new Map(Object.entries(row).map(([k,v]) => [norm(k), String(v ?? "").trim()]));
@@ -224,6 +224,7 @@ export async function PATCH(request: Request) {
   if (!allowed.includes(status)) return NextResponse.json({ error: "Unsupported lead status." }, { status: 400 });
   const { data: before, error: readError } = await admin.from("master_leads").select("*").eq("id", id).maybeSingle();
   if (readError || !before) return NextResponse.json({ error: readError?.message || "Lead not found." }, { status: 404 });
+  if (profile.role === "member" && before.lead_owner !== profile.id) return NextResponse.json({ error: "Members can update only leads they uploaded." }, { status: 403 });
   const isResponse = ["Positive","Neutral","Negative"].includes(status);
   const patch: Record<string, unknown> = {
     current_status: status,
