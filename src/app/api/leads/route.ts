@@ -26,6 +26,8 @@ export async function GET(request: Request) {
   const website = searchParams.get("website") || "";
   const contact = searchParams.get("contact") || "";
   const industry = searchParams.get("industry") || "";
+  const emailType = searchParams.get("emailType") || "";
+  const leadSourceFilter = searchParams.get("leadSourceFilter") || "";
   const ecommerce = searchParams.get("ecommerce") || "";
   const leadOwner = searchParams.get("leadOwner") || "";
   const validation = searchParams.get("validation") || "";
@@ -65,6 +67,8 @@ export async function GET(request: Request) {
   if (website) query = query.ilike("location_on_site", "%"+website+"%");
   if (contact) query = query.or("first_name.ilike.%"+contact+"%,last_name.ilike.%"+contact+"%,title.ilike.%"+contact+"%");
   if (industry) query = query.ilike("main_industry", "%"+industry+"%");
+  if (emailType) query = query.ilike("business_personal_email", "%"+emailType+"%");
+  if (leadSourceFilter) query = query.ilike("data_source", "%"+leadSourceFilter+"%");
   if (ecommerce) query = query.ilike("ecommerce_platform_used", "%"+ecommerce+"%");
   if (validation) query = query.ilike("assigned_to", "%"+validation+"%");
   if (emailFinding) query = query.ilike("email_finding_assigned_to", "%"+emailFinding+"%");
@@ -114,8 +118,8 @@ export async function GET(request: Request) {
 
   if (exportCsv) {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const headers = ["Company Name","Website","Email","Country","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
-    const rows = leads.map((lead: any) => [lead.company_name,lead.location_on_site,lead.email,lead.country,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
+    const headers = ["Company Name","Website","Email","Country","Business / Personal Email","Lead Source","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
+    const rows = leads.map((lead: any) => [lead.company_name,lead.location_on_site,lead.email,lead.country,lead.business_personal_email,lead.data_source,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
     return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
   }
 
@@ -170,10 +174,10 @@ export async function POST(request: Request) {
         assigned_to: value(raw, "Assigned To"), assigned_date: value(raw, "Assigned Date"),
         ecommerce_platform_used: value(raw, "Ecommerce platform used"),
         data_from_lead_generation_team: value(raw, "Data from lead generation team"),
-        data_source: value(raw, "Data source (need to indicate which raw data sheet you are using)", "Data source"),
+        data_source: value(raw, "Data source (need to indicate which raw data sheet you are using)", "Data source") || String(body?.leadSource || "Unspecified"),
         email_finding_assigned_to: value(raw, "(Email Finding) Assigned To", "Email Finding Assigned To"),
         email_finding_assigned_date: value(raw, "(Email Finding) Assigned Date", "Email Finding Assigned Date"),
-        business_personal_email: value(raw, "Business / Personal Email"),
+        business_personal_email: value(raw, "Business / Personal Email", "Email Type"),
         fresh_outreach_assigned_to: value(raw, "Assigned to (Fresh Outreach)", "Assigned to Fresh Outreach"),
         fresh_outreach_assigned_date: value(raw, "Assigned Date (Fresh Outreach)"),
         current_status: "New",
