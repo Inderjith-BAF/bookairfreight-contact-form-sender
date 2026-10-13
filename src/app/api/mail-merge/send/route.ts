@@ -14,8 +14,8 @@ export async function POST(request:Request){
  if(error||!campaign)return NextResponse.json({error:error?.message||"Campaign not found."},{status:404});
  if(profile.role==="member"&&campaign.created_by!==profile.id)return NextResponse.json({error:"Not authorized."},{status:403});
  return NextResponse.json({
-  error:"Direct browser sending is disabled. This campaign is handled by the automatic domain dispatcher.",
+  error:"Direct browser sending is disabled. This campaign is handled by the automatic account-level dispatcher.",
   status:campaign.status,
-  message:"Dispatch queues the campaign and the backend releases approximately one domain email every 30-60 seconds. The browser does not need to remain open."
+  message:"Dispatch queues the campaign. Each member's account batches run sequentially, different members run in parallel, and each account observes its own 60-120 second pacing interval. The browser does not need to remain open."
  },{status:409});
 }
