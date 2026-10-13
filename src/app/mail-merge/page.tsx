@@ -113,20 +113,33 @@ export default function MailMergePage(){
   if(!selectedAccounts.length){setErr("Select at least one sending account in Step 1 first.");setLeads([]);return;}
   const d=await api("/api/mail-merge?id="+encodeURIComponent(id));
   const selectedAccountSet=new Set(selectedAccounts);
-  const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads&&selectedAccountSet.has(r.sender_account_id));
+  // Start from eligible recipients in the chosen source campaign, then retain only
+  // accounts selected in Step 1 that actually have at least one eligible recipient.
+  const sourceRecipients=(d.recipients||[]).filter((r:any)=>r.master_leads&&r.sender_account_id&&selectedAccountSet.has(r.sender_account_id));
   const subjects:Record<string,string>={};
   const rows:Lead[]=[];
-  for(const r of recipients){
+  for(const r of sourceRecipients){
    const lead=r.master_leads as Lead|undefined;
-   if(!lead?.id)continue;
+   if(!lead?.id||lead.suppression_reason||blockedStatuses.includes(String(lead.current_status||"")))continue;
    const previousSubject=typeof r.subject==="string"?r.subject:"";
    subjects[lead.id]=previousSubject.trim()||(typeof d.campaign?.subject==="string"?d.campaign.subject:"");
    rows.push({...lead,senderAccountId:r.sender_account_id});
   }
-  const eligible=rows.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+  const uniqueEligible=[...new Map(rows.map(lead=>[lead.id,lead])).values()];
+  const accountsWithEligibleLeads=[...new Set(uniqueEligible.map(lead=>lead.senderAccountId).filter((id):id is string=>Boolean(id)))];
+  const excluded=selectedAccounts.filter(id=>!accountsWithEligibleLeads.includes(id));
+  setSelectedAccounts(accountsWithEligibleLeads);
   setFollowupSubjects(subjects);
-  setLeads([...new Map(eligible.map(lead=>[lead.id,lead])).values()]);
- },[api,selectedAccounts]);
+  setLeads(uniqueEligible);
+  setSelected(uniqueEligible.map(lead=>lead.id));
+  setVolumes(current=>Object.fromEntries(accountsWithEligibleLeads.map(id=>[id,Math.min(Number(current[id]||10),uniqueEligible.filter(lead=>lead.senderAccountId===id).length)])));
+  if(excluded.length){
+   const names=excluded.map(id=>accounts.find(a=>a.id===id)?.email||id);
+   setMsg("Follow-up accounts matched: "+accountsWithEligibleLeads.length+". Excluded accounts with no eligible leads in this campaign: "+names.join(", ")+".");
+  }else{
+   setMsg("Loaded "+uniqueEligible.length+" eligible follow-up leads across "+accountsWithEligibleLeads.length+" selected sending accounts.");
+  }
+ },[api,selectedAccounts,accounts]);
 
  useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase]);
  useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
@@ -158,7 +171,9 @@ export default function MailMergePage(){
   }catch(e){setErr(e instanceof Error?e.message:"Could not resume campaign.")}finally{setBusy(false)}
  }
  async function signIn(){setErr("");const {data,error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPassword});if(error){setErr(error.message);return}setToken(data.session?.access_token||"")}
- const activeAccountIds=selectedAccounts;
+ const activeAccountIds=sourceMode==="followup"
+  ?selectedAccounts.filter(id=>leads.some(lead=>lead.senderAccountId===id))
+  :selectedAccounts;
  const accountVolume=(id:string)=>Math.min(100,Math.max(1,Number(volumes[id]||10)));
  const followupAvailableByAccount=useMemo(()=>{
   const counts:Record<string,number>={};
