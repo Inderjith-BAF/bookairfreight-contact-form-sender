@@ -18,7 +18,7 @@ function gmailText(payload: any): string {
   return parts.join("\n");
 }
 const normalized = (value: unknown) => String(value ?? "").trim().toLowerCase();
-const subjectKey = (value: unknown) => normalized(value).replace(/^(?:(?:re|fw|fwd)\s*:\s*)+/i, "").trim();
+const subjectKey = (value: unknown) => normalized(value).replace(/^(?:(?:automatic reply|auto-reply|autoreply|out of office|ooo|re|fw|fwd)\s*:\s*)+/i, "").trim();
 const isBounce = (from: string, subject: string, body: string) =>
   /mailer-daemon|postmaster|mail delivery subsystem|mail delivery agent/i.test(from) ||
   /undeliver(?:ed|able)|delivery status notification|delivery failure|message not delivered|returned mail|delivery has failed|failure notice|bounce/i.test(subject) ||
@@ -75,9 +75,10 @@ export async function POST(request: Request) {
         let pageToken = "";
         for (let page = 0; page < 1; page++) {
           const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-          url.searchParams.set("labelIds", "INBOX");
+          // Include Spam as well as Inbox: automatic replies are often classified as spam.
+          url.searchParams.set("includeSpamTrash", "true");
           url.searchParams.set("maxResults", "100");
-          url.searchParams.set("q", "newer_than:30d");
+          url.searchParams.set("q", "{in:inbox in:spam} newer_than:30d");
           if (pageToken) url.searchParams.set("pageToken", pageToken);
           const r = await fetch(url, { headers: { Authorization: "Bearer " + access } });
           const d = await r.json();
@@ -98,13 +99,13 @@ export async function POST(request: Request) {
           if (!pageToken) break;
         }
       } else {
-        let next = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,body&$orderby=receivedDateTime%20desc";
-        for (let page = 0; page < 1 && next; page++) {
-          const r = await fetch(next, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
+        // Scan both Inbox and Junk Email; automatic replies can be classified as junk.
+        for (const folder of ["inbox", "junkemail"]) {
+          const url = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder + "/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,body&$orderby=receivedDateTime%20desc";
+          const r = await fetch(url, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
           const d = await r.json();
-          if (!r.ok) throw new Error(d.error?.message || "Microsoft inbox sync failed.");
-          messages.push(...(d.value || []).slice(0,100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), body: String(m.body?.content || ""), snippet: "" })));
-          next = String(d["@odata.nextLink"] || "");
+          if (!r.ok) throw new Error(d.error?.message || ("Microsoft " + folder + " sync failed."));
+          messages.push(...(d.value || []).slice(0, 100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), body: String(m.body?.content || ""), snippet: "" })));
         }
       }
       checked += messages.length;
@@ -132,19 +133,20 @@ export async function POST(request: Request) {
           continue;
         }
         let row: any;
-        if (account.provider === "google") {
-          row = threadMap.get(message.threadId);
-          if (!row || row.status === "Replied" || row.status === "Bounced") continue;
-          const lead = leadsById.get(row.lead_id);
-          if (!lead || !leadIdByEmail.has(normalized(lead.email))) continue;
-          if (from.includes(normalized(account.email)) || !leadIdByEmail.has(from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "")) continue;
-        } else {
-          const senderEmail = from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "";
-          const leadId = leadIdByEmail.get(senderEmail);
-          if (!leadId) continue;
-          row = (sent || []).find((item: any) => item.lead_id === leadId && subjectKey(item.subject) === subjectKey(subject) && item.status !== "Bounced");
-          if (!row || row.status === "Replied") continue;
-        }
+        const senderEmail = from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "";
+        const leadId = leadIdByEmail.get(senderEmail);
+        if (!leadId || senderEmail === normalized(account.email)) continue;
+        // Prefer Gmail thread matching, then fall back to sender + normalized subject.
+        // This catches auto-replies that Gmail stores in a separate thread.
+        const threadMatch = account.provider === "google" ? threadMap.get(message.threadId) : null;
+        row = threadMatch?.lead_id === leadId && !["Bounced", "Suppressed"].includes(String(threadMatch.status))
+          ? threadMatch
+          : (sent || []).find((item: any) =>
+              item.lead_id === leadId &&
+              subjectKey(item.subject) === subjectKey(subject) &&
+              !["Bounced", "Suppressed"].includes(String(item.status))
+            );
+        if (!row || ["Replied", "Bounced", "Suppressed"].includes(String(row.status))) continue;
         const now = new Date().toISOString();
         await admin.from("mail_merge_campaign_recipients").update({ status: "Replied", updated_at: now }).eq("id", row.id);
         await admin.from("master_leads").update({ current_status: "Needs Review", last_replied_at: now, updated_at: now }).eq("id", row.lead_id);
