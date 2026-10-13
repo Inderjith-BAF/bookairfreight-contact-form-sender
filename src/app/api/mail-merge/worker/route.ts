@@ -21,7 +21,21 @@ async function finishCampaign(admin:any,campaignId:string){
 async function dispatchAccount(admin:any,request:Request,accountId:string){
  const {data:claimed,error:claimError}=await admin.rpc("claim_mail_merge_account_recipient",{p_account_id:accountId});
  if(claimError)return {sent:0,failed:0,disconnected:0,error:claimError.message};
- if(!claimed?.length)return {sent:0,failed:0,disconnected:0};
+ if(!claimed?.length){
+  const [{data:account},{data:dispatcher},{data:oldest}] = await Promise.all([
+   admin.from("outbound_email_accounts").select("id,email,employee_id").eq("id",accountId).maybeSingle(),
+   admin.from("mail_merge_account_dispatchers").select("next_send_at").eq("account_id",accountId).maybeSingle(),
+   admin.from("mail_merge_campaign_recipients").select("id,campaign_id,batch_id,status,created_at,send_not_before").eq("sender_account_id",accountId).in("status",["Queued","Sending"]).order("created_at").limit(1)
+  ]);
+  return {sent:0,failed:0,disconnected:0,skipped:{
+   account_id:accountId,
+   email:account?.email??"unknown",
+   employee_id:account?.employee_id??null,
+   reason:"claim function returned no recipient",
+   next_send_at:dispatcher?.next_send_at??null,
+   oldest_outstanding:oldest?.[0]??null
+  }};
+}
  const {data:row,error:rowError}=await admin.from("mail_merge_campaign_recipients").select("*,master_leads(*),outbound_email_accounts(*)").eq("id",claimed[0].id).maybeSingle();
  if(rowError||!row)return {sent:0,failed:0,disconnected:0,error:rowError?.message||"Claimed recipient could not be loaded."};
  const lead=row.master_leads,account=row.outbound_email_accounts,campaignId=String(row.campaign_id);
@@ -81,6 +95,7 @@ export async function GET(request:Request){
   disconnected:results.reduce((n:number,r:any)=>n+r.disconnected,0),
   accounts_checked:accountIds.length,
   errors:results.filter((r:any)=>r.error).map((r:any)=>r.error),
+  skipped:results.filter((r:any)=>r.skipped).map((r:any)=>r.skipped),
   message:"Independent account dispatch completed. Accounts run concurrently; batches remain sequential per member and each account has its own 60-120 second pacing timer."
  });
 }
