@@ -119,8 +119,8 @@ export async function POST(request: Request) {
         ? await admin.from("master_leads").select("id,email").in("id", leadIds)
         : { data: [], error: null };
       if (leadsError) throw new Error(leadsError.message);
-      const leadsById = new Map((leads || []).map((lead: any) => [lead.id, lead]));
-      const leadIdByEmail = new Map((leads || []).map((lead: any) => [normalized(lead.email), lead.id]));
+      const leadsById = new Map<string, any>((leads || []).map((lead: any) => [String(lead.id), lead] as [string, any]));
+      const leadIdByEmail = new Map<string, string>((leads || []).map((lead: any) => [normalized(lead.email), String(lead.id)] as [string, string]));
       const threadMap = new Map((sent || []).filter((row: any) => row.provider_thread_id).map((row: any) => [row.provider_thread_id, row]));
       for (const message of messages) {
         const from = normalized(message.from);
