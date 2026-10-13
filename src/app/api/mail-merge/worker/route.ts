@@ -32,7 +32,7 @@ async function dispatchAccount(admin:any,request:Request,accountId:string){
   await admin.from("mail_merge_campaign_recipients").update({status:"Ready",send_not_before:null,error_message:"Sending account is disconnected. Reconnect the mailbox before dispatch.",updated_at:new Date().toISOString()}).eq("id",row.id);
   return {sent:0,failed:0,disconnected:1};
  }
- if(!lead||lead.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"].includes(lead.current_status)){
+ if(!lead||lead.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative","Needs Review"].includes(lead.current_status)){
   await admin.from("mail_merge_campaign_recipients").update({status:"Suppressed",error_message:"Suppressed before automatic dispatch.",updated_at:new Date().toISOString()}).eq("id",row.id);
   await finishCampaign(admin,campaignId);
   return {sent:0,failed:0,disconnected:0};
