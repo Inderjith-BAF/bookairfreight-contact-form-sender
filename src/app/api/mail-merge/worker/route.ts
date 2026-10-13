@@ -114,9 +114,32 @@ export async function GET(request:Request){
   .select("id");
  if(staleError)return NextResponse.json({error:"Could not recover stale mail merge claims: "+staleError.message},{status:500});
 
- const {data:queued,error}=await admin.from("mail_merge_campaign_recipients").select("sender_account_id").eq("status","Queued").lte("send_not_before",new Date().toISOString()).not("sender_account_id","is",null).limit(200);
- if(error)return NextResponse.json({error:error.message},{status:500});
- const accountIds=[...new Set((queued||[]).map((r:any)=>String(r.sender_account_id)).filter(Boolean))];
+ // Do not cap the due queue at 200 recipient rows. That can omit the
+ // employee's oldest account entirely when another account owns many rows;
+ // the employee-wide sequential-batch guard then correctly blocks every
+ // account we did discover, creating an apparent deadlock. Page through all
+ // due rows in a stable order and dispatch every distinct sender account.
+ const accountIdsSet=new Set<string>();
+ const pageSize=1000;
+ let offset=0;
+ while(true){
+  const {data:queued,error}=await admin
+   .from("mail_merge_campaign_recipients")
+   .select("id,sender_account_id")
+   .eq("status","Queued")
+   .lte("send_not_before",new Date().toISOString())
+   .not("sender_account_id","is",null)
+   .order("sender_account_id",{ascending:true})
+   .order("id",{ascending:true})
+   .range(offset,offset+pageSize-1);
+  if(error)return NextResponse.json({error:error.message},{status:500});
+  for(const row of queued||[]){
+   if(row.sender_account_id)accountIdsSet.add(String(row.sender_account_id));
+  }
+  if(!queued||queued.length<pageSize)break;
+  offset+=pageSize;
+ }
+ const accountIds=[...accountIdsSet];
  if(!accountIds.length)return NextResponse.json({sent:0,failed:0,disconnected:0,accounts_checked:0,stale_claims_recovered:staleRows?.length??0,message:"No queued account is due."});
  const results=await Promise.all(accountIds.map((id)=>dispatchAccount(admin,request,id)));
  return NextResponse.json({
