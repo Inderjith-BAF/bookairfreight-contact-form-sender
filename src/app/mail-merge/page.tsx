@@ -115,9 +115,13 @@ export default function MailMergePage(){
   const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads&&r.sender_account_id===accountId);
   const rows=recipients.map((r:any)=>r.master_leads).filter(Boolean);
   const eligible=rows.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+  const campaignSubject=typeof d.campaign?.subject==="string"?d.campaign.subject:"";
   const subjects:Record<string,string>={};
   for(const r of recipients){
-   if(r.master_leads?.id&&typeof r.subject==="string")subjects[r.master_leads.id]=r.subject;
+   if(r.master_leads?.id){
+    const previousSubject=typeof r.subject==="string"?r.subject:"";
+    subjects[r.master_leads.id]=previousSubject.trim()||campaignSubject;
+   }
   }
   setFollowupSubjects(subjects);
   setLeads(eligible);
@@ -254,7 +258,7 @@ export default function MailMergePage(){
    if(sourceMode==="followup"){
     const bySubject=new Map<string,string[]>();
     for(const leadId of a.leadIds){
-     const subject=followupSubjects[leadId]||"";
+     const subject=followupSubjects[leadId]||campaigns.find(c=>c.id===followupSource)?.subject||"";
      const ids=bySubject.get(subject)||[];
      ids.push(leadId);
      bySubject.set(subject,ids);
