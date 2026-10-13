@@ -8,7 +8,7 @@ import { Bold, CheckCircle2, ChevronLeft, ChevronRight, Italic, List, ListOrdere
 import * as XLSX from "xlsx";
 
 type Account={id:string;email:string;health_status:string;daily_send_limit:number;hourly_send_limit:number;total_sent:number;employee_id?:string;provider?:string|null;connection_status?:string;connection_error?:string|null;last_verified_at?:string|null};
-type Lead={id:string;email:string;company_name:string;first_name:string;last_name:string;country:string;current_status:string;suppression_reason:string|null};
+type Lead={id:string;email:string;company_name:string;first_name:string;last_name:string;country:string;current_status:string;suppression_reason:string|null;senderAccountId?:string};
 type Campaign={id:string;name:string;country:string;campaign_group:string;subject:string;body:string;status:string};
 type Block={batchId:string;accountId:string;leadIds:string[];subject:string;body:string};
 
@@ -65,7 +65,6 @@ export default function MailMergePage(){
  const [volumes,setVolumes]=useState<Record<string,number>>({});
  const [campaignId,setCampaignId]=useState("");
  const [followupSource,setFollowupSource]=useState("");
- const [followupAccountId,setFollowupAccountId]=useState("");
  const [followupSubjects,setFollowupSubjects]=useState<Record<string,string>>({});
  const [sourceMode,setSourceMode]=useState<"fresh"|"followup">("fresh");
  const [blocks,setBlocks]=useState<Block[]>([]);
@@ -109,23 +108,25 @@ export default function MailMergePage(){
   return eligible;
  },[api,form.country]);
 
- const loadFollowup=useCallback(async(id:string,accountId=followupAccountId)=>{
+ const loadFollowup=useCallback(async(id:string)=>{
   if(!id)return;
+  if(!selectedAccounts.length){setErr("Select at least one sending account in Step 1 first.");setLeads([]);return;}
   const d=await api("/api/mail-merge?id="+encodeURIComponent(id));
-  const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads&&r.sender_account_id===accountId);
-  const rows=recipients.map((r:any)=>r.master_leads).filter(Boolean);
-  const eligible=rows.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
-  const campaignSubject=typeof d.campaign?.subject==="string"?d.campaign.subject:"";
+  const selectedAccountSet=new Set(selectedAccounts);
+  const recipients=(d.recipients||[]).filter((r:any)=>r.master_leads&&selectedAccountSet.has(r.sender_account_id));
   const subjects:Record<string,string>={};
+  const rows:Lead[]=[];
   for(const r of recipients){
-   if(r.master_leads?.id){
-    const previousSubject=typeof r.subject==="string"?r.subject:"";
-    subjects[r.master_leads.id]=previousSubject.trim()||campaignSubject;
-   }
+   const lead=r.master_leads as Lead|undefined;
+   if(!lead?.id)continue;
+   const previousSubject=typeof r.subject==="string"?r.subject:"";
+   subjects[lead.id]=previousSubject.trim()||(typeof d.campaign?.subject==="string"?d.campaign.subject:"");
+   rows.push({...lead,senderAccountId:r.sender_account_id});
   }
+  const eligible=rows.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
   setFollowupSubjects(subjects);
-  setLeads(eligible);
- },[api,followupAccountId]);
+  setLeads([...new Map(eligible.map(lead=>[lead.id,lead])).values()]);
+ },[api,selectedAccounts]);
 
  useEffect(()=>{let mounted=true;(async()=>{const {data}=await supabase.auth.getSession();if(!mounted)return;setToken(data.session?.access_token||"");setAuthLoading(false)})();const {data}=supabase.auth.onAuthStateChange((_event,session)=>{setToken(session?.access_token||"");setAuthLoading(false)});const p=new URLSearchParams(window.location.search);if(p.get("connection")==="success"){setMsg((p.get("email")||"Mailbox")+" connected successfully. It is now available for outreach.");window.history.replaceState({},document.title,window.location.pathname)}return()=>{mounted=false;data.subscription.unsubscribe()}},[supabase]);
  useEffect(()=>{if(token)load().catch(e=>setErr(e.message))},[token,load]);
@@ -157,13 +158,21 @@ export default function MailMergePage(){
   }catch(e){setErr(e instanceof Error?e.message:"Could not resume campaign.")}finally{setBusy(false)}
  }
  async function signIn(){setErr("");const {data,error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPassword});if(error){setErr(error.message);return}setToken(data.session?.access_token||"")}
- const activeAccountIds=sourceMode==="followup"?(followupAccountId?[followupAccountId]:[]):selectedAccounts;
+ const activeAccountIds=selectedAccounts;
  const required=activeAccountIds.reduce((n,id)=>n+Math.min(100,Math.max(1,Number(volumes[id]||10))),0);
  const remaining=required-selected.length;
  const selectedByAccount=useMemo(()=>{
   let cursor=0;
-  return activeAccountIds.map(id=>{const count=Math.min(100,Math.max(1,Number(volumes[id]||10)));const ids=selected.slice(cursor,cursor+count);cursor+=ids.length;return {accountId:id,leadIds:ids}});
- },[selected,activeAccountIds,volumes]);
+  return activeAccountIds.map(id=>{
+   const count=Math.min(100,Math.max(1,Number(volumes[id]||10)));
+   if(sourceMode==="followup"){
+    const ids=selected.filter(leadId=>leads.find(lead=>lead.id===leadId)?.senderAccountId===id).slice(0,count);
+    return {accountId:id,leadIds:ids};
+   }
+   const ids=selected.slice(cursor,cursor+count);cursor+=ids.length;
+   return {accountId:id,leadIds:ids};
+  });
+ },[selected,activeAccountIds,volumes,sourceMode,leads]);
 
  function toggleAccount(id:string){
   const account=accounts.find(a=>a.id===id);
@@ -308,9 +317,9 @@ export default function MailMergePage(){
      <div className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">2. Upload or select leads</h2><p className="mt-1 text-sm text-slate-500">You need <b>{required}</b> eligible leads for the selected account allocation. You can paste directly from Excel / Google Sheets or upload a file.</p></div><label className="cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700"><Upload size={16} className="mr-1 inline"/>{uploading?"Importing…":"Upload CSV / Excel"}<input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadLeads(f)}}/></label></div>
       <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4"><label className="mb-3 block text-xs font-bold text-slate-500">Internal sheet name / lead source<input value={leadSource} onChange={e=>setLeadSource(e.target.value)} placeholder="e.g. Fresh Leads - 2026" className="mt-1 w-full rounded-xl border border-blue-100 bg-white p-3 text-sm font-normal text-slate-800"/></label><div className="text-sm font-black text-slate-700">Paste from Excel / Google Sheets</div><p className="mt-1 text-xs text-slate-500">Copy the header row and lead rows from your spreadsheet, then paste them below. The same Master Lead Sheet validation, duplicate protection and reconciliation rules apply.</p><textarea value={paste} onChange={e=>setPaste(e.target.value)} placeholder="Paste your header row and lead rows here…" className="mt-3 min-h-32 w-full resize-y rounded-xl border border-blue-100 bg-white p-3 font-mono text-xs leading-6 outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"/><div className="mt-3 flex items-center justify-between gap-3"><span className="text-[11px] text-slate-400">{paste.trim()?paste.trim().split(/\r?\n/).length+" pasted lines":"Waiting for spreadsheet data"}</span><button onClick={pasteLeads} disabled={uploading||!paste.trim()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{uploading?"Importing…":"Validate & Add Leads"}</button></div></div>
-      <div className="mt-5 flex flex-wrap gap-2 rounded-2xl bg-slate-50 p-2"><button onClick={()=>{setSourceMode("fresh");setFollowupSubjects({});setFollowupAccountId("");setForm(f=>({...f,campaign_group:"Fresh Outreach"}));loadFreshLeads()}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="fresh"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Fresh eligible leads</button><button onClick={()=>{setSourceMode("followup");const id=selectedAccounts[0]||"";setFollowupAccountId(id);setForm(f=>({...f,campaign_group:"Follow-up 1"}));if(followupSource&&id)loadFollowup(followupSource,id)}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="followup"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Follow-up from campaign</button></div>
-      {sourceMode==="followup"&&<div className="mt-4 grid gap-3 sm:grid-cols-2"><select value={followupSource} onChange={e=>{setFollowupSource(e.target.value);if(e.target.value&&followupAccountId)loadFollowup(e.target.value,followupAccountId)}} className="min-w-0 w-full rounded-xl border border-blue-100 p-3"><option value="">Select previous campaign</option>{campaigns.filter(c=>c.id!==campaignId).map(c=><option key={c.id} value={c.id}>{c.name} · {c.country} · {c.campaign_group}</option>)}</select><select value={followupAccountId} onChange={e=>{setFollowupAccountId(e.target.value);setSelected([]);if(followupSource&&e.target.value)loadFollowup(followupSource,e.target.value)}} className="min-w-0 w-full rounded-xl border border-blue-100 p-3"><option value="">Select sending account</option>{selectedAccounts.map(id=><option key={id} value={id}>{accountName(id)}</option>)}</select><p className="sm:col-span-2 text-xs text-slate-500">Only recipients previously assigned to this sending account will be shown and queued for this follow-up.</p></div>}
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search email, company or person" className="min-w-0 w-full flex-1 rounded-xl border border-blue-100 p-3"/><button onClick={sourceMode==="fresh"?loadFreshLeads:()=>loadFollowup(followupSource,followupAccountId)} className="rounded-xl border border-blue-100 px-4 font-bold text-indigo-600">Refresh</button></div>
+      <div className="mt-5 flex flex-wrap gap-2 rounded-2xl bg-slate-50 p-2"><button onClick={()=>{setSourceMode("fresh");setFollowupSubjects({});setForm(f=>({...f,campaign_group:"Fresh Outreach"}));loadFreshLeads()}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="fresh"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Fresh eligible leads</button><button onClick={()=>{setSourceMode("followup");setForm(f=>({...f,campaign_group:"Follow-up 1"}));if(followupSource)loadFollowup(followupSource)}} className={`flex-1 rounded-xl p-3 text-sm font-bold ${sourceMode==="followup"?"bg-white shadow text-indigo-700":"text-slate-500"}`}>Follow-up from campaign</button></div>
+      {sourceMode==="followup"&&<div className="mt-4"><select value={followupSource} onChange={e=>{setFollowupSource(e.target.value);setSelected([]);if(e.target.value)loadFollowup(e.target.value)}} className="min-w-0 w-full rounded-xl border border-blue-100 p-3"><option value="">Select previous campaign</option>{campaigns.filter(c=>c.id!==campaignId).map(c=><option key={c.id} value={c.id}>{c.name} · {c.country} · {c.campaign_group}</option>)}</select><p className="mt-2 text-xs text-slate-500">Only recipients previously assigned to the sending accounts selected in Step 1 are shown. Each follow-up batch stays assigned to its original account.</p></div>}
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search email, company or person" className="min-w-0 w-full flex-1 rounded-xl border border-blue-100 p-3"/><button onClick={sourceMode==="fresh"?loadFreshLeads:()=>loadFollowup(followupSource)} className="rounded-xl border border-blue-100 px-4 font-bold text-indigo-600">Refresh</button></div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3"><div><div className="text-sm font-bold text-indigo-900">Select leads</div><div className="text-xs text-slate-600">Select or clear all leads matching the current search. Selection is capped at your account allocation ({required}).</div></div><button type="button" disabled={required<=0} onClick={()=>{const visible=leads.filter(l=>!q||(l.email+" "+l.company_name+" "+l.first_name+" "+l.last_name).toLowerCase().includes(q.toLowerCase()));const ids=visible.map(l=>l.id);const allSelected=ids.length>0&&ids.every(id=>selected.includes(id));if(allSelected){setSelected(s=>s.filter(id=>!ids.includes(id)))}else{const merged=[...selected,...ids.filter(id=>!selected.includes(id))];setSelected(merged.slice(0,required));if(merged.length>required)setMsg("Selected the first "+required+" matching leads to fit the selected account allocation.")}}} className="rounded-lg border border-indigo-200 bg-white px-4 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">{leads.filter(l=>!q||(l.email+" "+l.company_name+" "+l.first_name+" "+l.last_name).toLowerCase().includes(q.toLowerCase())).length>0&&leads.filter(l=>!q||(l.email+" "+l.company_name+" "+l.first_name+" "+l.last_name).toLowerCase().includes(q.toLowerCase())).every(l=>selected.includes(l.id))?"Clear all visible":"Select all visible"}</button></div>
       <div className="mt-4 max-h-[430px] overflow-auto rounded-2xl border border-blue-50"><div className="min-w-0 overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="sticky top-0 bg-blue-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Select</th><th className="p-3">Recipient</th><th className="p-3">Company</th><th className="p-3">Country</th><th className="p-3">Status</th></tr></thead><tbody>{leads.filter(l=>!q||`${l.email} ${l.company_name} ${l.first_name} ${l.last_name}`.toLowerCase().includes(q.toLowerCase())).map(l=><tr key={l.id} className="border-t border-blue-50 hover:bg-blue-50/50"><td className="p-3"><input type="checkbox" checked={selected.includes(l.id)} disabled={!selected.includes(l.id)&&selected.length>=required} onChange={e=>setSelected(s=>e.target.checked?[...s,l.id]:s.filter(x=>x!==l.id))}/></td><td className="p-3"><b>{l.first_name} {l.last_name}</b><div className="text-xs text-indigo-600">{l.email}</div></td><td className="p-3">{l.company_name||"—"}</td><td className="p-3">{l.country}</td><td className="p-3 text-xs">{l.current_status}</td></tr>)}</tbody></table></div></div>
      </div>
