@@ -16,7 +16,11 @@ export async function GET(request: Request) {
     .limit(25);
   if (unreadOnly) query = query.is("read_at", null);
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // Keep Mail Merge usable if the optional notifications table has not been migrated yet.
+    if (error.code === "42P01" || error.code === "PGRST205") return NextResponse.json({ notifications: [], warning: "Notifications schema migration is pending." });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ notifications: data || [] });
 }
 
