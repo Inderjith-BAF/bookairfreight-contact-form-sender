@@ -35,7 +35,10 @@ async function recordBounce(admin: any, account: any, sent: any[], leadsById: Ma
     const row = sent.find((item: any) => item.lead_id === lead.id && !["Bounced", "Replied", "Suppressed"].includes(String(item.status)));
     if (!row) continue;
     const now = new Date().toISOString();
+    // Mark the specific failed attempt as bounced, then immediately stop any other
+    // unsent attempts for this lead across campaigns so queued follow-ups cannot linger.
     await admin.from("mail_merge_campaign_recipients").update({ status: "Bounced", error_message: "Delivery failure reported by mailbox", updated_at: now }).eq("id", row.id);
+    await admin.from("mail_merge_campaign_recipients").update({ status: "Suppressed", send_not_before: null, error_message: "Lead bounced; removed from pending outreach.", updated_at: now }).eq("lead_id", lead.id).in("status", ["Ready", "Queued", "Sending"]);
     await admin.from("master_leads").update({ current_status: "Bounced", suppression_reason: "Bounce reported by mail provider", suppressed_at: now, updated_at: now }).eq("id", lead.id);
     await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: lead.id, sender_account_id: account.id, event_type: "bounce", details });
     count++;
