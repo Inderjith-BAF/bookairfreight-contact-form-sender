@@ -94,16 +94,37 @@ export async function GET(request:Request){
  if(!authorized(request))return NextResponse.json({error:"Unauthorized."},{status:401});
  const admin=getSupabaseAdmin();
  if(!admin)return NextResponse.json({error:"Supabase is not configured."},{status:500});
+
+ // The old domain-level dispatcher could leave recipients stuck in Sending.
+ // Such rows count as the employee's oldest outstanding batch and block every
+ // other account. Recover claims older than 10 minutes before account selection.
+ // Do not auto-requeue them: the provider may have accepted the message before
+ // the request failed, so retrying could send a duplicate.
+ const staleCutoff=new Date(Date.now()-10*60*1000).toISOString();
+ const {data:staleRows,error:staleError}=await admin
+  .from("mail_merge_campaign_recipients")
+  .update({
+   status:"Failed",
+   failed_at:new Date().toISOString(),
+   error_message:"Stale Sending claim expired after 10 minutes. Verify provider delivery before retrying.",
+   updated_at:new Date().toISOString()
+  })
+  .eq("status","Sending")
+  .lt("updated_at",staleCutoff)
+  .select("id");
+ if(staleError)return NextResponse.json({error:"Could not recover stale mail merge claims: "+staleError.message},{status:500});
+
  const {data:queued,error}=await admin.from("mail_merge_campaign_recipients").select("sender_account_id").eq("status","Queued").lte("send_not_before",new Date().toISOString()).not("sender_account_id","is",null).limit(200);
  if(error)return NextResponse.json({error:error.message},{status:500});
  const accountIds=[...new Set((queued||[]).map((r:any)=>String(r.sender_account_id)).filter(Boolean))];
- if(!accountIds.length)return NextResponse.json({sent:0,failed:0,disconnected:0,accounts_checked:0,message:"No queued account is due."});
+ if(!accountIds.length)return NextResponse.json({sent:0,failed:0,disconnected:0,accounts_checked:0,stale_claims_recovered:staleRows?.length??0,message:"No queued account is due."});
  const results=await Promise.all(accountIds.map((id)=>dispatchAccount(admin,request,id)));
  return NextResponse.json({
   sent:results.reduce((n:number,r:any)=>n+r.sent,0),
   failed:results.reduce((n:number,r:any)=>n+r.failed,0),
   disconnected:results.reduce((n:number,r:any)=>n+r.disconnected,0),
   accounts_checked:accountIds.length,
+  stale_claims_recovered:staleRows?.length??0,
   errors:results.filter((r:any)=>r.error).map((r:any)=>r.error),
   skipped:results.filter((r:any)=>r.skipped).map((r:any)=>r.skipped),
   message:"Independent account dispatch completed. Accounts run concurrently; batches remain sequential per member and each account has its own 60-120 second pacing timer."
