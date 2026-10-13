@@ -3,7 +3,7 @@ import { requireOutboundUser } from "@/lib/outbound-auth";
 
 export const runtime="nodejs";
 
-const blockedStatuses=["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"];
+const blockedStatuses=["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative","Needs Review"];
 
 function shuffle<T>(items:T[]){
  const copy=[...items];
