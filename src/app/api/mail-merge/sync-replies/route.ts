@@ -133,7 +133,7 @@ export async function POST(request: Request) {
           continue;
         }
         let row: any;
-        const senderEmail = from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "";
+        const senderEmail = from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "";
         const leadId = leadIdByEmail.get(senderEmail);
         if (!leadId || senderEmail === normalized(account.email)) continue;
         // Prefer Gmail thread matching, then fall back to sender + normalized subject.
