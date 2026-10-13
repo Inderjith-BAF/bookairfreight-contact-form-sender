@@ -12,6 +12,11 @@ grant all on public.mail_merge_account_dispatchers to service_role;
 create index if not exists mmcr_dispatch_order_idx
   on public.mail_merge_campaign_recipients(sender_account_id, status, created_at);
 
+-- Remove legacy domain-reserved times from already queued rows; new account pacing is enforced by the dispatcher table.
+update public.mail_merge_campaign_recipients
+  set send_not_before = now(), updated_at = now()
+  where status = 'Queued';
+
 create or replace function public.claim_mail_merge_account_recipient(p_account_id uuid)
 returns table(id uuid, campaign_id uuid, lead_id uuid, sender_account_id uuid, batch_id uuid)
 language plpgsql
