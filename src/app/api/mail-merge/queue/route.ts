@@ -90,38 +90,29 @@ export async function POST(request:Request){
   const allowed=Math.max(0,Math.min(10,items.length,remainingDaily.get(sender)||0,remainingHourly.get(sender)||0));
   const take=items.slice(0,allowed);
   if(take.length){
-   candidates.push(...take.map((r:any)=>({row:r,domain:String(account.email||"").split("@")[1]?.toLowerCase()||""})));
+   candidates.push(...take);
    remainingDaily.set(sender,(remainingDaily.get(sender)||0)-take.length);
    remainingHourly.set(sender,(remainingHourly.get(sender)||0)-take.length);
   }
   reasons.daily_hourly_cap+=Math.max(0,items.length-take.length);
  }
 
- const byDomain=new Map<string,any[]>();
- for(const item of candidates){if(!item.domain){reasons.disconnected++;continue;}const list=byDomain.get(item.domain)||[];list.push(item);byDomain.set(item.domain,list);}
  let queued=0;
- for(const [domain,items] of byDomain){
-  const {data:slots,error:slotError}=await admin.rpc("reserve_mail_merge_domain_slots",{p_domain:domain,p_count:items.length});
-  if(slotError){return NextResponse.json({error:"Could not reserve the domain sending queue: "+slotError.message},{status:500});}
-  const ordered=shuffle(items);
-  const sortedSlots=[...(slots||[])].sort((a:any,b:any)=>Number(a.slot_index)-Number(b.slot_index));
-  for(let i=0;i<ordered.length;i++){
-   const r=ordered[i].row;
-   const slot=sortedSlots[i]?.send_at;
-   if(!slot)continue;
-   await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:new Date().toISOString(),send_not_before:slot,updated_at:new Date().toISOString()}).eq("id",r.id).eq("status","Ready");
-   queued++;
-  }
+ const now=new Date().toISOString();
+ for(const r of candidates){
+  const {data:updated,error:updateError}=await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:now,error_message:null,updated_at:now}).eq("id",r.id).eq("status","Ready").select("id").maybeSingle();
+  if(updateError)return NextResponse.json({error:updateError.message},{status:500});
+  if(updated)queued++;
  }
 
  const skipped=(rows||[]).length-queued;
  await admin.from("mail_merge_campaigns").update({status:queued?"Queued":"Paused",updated_at:new Date().toISOString()}).eq("id",campaignId);
- await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,domain_pacing:"30-60 seconds",batch_mode:"randomized"}});
+ await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 60-120 seconds",member_order:"sequential batches",parallelism:"independent members"}});
 
  return NextResponse.json({
   queued,skipped,reasons,status:queued?"Queued":"Paused",
   message:queued
-   ?"Queued "+queued+" recipients. Domain-level dispatch is automatic: one email is released approximately every 30-60 seconds across the domain, with batches randomized and account limits still enforced."
+   ?"Queued "+queued+" recipients. Each member's batches run sequentially in creation order; different members can send in parallel. Each account observes its own randomized 60-120 second gap."
    :"No recipients could be queued. Check mailbox connections, account limits, and recipient eligibility."
  });
 }
