@@ -159,14 +159,24 @@ export default function MailMergePage(){
  }
  async function signIn(){setErr("");const {data,error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPassword});if(error){setErr(error.message);return}setToken(data.session?.access_token||"")}
  const activeAccountIds=selectedAccounts;
- const required=activeAccountIds.reduce((n,id)=>n+Math.min(100,Math.max(1,Number(volumes[id]||10))),0);
+ const accountVolume=(id:string)=>Math.min(100,Math.max(1,Number(volumes[id]||10)));
+ const followupAvailableByAccount=useMemo(()=>{
+  const counts:Record<string,number>={};
+  for(const lead of leads){if(lead.senderAccountId)counts[lead.senderAccountId]=(counts[lead.senderAccountId]||0)+1;}
+  return counts;
+ },[leads]);
+ // Follow-ups can only use recipients that actually belonged to selected accounts in the source campaign.
+ // Do not require a full allocation from an account with fewer eligible source recipients.
+ const required=activeAccountIds.reduce((n,id)=>n+(sourceMode==="followup"?Math.min(accountVolume(id),followupAvailableByAccount[id]||0):accountVolume(id)),0);
  const remaining=required-selected.length;
  const selectedByAccount=useMemo(()=>{
   let cursor=0;
   return activeAccountIds.map(id=>{
    const count=Math.min(100,Math.max(1,Number(volumes[id]||10)));
    if(sourceMode==="followup"){
-    const ids=selected.filter(leadId=>leads.find(lead=>lead.id===leadId)?.senderAccountId===id).slice(0,count);
+    const available=leads.filter(lead=>lead.senderAccountId===id).map(lead=>lead.id);
+    const allowed=available.slice(0,Math.min(count,available.length));
+    const ids=selected.filter(leadId=>allowed.includes(leadId));
     return {accountId:id,leadIds:ids};
    }
    const ids=selected.slice(cursor,cursor+count);cursor+=ids.length;
