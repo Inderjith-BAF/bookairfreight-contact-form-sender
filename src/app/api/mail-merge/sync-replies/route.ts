@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOutboundUser } from "@/lib/outbound-auth";
 import { getProviderAccess } from "@/lib/mail-merge-provider";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 const header = (m: any, name: string) => String((m.payload?.headers || []).find((h: any) => String(h.name).toLowerCase() === name.toLowerCase())?.value || "");
@@ -42,21 +43,34 @@ async function recordBounce(admin: any, account: any, sent: any[], leadsById: Ma
   return count;
 }
 export async function POST(request: Request) {
-  const auth = await requireOutboundUser(request);
-  if ("error" in auth) return auth.error;
-  const { admin, profile } = auth;
+  // Cron-job.org can run this endpoint on a schedule using the same CRON_SECRET as the account dispatcher.
+  // Human-triggered sync continues to require a valid outbound session.
+  const cronSecret = process.env.CRON_SECRET;
+  const isCron = Boolean(cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`);
+  let admin: any;
+  let profile: any = null;
+  if (isCron) {
+    const serviceClient = getSupabaseAdmin();
+    if (!serviceClient) return NextResponse.json({ error: "Supabase is not configured." }, { status: 500 });
+    admin = serviceClient;
+  } else {
+    const auth = await requireOutboundUser(request);
+    if ("error" in auth) return auth.error;
+    admin = auth.admin;
+    profile = auth.profile;
+  }
   const { data: accounts, error: accountsError } = await admin.from("outbound_email_accounts").select("*").eq("active", true).eq("connection_status", "Connected");
   if (accountsError) return NextResponse.json({ error: accountsError.message }, { status: 500 });
   let replies = 0, bounces = 0, checked = 0;
   const errors: string[] = [];
   for (const account of accounts || []) {
-    if (profile.role === "member" && account.employee_id !== profile.id) continue;
+    if (profile?.role === "member" && account.employee_id !== profile.id) continue;
     try {
       const access = await getProviderAccess(account, admin);
       let messages: any[] = [];
       if (account.provider === "google") {
         let pageToken = "";
-        for (let page = 0; page < 5; page++) {
+        for (let page = 0; page < 1; page++) {
           const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
           url.searchParams.set("labelIds", "INBOX");
           url.searchParams.set("maxResults", "100");
@@ -65,21 +79,28 @@ export async function POST(request: Request) {
           const r = await fetch(url, { headers: { Authorization: "Bearer " + access } });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error?.message || "Gmail inbox sync failed.");
-          for (const item of d.messages || []) {
-            const full = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/" + item.id + "?format=full", { headers: { Authorization: "Bearer " + access } });
-            const x = await full.json();
-            if (full.ok) messages.push({ provider: "google", id: x.id, threadId: x.threadId, from: header(x, "From"), subject: header(x, "Subject"), body: gmailText(x.payload), snippet: String(x.snippet || "") });
+          // Fetch message details concurrently in small groups to avoid hundreds of serial round trips per mailbox.
+          const listed = (d.messages || []).slice(0, 100);
+          for (let offset = 0; offset < listed.length; offset += 10) {
+            const group = listed.slice(offset, offset + 10);
+            const details = await Promise.all(group.map(async (item: any) => {
+              const full = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/" + item.id + "?format=full", { headers: { Authorization: "Bearer " + access } });
+              if (!full.ok) return null;
+              const x = await full.json();
+              return { provider: "google", id: x.id, threadId: x.threadId, from: header(x, "From"), subject: header(x, "Subject"), body: gmailText(x.payload), snippet: String(x.snippet || "") };
+            }));
+            messages.push(...details.filter(Boolean));
           }
           pageToken = String(d.nextPageToken || "");
           if (!pageToken) break;
         }
       } else {
         let next = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,body&$orderby=receivedDateTime%20desc";
-        for (let page = 0; page < 5 && next; page++) {
+        for (let page = 0; page < 1 && next; page++) {
           const r = await fetch(next, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error?.message || "Microsoft inbox sync failed.");
-          messages.push(...(d.value || []).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), body: String(m.body?.content || ""), snippet: "" })));
+          messages.push(...(d.value || []).slice(0,100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), body: String(m.body?.content || ""), snippet: "" })));
           next = String(d["@odata.nextLink"] || "");
         }
       }
