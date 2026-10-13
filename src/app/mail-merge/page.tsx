@@ -293,6 +293,12 @@ export default function MailMergePage(){
     }
    }
   }
+  if(!nextBlocks.length){
+   setErr(sourceMode==="followup"
+    ?"No message blocks could be created. The selected leads are not matched to the selected sending accounts. Go Back, refresh the previous campaign, and confirm the Step 1 accounts were used by that campaign."
+    :"No message blocks could be created. Select eligible leads and try again.");
+   return;
+  }
   setBlocks(nextBlocks);
   setErr("");setStage(3);
  }
