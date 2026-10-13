@@ -13,7 +13,7 @@ type Campaign={id:string;name:string;country:string;campaign_group:string;subjec
 type Block={batchId:string;accountId:string;leadIds:string[];subject:string;body:string};
 
 const groups=["Fresh Outreach","Follow-up 1","Follow-up 2","Follow-up 3","Custom"];
-const blockedStatuses=["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"];
+const blockedStatuses=["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative","Needs Review"];
 
 function templatePreview(text:string,lead?:Lead){
  if(!lead)return text;
