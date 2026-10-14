@@ -150,6 +150,6 @@ export async function GET(request:Request){
   stale_claims_recovered:staleRows?.length??0,
   errors:results.filter((r:any)=>r.error).map((r:any)=>r.error),
   skipped:results.filter((r:any)=>r.skipped).map((r:any)=>r.skipped),
-  message:"Independent account dispatch completed. Accounts run concurrently; batches remain sequential per member and each account has its own 60-120 second pacing timer."
+  message:"Independent account dispatch completed. All connected accounts can run concurrently; each account independently selects its next 30, 60, 90, 120, 150, 180, 210, or 240 second pacing interval."
  });
 }
