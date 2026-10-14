@@ -19,8 +19,13 @@ function gmailText(payload: any): string {
 }
 const normalized = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const subjectKey = (value: unknown) => normalized(value).replace(/^(?:(?:automatic reply|auto-reply|autoreply|out of office|ooo|re|fw|fwd)\s*:\s*)+/i, "").trim();
-const isAutoReply = (subject: string, body: string, headers: any[] = []) => {\n  const raw = headers.map((item:any) => String(item.name||"")+": "+String(item.value||"")).join("
-");\n  return /^(automatic reply|auto-reply|autoreply|out of office|ooo)(?:\\s*[:\\-]|$)/i.test(subject.trim()) ||\n    /auto-submitted\\s*:\\s*(?!no\\b)auto-replied|x-autoreply\\s*:\\s*(yes|true)|x-autorespond\\s*:\\s*(yes|true)/i.test(raw) ||\n    /I am (currently )?out of (the )?office|automatic reply|auto-reply|this is an automated response/i.test(body);\n};\nconst isBounce = (from: string, subject: string, body: string) =>
+const isAutoReply = (subject: string, body: string, headers: any[] = []) => {
+  const raw = headers.map((item:any) => String(item.name||"")+": "+String(item.value||"")).join("\n");
+  return /^(automatic reply|auto-reply|autoreply|out of office|ooo)(?:\s*[:-]|$)/i.test(subject.trim()) ||
+    /auto-submitted\s*:\s*(?!no\b)auto-replied|x-autoreply\s*:\s*(yes|true)|x-autorespond\s*:\s*(yes|true)/i.test(raw) ||
+    /I am (currently )?out of (the )?office|automatic reply|auto-reply|this is an automated response/i.test(body);
+};
+const isBounce = (from: string, subject: string, body: string) =>
   /mailer-daemon|postmaster|mail delivery subsystem|mail delivery agent/i.test(from) ||
   /undeliver(?:ed|able)|delivery status notification|delivery failure|message not delivered|returned mail|delivery has failed|failure notice|bounce/i.test(subject) ||
   (/delivery status notification|recipient address rejected|user unknown|mailbox unavailable/i.test(body) && /failed|undeliver|recipient|address/i.test(body));
