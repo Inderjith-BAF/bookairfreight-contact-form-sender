@@ -15,14 +15,12 @@ function gmailText(payload: any): string {
     for (const child of part.parts || []) visit(child);
   };
   visit(payload);
-  return parts.join("
-");
+  return parts.join("\n");
 }
 const normalized = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const subjectKey = (value: unknown) => normalized(value).replace(/^(?:(?:automatic reply|auto-reply|autoreply|out of office|ooo|re|fw|fwd)\s*:\s*)+/i, "").trim();
 const isAutoReply = (subject: string, body: string, headers: any[] = []) => {
-  const raw = headers.map((item:any) => String(item.name||"")+": "+String(item.value||"")).join("
-");
+  const raw = headers.map((item:any) => String(item.name||"")+": "+String(item.value||"")) .join("\n");
   return /^(automatic reply|auto-reply|autoreply|out of office|ooo)(?:\s*[:-]|$)/i.test(subject.trim()) ||
     /auto-submitted\s*:\s*(?!no\b)auto-replied|x-autoreply\s*:\s*(yes|true)|x-autorespond\s*:\s*(yes|true)/i.test(raw) ||
     /I am (currently )?out of (the )?office|automatic reply|auto-reply|this is an automated response/i.test(body);
