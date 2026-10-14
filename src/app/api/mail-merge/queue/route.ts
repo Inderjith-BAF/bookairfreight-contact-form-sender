@@ -112,7 +112,7 @@ export async function POST(request:Request){
  return NextResponse.json({
   queued,skipped,reasons,status:queued?"Queued":"Paused",
   message:queued
-   ?"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 30, 60, 90, 120, 150, 180, 210, or 240 second gap."
+   ?"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 1, 2, 3, 4, or 5 minute gap."
    :"No recipients could be queued. Check mailbox connections, account limits, and recipient eligibility."
  });
 }
