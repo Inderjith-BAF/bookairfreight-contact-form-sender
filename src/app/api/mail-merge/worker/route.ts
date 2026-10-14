@@ -27,23 +27,12 @@ async function dispatchAccount(admin:any,request:Request,accountId:string){
    admin.from("mail_merge_account_dispatchers").select("next_send_at").eq("account_id",accountId).maybeSingle(),
    admin.from("mail_merge_campaign_recipients").select("id,campaign_id,batch_id,sender_account_id,status,created_at,send_not_before").eq("sender_account_id",accountId).in("status",["Queued","Sending"]).order("created_at").limit(1)
   ]);
-  const {data:employeeOldest,error:employeeOldestError} = account?.employee_id
-   ? await admin.from("mail_merge_campaign_recipients")
-      .select("id,campaign_id,batch_id,sender_account_id,status,created_at,send_not_before,outbound_email_accounts!inner(email,employee_id)")
-      .eq("outbound_email_accounts.employee_id",account.employee_id)
-      .in("status",["Queued","Sending"])
-      .order("created_at")
-      .limit(1)
-   : {data:null,error:null};
   return {sent:0,failed:0,disconnected:0,skipped:{
    account_id:accountId,
    email:account?.email??"unknown",
-   employee_id:account?.employee_id??null,
-   reason:"claim function returned no recipient",
+   reason:"account has no currently eligible recipient or its independent pacing timer has not elapsed",
    next_send_at:dispatcher?.next_send_at??null,
-   oldest_outstanding:oldest?.[0]??null,
-   employee_oldest_outstanding:employeeOldest?.[0]??null,
-   employee_oldest_query_error:employeeOldestError?.message??null
+   oldest_outstanding:oldest?.[0]??null
   }};
 }
  const {data:row,error:rowError}=await admin.from("mail_merge_campaign_recipients").select("*,master_leads(*),outbound_email_accounts(*)").eq("id",claimed[0].id).maybeSingle();
@@ -114,11 +103,9 @@ export async function GET(request:Request){
   .select("id");
  if(staleError)return NextResponse.json({error:"Could not recover stale mail merge claims: "+staleError.message},{status:500});
 
- // Do not cap the due queue at 200 recipient rows. That can omit the
- // employee's oldest account entirely when another account owns many rows;
- // the employee-wide sequential-batch guard then correctly blocks every
- // account we did discover, creating an apparent deadlock. Page through all
- // due rows in a stable order and dispatch every distinct sender account.
+ // Page through the full due queue so every eligible sender account is
+ // discovered. Each account has an independent database-locked pacing timer,
+ // and all discovered accounts are dispatched concurrently below.
  const accountIdsSet=new Set<string>();
  const pageSize=1000;
  let offset=0;
