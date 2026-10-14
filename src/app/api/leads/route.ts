@@ -84,7 +84,26 @@ export async function GET(request: Request) {
   if (error || batchError) return NextResponse.json({ error: error?.message || batchError?.message }, { status: 500 });
   const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
   const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
-  const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));\n  // Resolve the latest outreach mailbox used for each visible lead.\n  const visibleLeadIds = [...new Set((data || []).map((lead:any) => String(lead.id)))];\n  const outreachByLead = new Map<string,string>();\n  if (visibleLeadIds.length) {\n    const { data: outreachRows, error: outreachError } = await admin.from("mail_merge_campaign_recipients")\n      .select("lead_id,sender_account_id,created_at")\n      .in("lead_id", visibleLeadIds)\n      .in("status", ["Sent","Replied","Bounced"])\n      .order("created_at", { ascending: false });\n    if (outreachError) return NextResponse.json({ error: outreachError.message }, { status: 500 });\n    const accountIds = [...new Set((outreachRows || []).map((row:any) => row.sender_account_id).filter(Boolean))];\n    const { data: outreachAccounts } = accountIds.length\n      ? await admin.from("outbound_email_accounts").select("id,email").in("id", accountIds)\n      : { data: [] as any[] };\n    const emailByAccount = new Map((outreachAccounts || []).map((account:any) => [String(account.id), String(account.email || "")]));\n    for (const row of outreachRows || []) {\n      const id = String(row.lead_id);\n      if (!outreachByLead.has(id)) outreachByLead.set(id, emailByAccount.get(String(row.sender_account_id)) || "");\n    }\n  }
+  const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));\n  // Resolve the latest outreach mailbox used for each visible lead.
+  const visibleLeadIds = [...new Set((data || []).map((lead:any) => String(lead.id)))];
+  const outreachByLead = new Map<string,string>();
+  if (visibleLeadIds.length) {
+    const { data: outreachRows, error: outreachError } = await admin.from("mail_merge_campaign_recipients")
+      .select("lead_id,sender_account_id,created_at")
+      .in("lead_id", visibleLeadIds)
+      .in("status", ["Sent","Replied","Bounced"])
+      .order("created_at", { ascending: false });
+    if (outreachError) return NextResponse.json({ error: outreachError.message }, { status: 500 });
+    const accountIds = [...new Set((outreachRows || []).map((row:any) => row.sender_account_id).filter(Boolean))];
+    const { data: outreachAccounts } = accountIds.length
+      ? await admin.from("outbound_email_accounts").select("id,email").in("id", accountIds)
+      : { data: [] as any[] };
+    const emailByAccount = new Map((outreachAccounts || []).map((account:any) => [String(account.id), String(account.email || "")]));
+    for (const row of outreachRows || []) {
+      const id = String(row.lead_id);
+      if (!outreachByLead.has(id)) outreachByLead.set(id, emailByAccount.get(String(row.sender_account_id)) || "");
+    }
+  }
 
   // Resolve the Fresh Outreach owner from the actual imported field first, then
   // expose its profile ID. This makes filtering independent of database text
