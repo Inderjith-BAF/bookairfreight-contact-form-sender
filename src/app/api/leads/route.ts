@@ -84,7 +84,7 @@ export async function GET(request: Request) {
   if (error || batchError) return NextResponse.json({ error: error?.message || batchError?.message }, { status: 500 });
   const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
   const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
-  const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
+  const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));\n  // Resolve the latest outreach mailbox used for each visible lead.\n  const visibleLeadIds = [...new Set((data || []).map((lead:any) => String(lead.id)))];\n  const outreachByLead = new Map<string,string>();\n  if (visibleLeadIds.length) {\n    const { data: outreachRows, error: outreachError } = await admin.from("mail_merge_campaign_recipients")\n      .select("lead_id,sender_account_id,created_at")\n      .in("lead_id", visibleLeadIds)\n      .in("status", ["Sent","Replied","Bounced"])\n      .order("created_at", { ascending: false });\n    if (outreachError) return NextResponse.json({ error: outreachError.message }, { status: 500 });\n    const accountIds = [...new Set((outreachRows || []).map((row:any) => row.sender_account_id).filter(Boolean))];\n    const { data: outreachAccounts } = accountIds.length\n      ? await admin.from("outbound_email_accounts").select("id,email").in("id", accountIds)\n      : { data: [] as any[] };\n    const emailByAccount = new Map((outreachAccounts || []).map((account:any) => [String(account.id), String(account.email || "")]));\n    for (const row of outreachRows || []) {\n      const id = String(row.lead_id);\n      if (!outreachByLead.has(id)) outreachByLead.set(id, emailByAccount.get(String(row.sender_account_id)) || "");\n    }\n  }
 
   // Resolve the Fresh Outreach owner from the actual imported field first, then
   // expose its profile ID. This makes filtering independent of database text
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
 
   let leads = (data || []).map((lead: any) => ({
     ...lead,
-    lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned",
+    lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned",\n    outreach_account_email: outreachByLead.get(String(lead.id)) || "",
     uploader_name: ownerNames.get(lead.lead_owner) || "Unassigned",
     fresh_outreach_owner_id: freshOwnerId(lead.fresh_outreach_assigned_to)
   }));
@@ -118,8 +118,8 @@ export async function GET(request: Request) {
 
   if (exportCsv) {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const headers = ["Company Name","Website","Email","Country","Business / Personal Email","Lead Source","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
-    const rows = leads.map((lead: any) => [lead.company_name,lead.location_on_site,lead.email,lead.country,lead.business_personal_email,lead.data_source,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
+    const headers = ["Company Name","Website","Email","Country","Business / Personal Email","Lead Source","First Name","Last Name","Title","Main Industry","Ecommerce Platform","Lead Owner (Fresh Outreach)","Email Finding Owner","Outreach Account","Uploaded By","Status / Response","Suppression","Added","Updated","Last Contact","Last Reply"];
+    const rows = leads.map((lead: any) => [lead.company_name,lead.location_on_site,lead.email,lead.country,lead.business_personal_email,lead.data_source,lead.first_name,lead.last_name,lead.title,lead.main_industry,lead.ecommerce_platform_used,lead.fresh_outreach_assigned_to,lead.email_finding_assigned_to,lead.outreach_account_email,lead.uploader_name,lead.current_status,lead.suppression_reason,lead.created_at,lead.updated_at,lead.last_contacted_at,lead.last_replied_at].map(esc).join(","));
     return new NextResponse([headers.map(esc).join(","), ...rows].join("\n"), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="master-lead-registry-${new Date().toISOString().slice(0,10)}.csv"` } });
   }
 
