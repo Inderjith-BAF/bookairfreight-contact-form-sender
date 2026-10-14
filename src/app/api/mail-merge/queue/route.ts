@@ -107,12 +107,12 @@ export async function POST(request:Request){
 
  const skipped=(rows||[]).length-queued;
  await admin.from("mail_merge_campaigns").update({status:queued?"Queued":"Paused",updated_at:new Date().toISOString()}).eq("id",campaignId);
- await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 60-120 seconds",member_order:"sequential batches",parallelism:"independent members"}});
+ await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 30/60/90/120/150/180/210/240 seconds",member_order:"independent accounts",parallelism:"all eligible accounts concurrently"}});
 
  return NextResponse.json({
   queued,skipped,reasons,status:queued?"Queued":"Paused",
   message:queued
-   ?"Queued "+queued+" recipients. Each member's batches run sequentially in creation order; different members can send in parallel. Each account observes its own randomized 60-120 second gap."
+   ?"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 30, 60, 90, 120, 150, 180, 210, or 240 second gap."
    :"No recipients could be queued. Check mailbox connections, account limits, and recipient eligibility."
  });
 }
