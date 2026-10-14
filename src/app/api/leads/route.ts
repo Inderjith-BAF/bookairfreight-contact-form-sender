@@ -84,7 +84,8 @@ export async function GET(request: Request) {
   if (error || batchError) return NextResponse.json({ error: error?.message || batchError?.message }, { status: 500 });
   const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
   const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
-  const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));\n  // Resolve the latest outreach mailbox used for each visible lead.
+  const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
+  // Resolve the latest outreach mailbox used for each visible lead.
   const visibleLeadIds = [...new Set((data || []).map((lead:any) => String(lead.id)))];
   const outreachByLead = new Map<string,string>();
   if (visibleLeadIds.length) {
