@@ -117,7 +117,7 @@ export async function POST(request: Request) {
       checked += messages.length;
       const { data: sent, error: sentError } = await admin.from("mail_merge_campaign_recipients")
         .select("id,campaign_id,lead_id,sender_account_id,provider_thread_id,provider_message_id,status,subject,created_at")
-        .eq("sender_account_id", account.id).in("status", ["Sent", "Replied", "Bounced"])
+        .eq("sender_account_id", account.id).in("status", ["Sent", "Replied", "Auto Response", "Bounced"])
         .order("created_at", { ascending: false }).limit(2000);
       if (sentError) throw new Error(sentError.message);
       const leadIds = [...new Set((sent || []).map((row: any) => row.lead_id))];
