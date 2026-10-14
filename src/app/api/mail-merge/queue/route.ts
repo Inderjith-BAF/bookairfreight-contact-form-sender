@@ -107,7 +107,7 @@ export async function POST(request:Request){
 
  const skipped=(rows||[]).length-queued;
  await admin.from("mail_merge_campaigns").update({status:queued?"Queued":"Paused",updated_at:new Date().toISOString()}).eq("id",campaignId);
- await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 30/60/90/120/150/180/210/240 seconds",member_order:"independent accounts",parallelism:"all eligible accounts concurrently"}});
+ await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 1/2/3/4/5 minutes",member_order:"independent accounts",parallelism:"all eligible accounts concurrently"}});
 
  return NextResponse.json({
   queued,skipped,reasons,status:queued?"Queued":"Paused",
