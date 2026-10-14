@@ -123,7 +123,8 @@ export async function GET(request: Request) {
 
   let leads = (data || []).map((lead: any) => ({
     ...lead,
-    lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned",\n    outreach_account_email: outreachByLead.get(String(lead.id)) || "",
+    lead_owner_name: ownerNames.get(lead.lead_owner) || "Unassigned",
+    outreach_account_email: outreachByLead.get(String(lead.id)) || "",
     uploader_name: ownerNames.get(lead.lead_owner) || "Unassigned",
     fresh_outreach_owner_id: freshOwnerId(lead.fresh_outreach_assigned_to)
   }));
