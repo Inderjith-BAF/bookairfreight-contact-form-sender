@@ -131,8 +131,7 @@ export async function POST(request: Request) {
       for (const message of messages) {
         const from = normalized(message.from);
         const subject = String(message.subject || "");
-        const body = String(message.body || "") + "
-" + String(message.snippet || "");
+        const body = String(message.body || "") + "\n" + String(message.snippet || "");
         if (isBounce(from, subject, body)) {
           // The failed recipient is normally embedded in the delivery report body.
           const candidates = bounceEmails(body).filter(email => leadIdByEmail.has(email));
