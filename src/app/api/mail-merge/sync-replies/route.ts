@@ -4,7 +4,7 @@ import { getProviderAccess } from "@/lib/mail-merge-provider";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
-const header = (m: any, name: string) => String((m.payload?.headers || []).find((h: any) => String(h.name).toLowerCase() === name.toLowerCase())?.value || "");
+const header = (m: any, name: string) => String((m.payload?.headers || m.internetMessageHeaders || []).find((h: any) => String(h.name).toLowerCase() === name.toLowerCase())?.value || "");
 function gmailText(payload: any): string {
   const parts: any[] = [];
   const visit = (part: any) => {
@@ -19,7 +19,8 @@ function gmailText(payload: any): string {
 }
 const normalized = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const subjectKey = (value: unknown) => normalized(value).replace(/^(?:(?:automatic reply|auto-reply|autoreply|out of office|ooo|re|fw|fwd)\s*:\s*)+/i, "").trim();
-const isBounce = (from: string, subject: string, body: string) =>
+const isAutoReply = (subject: string, body: string, headers: any[] = []) => {\n  const raw = headers.map((item:any) => String(item.name||"")+": "+String(item.value||"")).join("
+");\n  return /^(automatic reply|auto-reply|autoreply|out of office|ooo)(?:\\s*[:\\-]|$)/i.test(subject.trim()) ||\n    /auto-submitted\\s*:\\s*(?!no\\b)auto-replied|x-autoreply\\s*:\\s*(yes|true)|x-autorespond\\s*:\\s*(yes|true)/i.test(raw) ||\n    /I am (currently )?out of (the )?office|automatic reply|auto-reply|this is an automated response/i.test(body);\n};\nconst isBounce = (from: string, subject: string, body: string) =>
   /mailer-daemon|postmaster|mail delivery subsystem|mail delivery agent/i.test(from) ||
   /undeliver(?:ed|able)|delivery status notification|delivery failure|message not delivered|returned mail|delivery has failed|failure notice|bounce/i.test(subject) ||
   (/delivery status notification|recipient address rejected|user unknown|mailbox unavailable/i.test(body) && /failed|undeliver|recipient|address/i.test(body));
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
               const full = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/" + item.id + "?format=full", { headers: { Authorization: "Bearer " + access } });
               if (!full.ok) return null;
               const x = await full.json();
-              return { provider: "google", id: x.id, threadId: x.threadId, from: header(x, "From"), subject: header(x, "Subject"), body: gmailText(x.payload), snippet: String(x.snippet || "") };
+              return { provider: "google", id: x.id, threadId: x.threadId, from: header(x, "From"), subject: header(x, "Subject"), headers: x.payload?.headers || [], body: gmailText(x.payload), snippet: String(x.snippet || "") };
             }));
             messages.push(...details.filter(Boolean));
           }
@@ -101,11 +102,11 @@ export async function POST(request: Request) {
       } else {
         // Scan both Inbox and Junk Email; automatic replies can be classified as junk.
         for (const folder of ["inbox", "junkemail"]) {
-          const url = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder + "/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,body&$orderby=receivedDateTime%20desc";
+          const url = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder + "/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body&$orderby=receivedDateTime%20desc";
           const r = await fetch(url, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error?.message || ("Microsoft " + folder + " sync failed."));
-          messages.push(...(d.value || []).slice(0, 100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), body: String(m.body?.content || ""), snippet: "" })));
+          messages.push(...(d.value || []).slice(0, 100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), headers: m.internetMessageHeaders || [], body: String(m.body?.content || ""), snippet: "" })));
         }
       }
       checked += messages.length;
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
       if (sentError) throw new Error(sentError.message);
       const leadIds = [...new Set((sent || []).map((row: any) => row.lead_id))];
       const { data: leads, error: leadsError } = leadIds.length
-        ? await admin.from("master_leads").select("id,email").in("id", leadIds)
+        ? await admin.from("master_leads").select("id,email,current_status").in("id", leadIds)
         : { data: [], error: null };
       if (leadsError) throw new Error(leadsError.message);
       const leadsById = new Map<string, any>((leads || []).map((lead: any) => [String(lead.id), lead] as [string, any]));
@@ -135,7 +136,7 @@ export async function POST(request: Request) {
         let row: any;
         const senderEmail = from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "";
         const leadId = leadIdByEmail.get(senderEmail);
-        if (!leadId || senderEmail === normalized(account.email)) continue;
+        if (!leadId || senderEmail === normalized(account.email)) continue;\n        // Classify automatic replies separately; do not mark the sent recipient as Replied.\n        if (isAutoReply(subject, body, message.headers || [])) {\n          const knownLead = leadsById.get(leadId);\n          if (knownLead?.current_status !== "Out of Office") {\n            const now = new Date().toISOString();\n            await admin.from("master_leads").update({ current_status: "Out of Office", last_replied_at: now, updated_at: now }).eq("id", leadId);\n            knownLead.current_status = "Out of Office";\n          }\n          continue;\n        }
         // Prefer Gmail thread matching, then fall back to sender + normalized subject.
         // This catches auto-replies that Gmail stores in a separate thread.
         const threadMatch = account.provider === "google" ? threadMap.get(message.threadId) : null;
