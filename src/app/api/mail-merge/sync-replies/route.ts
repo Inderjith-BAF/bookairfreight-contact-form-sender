@@ -70,7 +70,7 @@ export async function POST(request: Request) {
   }
   const { data: accounts, error: accountsError } = await admin.from("outbound_email_accounts").select("*").eq("active", true).eq("connection_status", "Connected");
   if (accountsError) return NextResponse.json({ error: accountsError.message }, { status: 500 });
-  let replies = 0, bounces = 0, checked = 0;
+  let replies = 0, autoResponses = 0, bounces = 0, checked = 0;
   const errors: string[] = [];
   for (const account of accounts || []) {
     if (profile?.role === "member" && account.employee_id !== profile.id) continue;
@@ -142,14 +142,34 @@ export async function POST(request: Request) {
         const senderEmail = from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "";
         const leadId = leadIdByEmail.get(senderEmail);
         if (!leadId || senderEmail === normalized(account.email)) continue;
-        // Classify automatic replies separately; do not mark the sent recipient as Replied.
+        // Automatic responses are tracked separately and never count as human replies.
         if (isAutoReply(subject, body, message.headers || [])) {
+          const threadMatch = account.provider === "google" ? threadMap.get(message.threadId) : null;
+          const autoRow = threadMatch?.lead_id === leadId
+            ? threadMatch
+            : (sent || []).find((item: any) =>
+                item.lead_id === leadId &&
+                subjectKey(item.subject) === subjectKey(subject) &&
+                !["Bounced", "Suppressed"].includes(String(item.status))
+              );
+          const now = new Date().toISOString();
+          if (autoRow && !["Bounced", "Suppressed", "Auto Response"].includes(String(autoRow.status))) {
+            await admin.from("mail_merge_campaign_recipients").update({ status: "Auto Response", updated_at: now }).eq("id", autoRow.id);
+            await admin.from("mail_merge_events").insert({
+              campaign_recipient_id: autoRow.id,
+              campaign_id: autoRow.campaign_id,
+              lead_id: autoRow.lead_id,
+              sender_account_id: account.id,
+              event_type: "auto_reply",
+              details: { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id }
+            });
+          }
           const knownLead = leadsById.get(leadId);
           if (knownLead?.current_status !== "Out of Office") {
-            const now = new Date().toISOString();
             await admin.from("master_leads").update({ current_status: "Out of Office", last_replied_at: now, updated_at: now }).eq("id", leadId);
             knownLead.current_status = "Out of Office";
           }
+          autoResponses++;
           continue;
         }
         // Prefer Gmail thread matching, then fall back to sender + normalized subject.
@@ -177,7 +197,8 @@ export async function POST(request: Request) {
   }
   const parts = [];
   if (replies) parts.push("synced " + replies + " replies");
+  if (autoResponses) parts.push("classified " + autoResponses + " automatic responses");
   if (bounces) parts.push("recorded " + bounces + " bounces");
   if (!parts.length) parts.push("no new replies or bounces found");
-  return NextResponse.json({ matched: replies, replies, bounces, checked, errors, message: parts.join("; ") + "." });
+  return NextResponse.json({ matched: replies, replies, autoResponses, bounces, checked, errors, message: parts.join("; ") + "." });
 }
