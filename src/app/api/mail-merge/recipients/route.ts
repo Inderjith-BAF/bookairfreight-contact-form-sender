@@ -18,7 +18,7 @@ export async function POST(request:Request){
  const blocked=(leads||[]).filter((l:any)=>l.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative"].includes(l.current_status));
  const eligible=(leads||[]).filter((l:any)=>!blocked.some((x:any)=>x.id===l.id)); if(!eligible.length)return NextResponse.json({error:"No selected recipients are eligible to send."},{status:409});
  const {data:existing}=await admin.from("mail_merge_campaign_recipients").select("lead_id").eq("campaign_id",campaignId).in("lead_id",eligible.map((l:any)=>l.id)); const seen=new Set((existing||[]).map((x:any)=>x.lead_id)); const fresh=eligible.filter((l:any)=>!seen.has(l.id));
- if(!fresh.length)return NextResponse.json({error:"All selected recipients are already in this campaign."},{status:409});
+ if(!fresh.length)return NextResponse.json({added:0,skipped:eligible.length,blocked:blocked.length,message:"All eligible selected recipients were already saved in this campaign."});
  const rows=fresh.map((lead:any)=>({campaign_id:campaignId,lead_id:lead.id,sender_account_id:senderAccountId,batch_id:batchId,subject:render(subjectOverride||campaign.subject,lead),body:render(bodyOverride||campaign.body,lead),status:"Ready"}));
  const {data:inserted,error:ie}=await admin.from("mail_merge_campaign_recipients").insert(rows).select("*"); if(ie)return NextResponse.json({error:ie.message},{status:500});
  await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"recipients_added",entity_type:"campaign",entity_id:campaignId,after_value:{count:inserted?.length||0,sender_account_id:senderAccountId}});
