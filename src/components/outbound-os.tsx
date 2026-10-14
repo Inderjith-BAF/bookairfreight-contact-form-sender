@@ -170,7 +170,7 @@ function Report({title,subtitle,activities,team=[],profile,session,sequences=[],
  const contactFormStats=aggregate(contactFormActivities);
  const reportOpenRate=pct(reportStats.open,reportStats.outreach); const reportReplyRate=pct(reportStats.positive+reportStats.neutral+reportStats.negative,reportStats.outreach); const reportBounceRate=pct(reportStats.bounce,reportStats.outreach);
  const effectiveTeam=scope==="team"?(profile?.role==="member"?reportTeam:team):[profile];
- const memberPerformance=effectiveTeam.filter(Boolean).map((p:any)=>({p,...aggregate(emailActivities.filter((a:any)=>a.employee_id===p.id))})).sort((a:any,b:any)=>b.outreach-a.outreach);
+ const memberPerformance=effectiveTeam.filter(Boolean).map((p:any)=>{const stats=aggregate(scopedActivities.filter((a:any)=>a.employee_id===p.id));return {p,...stats,positive:stats.positive+stats.previousPositive,neutral:stats.neutral+stats.previousNeutral,negative:stats.negative+stats.previousNegative};}).sort((a:any,b:any)=>b.outreach-a.outreach);
  const overallStats=aggregate([...emailActivities,...contactFormActivities]);
  const overallPositive=overallStats.positive+overallStats.previousPositive;
  const overallNeutral=overallStats.neutral+overallStats.previousNeutral;
