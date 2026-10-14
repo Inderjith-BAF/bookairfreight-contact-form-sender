@@ -15,12 +15,14 @@ function gmailText(payload: any): string {
     for (const child of part.parts || []) visit(child);
   };
   visit(payload);
-  return parts.join("\n");
+  return parts.join("
+");
 }
 const normalized = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const subjectKey = (value: unknown) => normalized(value).replace(/^(?:(?:automatic reply|auto-reply|autoreply|out of office|ooo|re|fw|fwd)\s*:\s*)+/i, "").trim();
 const isAutoReply = (subject: string, body: string, headers: any[] = []) => {
-  const raw = headers.map((item:any) => String(item.name||"")+": "+String(item.value||"")).join("\n");
+  const raw = headers.map((item:any) => String(item.name||"")+": "+String(item.value||"")).join("
+");
   return /^(automatic reply|auto-reply|autoreply|out of office|ooo)(?:\s*[:-]|$)/i.test(subject.trim()) ||
     /auto-submitted\s*:\s*(?!no\b)auto-replied|x-autoreply\s*:\s*(yes|true)|x-autorespond\s*:\s*(yes|true)/i.test(raw) ||
     /I am (currently )?out of (the )?office|automatic reply|auto-reply|this is an automated response/i.test(body);
@@ -131,7 +133,8 @@ export async function POST(request: Request) {
       for (const message of messages) {
         const from = normalized(message.from);
         const subject = String(message.subject || "");
-        const body = String(message.body || "") + "\n" + String(message.snippet || "");
+        const body = String(message.body || "") + "
+" + String(message.snippet || "");
         if (isBounce(from, subject, body)) {
           // The failed recipient is normally embedded in the delivery report body.
           const candidates = bounceEmails(body).filter(email => leadIdByEmail.has(email));
@@ -141,7 +144,17 @@ export async function POST(request: Request) {
         let row: any;
         const senderEmail = from.match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || "";
         const leadId = leadIdByEmail.get(senderEmail);
-        if (!leadId || senderEmail === normalized(account.email)) continue;\n        // Classify automatic replies separately; do not mark the sent recipient as Replied.\n        if (isAutoReply(subject, body, message.headers || [])) {\n          const knownLead = leadsById.get(leadId);\n          if (knownLead?.current_status !== "Out of Office") {\n            const now = new Date().toISOString();\n            await admin.from("master_leads").update({ current_status: "Out of Office", last_replied_at: now, updated_at: now }).eq("id", leadId);\n            knownLead.current_status = "Out of Office";\n          }\n          continue;\n        }
+        if (!leadId || senderEmail === normalized(account.email)) continue;
+        // Classify automatic replies separately; do not mark the sent recipient as Replied.
+        if (isAutoReply(subject, body, message.headers || [])) {
+          const knownLead = leadsById.get(leadId);
+          if (knownLead?.current_status !== "Out of Office") {
+            const now = new Date().toISOString();
+            await admin.from("master_leads").update({ current_status: "Out of Office", last_replied_at: now, updated_at: now }).eq("id", leadId);
+            knownLead.current_status = "Out of Office";
+          }
+          continue;
+        }
         // Prefer Gmail thread matching, then fall back to sender + normalized subject.
         // This catches auto-replies that Gmail stores in a separate thread.
         const threadMatch = account.provider === "google" ? threadMap.get(message.threadId) : null;
