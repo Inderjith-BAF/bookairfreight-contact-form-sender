@@ -101,10 +101,21 @@ export default function MailMergePage(){
   setSelectedAccounts(prev=>prev);
  },[api,token]);
 
+ const statusRemovalSummary=(items:Lead[])=>{
+  const counts:Record<string,number>={};
+  for(const lead of items){
+   const status=String(lead.current_status||"Unknown");
+   if(lead.suppression_reason||blockedStatuses.includes(status))counts[status]=(counts[status]||0)+1;
+  }
+  const parts=Object.entries(counts).map(([status,count])=>`${count} ${status}`);
+  return parts.length?parts.join(", "):"none";
+ };
  const loadFreshLeads=useCallback(async()=>{
   const d=await api("/api/leads?country="+encodeURIComponent(form.country)+"&page=1&pageSize=1000");
-  const eligible=(d.leads||[]).filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+  const all=(d.leads||[]) as Lead[];
+  const eligible=all.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
   setLeads(eligible);
+  setMsg(`Lead eligibility check: ${eligible.length} eligible; removed ${all.length-eligible.length} blocked/suppressed leads (${statusRemovalSummary(all)}).`);
   return eligible;
  },[api,form.country]);
 
@@ -118,9 +129,15 @@ export default function MailMergePage(){
   const sourceRecipients=(d.recipients||[]).filter((r:any)=>r.master_leads&&r.sender_account_id&&selectedAccountSet.has(r.sender_account_id));
   const subjects:Record<string,string>={};
   const rows:Lead[]=[];
+  const excludedByStatus:Record<string,number>={};
   for(const r of sourceRecipients){
    const lead=r.master_leads as Lead|undefined;
-   if(!lead?.id||lead.suppression_reason||blockedStatuses.includes(String(lead.current_status||"")))continue;
+   if(!lead?.id)continue;
+   if(lead.suppression_reason||blockedStatuses.includes(String(lead.current_status||""))){
+    const status=String(lead.current_status||"Unknown");
+    excludedByStatus[status]=(excludedByStatus[status]||0)+1;
+    continue;
+   }
    const previousSubject=typeof r.subject==="string"?r.subject:"";
    subjects[lead.id]=previousSubject.trim()||(typeof d.campaign?.subject==="string"?d.campaign.subject:"");
    rows.push({...lead,senderAccountId:r.sender_account_id});
@@ -133,11 +150,13 @@ export default function MailMergePage(){
   setLeads(uniqueEligible);
   setSelected(uniqueEligible.map(lead=>lead.id));
   setVolumes(current=>Object.fromEntries(accountsWithEligibleLeads.map(id=>[id,Math.min(Number(current[id]||10),uniqueEligible.filter(lead=>lead.senderAccountId===id).length)])));
+  const statusParts=Object.entries(excludedByStatus).map(([status,count])=>count+" "+status);
+  const statusMessage=" Removed "+Object.values(excludedByStatus).reduce((sum,count)=>sum+count,0)+" ineligible recipients by status: "+(statusParts.join(", ")||"none")+".";
   if(excluded.length){
    const names=excluded.map(id=>accounts.find(a=>a.id===id)?.email||id);
-   setMsg("Follow-up accounts matched: "+accountsWithEligibleLeads.length+". Excluded accounts with no eligible leads in this campaign: "+names.join(", ")+".");
+   setMsg("Follow-up accounts matched: "+accountsWithEligibleLeads.length+". Excluded accounts with no eligible leads in this campaign: "+names.join(", ")+". Loaded "+uniqueEligible.length+" eligible leads."+statusMessage);
   }else{
-   setMsg("Loaded "+uniqueEligible.length+" eligible follow-up leads across "+accountsWithEligibleLeads.length+" selected sending accounts.");
+   setMsg("Loaded "+uniqueEligible.length+" eligible follow-up leads across "+accountsWithEligibleLeads.length+" selected sending accounts."+statusMessage);
   }
  },[api,selectedAccounts,accounts]);
 
