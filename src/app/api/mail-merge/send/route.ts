@@ -16,6 +16,6 @@ export async function POST(request:Request){
  return NextResponse.json({
   error:"Direct browser sending is disabled. This campaign is handled by the automatic account-level dispatcher.",
   status:campaign.status,
-  message:"Dispatch queues the campaign. Each member's account batches run sequentially, different members run in parallel, and each account observes its own 60-120 second pacing interval. The browser does not need to remain open."
+  message:"Dispatch queues the campaign. All eligible sending accounts can run concurrently, and each account independently selects a 30, 60, 90, 120, 150, 180, 210, or 240 second pacing interval. The browser does not need to remain open."
  },{status:409});
 }
