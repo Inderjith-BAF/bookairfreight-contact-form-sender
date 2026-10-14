@@ -154,7 +154,7 @@ export default function CampaignIntelligence() {
 
   return (
     <main className="os-page-enter min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4 text-slate-900 md:p-8">
-      <div className="mx-auto w-full max-w-[1500px]">
+      <div className="mx-auto w-full max-w-none">
         <BlueprintNav />
 
         <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-blue-100 bg-white/85 p-6 shadow-sm">
@@ -181,7 +181,7 @@ export default function CampaignIntelligence() {
           </button>
         </header>
 
-        <div className="os-stagger mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="os-stagger mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
           {cards.map(([label, value, Icon]) => (
             <div
               key={String(label)}
