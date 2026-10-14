@@ -58,7 +58,10 @@ export function renderTrackedHtml(body:string,trackingBase:string,token:string){
 
 function b64url(v:string){return Buffer.from(v).toString("base64url");}
 function mimeMessage(from:string,to:string,subject:string,html:string,extra:Record<string,string>={}){
- const lines=["From: "+from,"To: "+to,"Subject: "+subject,"MIME-Version: 1.0","Content-Type: text/html; charset=UTF-8",...Object.entries(extra).map(([k,v])=>k+": "+v),"",html];
+ // RFC 2047 protects Unicode punctuation from being decoded as Latin-1 by mail clients.
+ const encodedSubject = "=?UTF-8?B?"+Buffer.from(subject,"utf8").toString("base64")+"?=";
+ const safeHeader = (value:string) => value.replace(/[\r\n]+/g," ").trim();
+ const lines=["From: "+safeHeader(from),"To: "+safeHeader(to),"Subject: "+encodedSubject,"MIME-Version: 1.0","Content-Type: text/html; charset=UTF-8",...Object.entries(extra).map(([k,v])=>safeHeader(k)+": "+safeHeader(v)),"",html];
  return b64url(lines.join("\r\n"));
 }
 export async function sendThroughProvider(account:Account,input:{to:string;subject:string;body:string;trackingBase:string;trackingToken:string;replyToMessageId?:string;replyToThreadId?:string},admin:any){
