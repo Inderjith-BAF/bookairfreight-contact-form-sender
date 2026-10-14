@@ -137,6 +137,6 @@ export async function GET(request:Request){
   stale_claims_recovered:staleRows?.length??0,
   errors:results.filter((r:any)=>r.error).map((r:any)=>r.error),
   skipped:results.filter((r:any)=>r.skipped).map((r:any)=>r.skipped),
-  message:"Independent account dispatch completed. All connected accounts can run concurrently; each account independently selects its next 30, 60, 90, 120, 150, 180, 210, or 240 second pacing interval."
+  message:"Independent account dispatch completed. All connected accounts can run concurrently; each account independently selects its next 1, 2, 3, 4, or 5 minute pacing interval."
  });
 }
