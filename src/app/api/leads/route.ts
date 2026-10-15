@@ -81,7 +81,9 @@ export async function GET(request: Request) {
     query,
     admin.from("lead_import_batches").select("*").order("started_at", { ascending: false }).limit(20)
   ]);
-  if (error || batchError) return NextResponse.json({ error: error?.message || batchError?.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: "Could not load Master Lead Sheet: " + error.message }, { status: 500 });
+  // Import-batch metadata is ancillary; do not block lead browsing if its table/query is unavailable.
+  if (batchError) console.error("Master Lead Sheet import-batch metadata unavailable:", batchError.message);
   const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
   const { data: owners } = ownerIds.length ? await admin.from("outbound_profiles").select("id,full_name").in("id", ownerIds) : { data: [] as any[] };
   const ownerNames = new Map((owners || []).map((owner: any) => [owner.id, owner.full_name]));
