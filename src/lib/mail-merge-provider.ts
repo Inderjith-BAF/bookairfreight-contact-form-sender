@@ -81,7 +81,8 @@ function mimeMessage(from:string,to:string,subject:string,html:string,extra:Reco
 }
 export async function sendThroughProvider(account:Account,input:{to:string;subject:string;body:string;trackingBase:string;trackingToken:string;replyToMessageId?:string;replyToThreadId?:string},admin:any){
  const access=await getProviderAccess(account,admin);
- const html=renderTrackedHtml(repairMojibake(input.body),input.trackingBase,input.trackingToken);\n const subject=repairMojibake(input.subject);
+ const html=renderTrackedHtml(repairMojibake(input.body),input.trackingBase,input.trackingToken);
+ const subject=repairMojibake(input.subject);
  if(account.provider==="google"){
   const headers:Record<string,string>={};
   if(input.replyToMessageId){headers["In-Reply-To"]=input.replyToMessageId;headers["References"]=input.replyToMessageId;}
