@@ -127,7 +127,12 @@ export async function POST(request: Request) {
       if (leadsError) throw new Error(leadsError.message);
       const leadsById = new Map<string, any>((leads || []).map((lead: any) => [String(lead.id), lead] as [string, any]));
       const leadIdByEmail = new Map<string, string>((leads || []).map((lead: any) => [normalized(lead.email), String(lead.id)] as [string, string]));
-      // Rows are ordered newest-first; preserve the newest campaign recipient for a shared provider thread.\n      const threadMap = new Map<string, any>();\n      for (const row of sent || []) {\n        const threadId = String(row.provider_thread_id || "");\n        if (threadId && !threadMap.has(threadId)) threadMap.set(threadId, row);\n      }
+      // Rows are ordered newest-first; preserve the newest campaign recipient for a shared provider thread.
+      const threadMap = new Map<string, any>();
+      for (const row of sent || []) {
+        const threadId = String(row.provider_thread_id || "");
+        if (threadId && !threadMap.has(threadId)) threadMap.set(threadId, row);
+      }
       for (const message of messages) {
         const from = normalized(message.from);
         const subject = String(message.subject || "");
