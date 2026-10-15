@@ -25,29 +25,47 @@ export async function POST(request:Request){
  if(campaignError)return NextResponse.json({error:campaignError.message},{status:500});
  if(!campaigns?.length)return NextResponse.json({error:"No selected campaigns were found."},{status:404});
  if(profile.role==="member"&&campaigns.some((c:any)=>c.created_by!==profile.id))return NextResponse.json({error:"You can only add campaigns you created."},{status:403});
- const {data:recipients,error:recipientError}=await admin.from("mail_merge_campaign_recipients").select("campaign_id,status,sent_at,open_count,subject,body,sender_account_id,outbound_email_accounts(id,email,employee_id)").in("campaign_id",ids).eq("status","Sent");
+ const {data:recipients,error:recipientError}=await admin.from("mail_merge_campaign_recipients").select("campaign_id,lead_id,status,sent_at,open_count,subject,body,sender_account_id,outbound_email_accounts(id,email,employee_id)").in("campaign_id",ids).in("status",["Sent","Replied","Auto Response","Bounced"]);
  if(recipientError)return NextResponse.json({error:recipientError.message},{status:500});
+ const leadIds=[...new Set((recipients||[]).map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
+ const {data:leads,error:leadError}=leadIds.length?await admin.from("master_leads").select("id,response_classification,current_status").in("id",leadIds):{data:[],error:null};
+ if(leadError)return NextResponse.json({error:leadError.message},{status:500});
+ const leadById=new Map((leads||[]).map((l:any)=>[String(l.id),l]));
  const {data:profiles}=await admin.from("outbound_profiles").select("id,full_name");
  const names=new Map((profiles||[]).map((p:any)=>[p.id,p.full_name]));
- let added=0,alreadyPresent=0,noSent=0;
+ let added=0,updated=0,noSent=0;
  for(const campaign of campaigns){
-  const sentRows=(recipients||[]).filter((r:any)=>r.campaign_id===campaign.id);
-  if(!sentRows.length){noSent++;continue;}
+  const campaignRows=(recipients||[]).filter((r:any)=>r.campaign_id===campaign.id);
+  if(!campaignRows.length){noSent++;continue;}
   const byAccount=new Map<string,any[]>();
   const accountOf=(row:any)=>Array.isArray(row.outbound_email_accounts)?row.outbound_email_accounts[0]:row.outbound_email_accounts;
-  for(const row of sentRows){const account=accountOf(row);const key=String(row.sender_account_id||"");if(!account?.email||!key)continue;const list=byAccount.get(key)||[];list.push(row);byAccount.set(key,list);}
+  for(const row of campaignRows){const account=accountOf(row);const key=String(row.sender_account_id||"");if(!account?.email||!key)continue;const list=byAccount.get(key)||[];list.push(row);byAccount.set(key,list);}
   for(const rows of byAccount.values()){
-   const account=accountOf(rows[0]);const opens=rows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
-   const sentDates=rows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+   const account=accountOf(rows[0]);
+   const sentRows=rows.filter((r:any)=>["Sent","Replied","Auto Response","Bounced"].includes(String(r.status)));
+   if(!sentRows.length)continue;
+   const opens=sentRows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
+   const replies=sentRows.filter((r:any)=>r.status==="Replied").length;
+   const autoResponses=sentRows.filter((r:any)=>r.status==="Auto Response").length;
+   const bounced=sentRows.filter((r:any)=>r.status==="Bounced").length;
+   const classified=(classification:string)=>sentRows.filter((r:any)=>String(leadById.get(String(r.lead_id))?.response_classification||"")===classification).length;
+   const unsubscribes=sentRows.filter((r:any)=>String(leadById.get(String(r.lead_id))?.current_status||"")==="Unsubscribed").length;
+   const sentDates=sentRows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\\d{4}-\\d{2}-\\d{2}$/.test(d)).sort();
    const day=requestedDate||sentDates[0]||String(campaign.created_at||new Date().toISOString()).slice(0,10);
-   const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id,activity_date").eq("channel","cold_email").eq("region",campaign.country).eq("company",campaign.name).eq("email_account_text",account.email).limit(1);
+   const row={activity_date:day,employee_id:account.employee_id||campaign.created_by,employee_name:String(names.get(account.employee_id)||profile.full_name||""),email_account_text:account.email,prospect_email:account.email,company:campaign.name,region:campaign.country,lead_source:"Mail Merge",campaign:campaign.campaign_group||campaign.name,stage:campaign.campaign_group,subject:String(sentRows[0]?.subject||campaign.subject||""),content:String(sentRows[0]?.body||campaign.body||""),outreach_volume:sentRows.length,open_count:opens,open_rate:sentRows.length?opens/sentRows.length*100:0,positive_replies:classified("Positive"),neutral_replies:classified("Neutral"),negative_replies:classified("Negative"),unsubscribes,bounced,auto_responses:autoResponses,clicks:0,bounce_rate:sentRows.length?bounced/sentRows.length*100:0,qualified_leads:0,follow_ups:0,freshness:"fresh",response_note:"",channel:"cold_email"};
+   const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id").eq("channel","cold_email").eq("region",campaign.country).eq("company",campaign.name).eq("email_account_text",account.email).limit(1);
    if(existingError)return NextResponse.json({error:existingError.message},{status:500});
-   if(existing?.length){alreadyPresent++;continue;}
-   const row={activity_date:day,employee_id:account.employee_id||campaign.created_by,employee_name:String(names.get(account.employee_id)||profile.full_name||""),email_account_text:account.email,prospect_email:account.email,company:campaign.name,region:campaign.country,lead_source:"Mail Merge",campaign:campaign.campaign_group||campaign.name,stage:campaign.campaign_group,subject:String(rows[0]?.subject||campaign.subject||""),content:String(rows[0]?.body||campaign.body||""),outreach_volume:rows.length,open_count:opens,open_rate:rows.length?opens/rows.length*100:0,positive_replies:0,neutral_replies:0,negative_replies:0,unsubscribes:0,bounced:0,auto_responses:0,clicks:0,bounce_rate:0,qualified_leads:0,follow_ups:0,freshness:"fresh",response_note:"",channel:"cold_email"};
-   const {error:insertError}=await admin.from("outbound_activities").insert(row);
-   if(insertError)return NextResponse.json({error:insertError.message},{status:500});added++;
+   if(existing?.length){
+    const {error:updateError}=await admin.from("outbound_activities").update(row).eq("id",existing[0].id);
+    if(updateError)return NextResponse.json({error:updateError.message},{status:500});
+    updated++;
+   }else{
+    const {error:insertError}=await admin.from("outbound_activities").insert(row);
+    if(insertError)return NextResponse.json({error:insertError.message},{status:500});
+    added++;
+   }
   }
  }
- await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaigns_added_to_my_outbound",entity_type:"campaign",after_value:{campaign_ids:ids,added,already_present:alreadyPresent,no_sent:noSent}});
- return NextResponse.json({added,alreadyPresent,noSent,message:"Added "+added+" campaign account record(s) to My Outbound. "+alreadyPresent+" already existed in a report; "+noSent+" selected campaign(s) had no sent emails. Delete the existing campaign row from its report date to make it eligible to add again."});
+ await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaigns_added_to_my_outbound",entity_type:"campaign",after_value:{campaign_ids:ids,added,updated,no_sent:noSent}});
+ return NextResponse.json({added,updated,noSent,message:"Added "+added+" account report row(s) and refreshed "+updated+" existing row(s) with the latest replies, automatic responses, response classifications, and bounces. "+noSent+" selected campaign(s) had no sent or responded emails."});
 }
