@@ -110,7 +110,7 @@ export default function MailMergePage(){
   const parts=Object.entries(counts).map(([status,count])=>`${count} ${status}`);
   return parts.length?parts.join(", "):"none";
  };
- const loadFreshLeads=useCallback(async()=>{
+ const loadFreshLeads=useCallback(async(countryOverride?:string)=>{
   // Load the full visible Master Lead Sheet in pages; the API still enforces member ownership.
   // Normalize country aliases locally so US/USA/United States variants do not hide new leads.
   const pageSize=1000;
@@ -133,13 +133,13 @@ export default function MailMergePage(){
    uae:["uae","unitedarabemirates"],unitedarabemirates:["uae","unitedarabemirates"],
    canada:["canada","ca"]
   };
-  const selectedCountry=countryKey(form.country);
+  const effectiveCountry=countryOverride??form.country;\n   const selectedCountry=countryKey(effectiveCountry);
   const matchingCountry=selectedCountry?new Set(aliases[selectedCountry]||[selectedCountry]):null;
   const countryLeads=matchingCountry?all.filter(lead=>matchingCountry.has(countryKey(lead.country))):all;
   const eligible=countryLeads.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
   setLeads(eligible);
   setSelected(current=>current.filter(id=>eligible.some(lead=>lead.id===id)));
-  setMsg(`Master Lead Sheet refresh: loaded ${all.length} visible leads; ${countryLeads.length} match ${form.country||"all countries"}; ${eligible.length} eligible. Removed ${countryLeads.length-eligible.length} blocked/suppressed leads (${statusRemovalSummary(countryLeads)}).`);
+  setMsg(`Master Lead Sheet refresh: loaded ${all.length} visible leads; ${countryLeads.length} match ${effectiveCountry||"all countries"}; ${eligible.length} eligible. Removed ${countryLeads.length-eligible.length} blocked/suppressed leads (${statusRemovalSummary(countryLeads)}).`);
   return eligible;
  },[api,form.country]);
 
@@ -210,7 +210,7 @@ export default function MailMergePage(){
    setForm({name:campaign.name||"",country:campaign.country||"USA",campaign_group:campaign.campaign_group||"Fresh Outreach"});
    setLeads(rows);setSelected(rows.map(x=>x.id));setSelectedAccounts(accountIds);setVolumes(volumeMap);setBlocks(resumedBlocks);setSavedBlocks(recipients.length>0);
    setStage(resumedBlocks.length?3:2);
-   setMsg(recipients.length?"Resumed saved campaign · "+recipients.length+" recipients loaded.":"Saved campaign opened. Add recipients to continue.");
+   if(recipients.length){setMsg("Resumed saved campaign · "+recipients.length+" recipients loaded.");}else{setMsg("Saved campaign opened. Loading eligible leads from Master Lead Sheet…");await loadFreshLeads(campaign.country||"USA");}
   }catch(e){setErr(e instanceof Error?e.message:"Could not resume campaign.")}finally{setBusy(false)}
  }
  async function signIn(){setErr("");const {data,error}=await supabase.auth.signInWithPassword({email:authEmail,password:authPassword});if(error){setErr(error.message);return}setToken(data.session?.access_token||"")}
