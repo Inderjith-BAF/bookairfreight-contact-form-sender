@@ -56,17 +56,31 @@ export function renderTrackedHtml(body:string,trackingBase:string,token:string){
  return html+'<img src="'+trackingBase+'/open/'+token+'" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" />';
 }
 
+function repairMojibake(value:string){
+ // Repair common UTF-8 punctuation that was previously decoded as Latin-1/Windows-1252.
+ // This also handles already-saved campaign subjects, not just MIME header encoding.
+ const replacements:Array<[RegExp,string]>=[
+  [/Ã¢Â€Â™/g,"’"],[/Ã¢Â€Â˜/g,"‘"],[/Ã¢Â€Âœ/g,"“"],[/Ã¢Â€Â/g,"”"],
+  [/Ã¢Â€Â“/g,"–"],[/Ã¢Â€Â”/g,"—"],[/Ã¢Â€Â¦/g,"…"],
+  [/â€™/g,"’"],[/â€˜/g,"‘"],[/â€œ/g,"“"],[/â€/g,"”"],
+  [/â€“/g,"–"],[/â€”/g,"—"],[/â€¦/g,"…"],
+  [/Â /g," "],[/Â/g,""]
+ ];
+ let repaired=value;
+ for(const [pattern,replacement] of replacements)repaired=repaired.replace(pattern,replacement);
+ return repaired;
+}
 function b64url(v:string){return Buffer.from(v).toString("base64url");}
 function mimeMessage(from:string,to:string,subject:string,html:string,extra:Record<string,string>={}){
  // RFC 2047 protects Unicode punctuation from being decoded as Latin-1 by mail clients.
- const encodedSubject = "=?UTF-8?B?"+Buffer.from(subject,"utf8").toString("base64")+"?=";
+ const cleanSubject=repairMojibake(subject);\n const encodedSubject = "=?UTF-8?B?"+Buffer.from(cleanSubject,"utf8").toString("base64")+"?=";
  const safeHeader = (value:string) => value.replace(/[\r\n]+/g," ").trim();
  const lines=["From: "+safeHeader(from),"To: "+safeHeader(to),"Subject: "+encodedSubject,"MIME-Version: 1.0","Content-Type: text/html; charset=UTF-8",...Object.entries(extra).map(([k,v])=>safeHeader(k)+": "+safeHeader(v)),"",html];
  return b64url(lines.join("\r\n"));
 }
 export async function sendThroughProvider(account:Account,input:{to:string;subject:string;body:string;trackingBase:string;trackingToken:string;replyToMessageId?:string;replyToThreadId?:string},admin:any){
  const access=await getProviderAccess(account,admin);
- const html=renderTrackedHtml(input.body,input.trackingBase,input.trackingToken);
+ const html=renderTrackedHtml(repairMojibake(input.body),input.trackingBase,input.trackingToken);\n const subject=repairMojibake(input.subject);
  if(account.provider==="google"){
   const headers:Record<string,string>={};
   if(input.replyToMessageId){headers["In-Reply-To"]=input.replyToMessageId;headers["References"]=input.replyToMessageId;}
@@ -77,7 +91,7 @@ export async function sendThroughProvider(account:Account,input:{to:string;subje
   return {messageId:String(d.id||""),threadId:String(d.threadId||"")};
  }
  if(input.replyToMessageId){const r=await fetch("https://graph.microsoft.com/v1.0/me/messages/"+encodeURIComponent(input.replyToMessageId)+"/reply",{method:"POST",headers:{Authorization:"Bearer "+access,"Content-Type":"application/json"},body:JSON.stringify({message:{body:{contentType:"HTML",content:html}}})});if(!r.ok){const d=await r.json().catch(()=>({}));const message=d.error?.message||"Microsoft could not send the reply.";if(r.status===401||r.status===403)await markConnectionFailure(account,admin,message);throw new Error(message);}return {messageId:input.replyToMessageId,threadId:""};}
- const r=await fetch("https://graph.microsoft.com/v1.0/me/messages",{method:"POST",headers:{Authorization:"Bearer "+access,"Content-Type":"application/json"},body:JSON.stringify({subject:input.subject,body:{contentType:"HTML",content:html},toRecipients:[{emailAddress:{address:input.to}}]})});
+ const r=await fetch("https://graph.microsoft.com/v1.0/me/messages",{method:"POST",headers:{Authorization:"Bearer "+access,"Content-Type":"application/json"},body:JSON.stringify({subject,body:{contentType:"HTML",content:html},toRecipients:[{emailAddress:{address:input.to}}]})});
  const draft=await r.json().catch(()=>({}));if(!r.ok){const message=draft.error?.message||"Microsoft Graph rejected the message.";if(r.status===401||r.status===403)await markConnectionFailure(account,admin,message);throw new Error(message);}
  const send=await fetch("https://graph.microsoft.com/v1.0/me/messages/"+encodeURIComponent(draft.id)+"/send",{method:"POST",headers:{Authorization:"Bearer "+access}});
  if(!send.ok){const d=await send.json().catch(()=>({}));const message=d.error?.message||"Microsoft Graph could not send the message.";if(send.status===401||send.status===403)await markConnectionFailure(account,admin,message);throw new Error(message);}
