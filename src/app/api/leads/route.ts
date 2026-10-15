@@ -334,6 +334,25 @@ export async function PATCH(request: Request) {
   }
   const { data: updated, error } = await admin.from("master_leads").update(patch).eq("id", id).select("*").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (isResponse) {
+    // Attribute classification to the most recent campaign that received a human reply.
+    const { data: repliedRecipients, error: repliedError } = await admin
+      .from("mail_merge_campaign_recipients")
+      .select("id,campaign_id,sent_at")
+      .eq("lead_id", id)
+      .eq("status", "Replied")
+      .order("sent_at", { ascending: false })
+      .limit(1);
+    if (repliedError) return NextResponse.json({ error: repliedError.message }, { status: 500 });
+    if (repliedRecipients?.length) {
+      const { error: classificationError } = await admin
+        .from("mail_merge_campaign_recipients")
+        .update({ response_classification: status })
+        .eq("id", repliedRecipients[0].id);
+      if (classificationError) return NextResponse.json({ error: classificationError.message }, { status: 500 });
+    }
+  }
+
   await admin.from("lead_activity_events").insert({
     lead_id: id, actor_id: profile.id, event_type: isResponse ? "response_classified" : "status_changed",
     previous_value: before.current_status, new_value: status,
