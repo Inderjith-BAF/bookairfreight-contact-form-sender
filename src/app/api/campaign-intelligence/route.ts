@@ -28,7 +28,7 @@ export async function POST(request:Request){
  if(profile.role==="member"&&campaigns.some((c:any)=>c.created_by!==profile.id))return NextResponse.json({error:"You can only add campaigns you created."},{status:403});
  const {data:recipients,error:recipientError}=await admin.from("mail_merge_campaign_recipients").select("campaign_id,lead_id,status,sent_at,open_count,subject,body,sender_account_id,outbound_email_accounts(id,email,employee_id)").in("campaign_id",ids).in("status",["Sent","Replied","Auto Response","Bounced"]);
  if(recipientError)return NextResponse.json({error:recipientError.message},{status:500});
- const leadIds=[...new Set((allRecipients||[]).map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
+ const leadIds=[...new Set((recipients||[]).map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
  const {data:leads,error:leadError}=leadIds.length?await admin.from("master_leads").select("id,response_classification,current_status").in("id",leadIds):{data:[],error:null};
  if(leadError)return NextResponse.json({error:leadError.message},{status:500});
  const leadById=new Map((leads||[]).map((l:any)=>[String(l.id),l]));
@@ -36,7 +36,7 @@ export async function POST(request:Request){
  const names=new Map((profiles||[]).map((p:any)=>[p.id,p.full_name]));
  let added=0,updated=0,noSent=0;
  for(const campaign of campaigns){
-  const campaignRows=(allRecipients||[]).filter((r:any)=>r.campaign_id===campaign.id);
+  const campaignRows=(recipients||[]).filter((r:any)=>r.campaign_id===campaign.id);
   if(!campaignRows.length){noSent++;continue;}
   const byAccount=new Map<string,any[]>();
   const accountOf=(row:any)=>Array.isArray(row.outbound_email_accounts)?row.outbound_email_accounts[0]:row.outbound_email_accounts;
