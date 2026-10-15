@@ -133,7 +133,8 @@ export default function MailMergePage(){
    uae:["uae","unitedarabemirates"],unitedarabemirates:["uae","unitedarabemirates"],
    canada:["canada","ca"]
   };
-  const effectiveCountry=countryOverride??form.country;\n   const selectedCountry=countryKey(effectiveCountry);
+  const effectiveCountry=countryOverride??form.country;
+   const selectedCountry=countryKey(effectiveCountry);
   const matchingCountry=selectedCountry?new Set(aliases[selectedCountry]||[selectedCountry]):null;
   const countryLeads=matchingCountry?all.filter(lead=>matchingCountry.has(countryKey(lead.country))):all;
   const eligible=countryLeads.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
