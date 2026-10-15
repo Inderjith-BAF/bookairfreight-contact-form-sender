@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   const { data: team, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   const isFullLeadAccess = profile.role === "admin" || profile.role === "lead_generation_admin";
   const memberLeadOwner = isFullLeadAccess ? "" : profile.id;
-  if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
+  if (teamError) console.error("Master Lead Sheet team metadata unavailable:", teamError.message);
   let query = admin.from("master_leads").select("*", { count: "exact" }).order("created_at", { ascending: false });
   if (!exportCsv && !leadOwner) query = query.range((page-1)*pageSize, page*pageSize-1);
   if (country) {
@@ -96,7 +96,7 @@ export async function GET(request: Request) {
       .in("lead_id", visibleLeadIds)
       .in("status", ["Sent","Replied","Bounced"])
       .order("created_at", { ascending: false });
-    if (outreachError) return NextResponse.json({ error: outreachError.message }, { status: 500 });
+    if (outreachError) console.error("Master Lead Sheet outreach-account metadata unavailable:", outreachError.message);
     const accountIds = [...new Set((outreachRows || []).map((row:any) => row.sender_account_id).filter(Boolean))];
     const { data: outreachAccounts } = accountIds.length
       ? await admin.from("outbound_email_accounts").select("id,email").in("id", accountIds)
