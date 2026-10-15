@@ -25,6 +25,7 @@ function responseMeta(note:string){try{const x=JSON.parse(note||"{}");return {po
 const blankRow=():Row=>({account:"",subject:"",content:"",email_account_text:"",outreach_volume:0,open_count:0,open_rate:0,positive_replies:0,neutral_replies:0,negative_replies:0,unsubscribes:0,bounced:0,auto_responses:0,clicks:0,qualified_leads:0,follow_ups:0,bounce_rate:0,channel:"cold_email",activity_date:localToday(),freshness:"fresh",sequence_id:"",content_sequence:1,country:"",positive_entry:"0",neutral_entry:"0",negative_entry:"0",response_note:""});
 
 function n(v:unknown){if(v===null||v===undefined||v==="")return 0;const x=Number(String(v).replace(/[%,$,]/g,""));return Number.isFinite(x)?x:0}
+function openRateValue(v:unknown){return Math.min(100,Math.max(0,n(v)))}
 function normalizeHeader(v:string){return v.toLowerCase().replace(/[^a-z0-9]/g,"")}
 function parseDate(v:unknown, fallbackYear:number, sheet:string){
   if(v instanceof Date&&!Number.isNaN(v.getTime()))return v.toISOString().slice(0,10);
@@ -48,7 +49,7 @@ function mapHistoricalRow(raw:Record<string,unknown>, sheet:string, fallbackYear
   const link=String(get(["Email content link","Email Content Link","Content Link"])).trim();
   const creator=String(get(["Content creator","Content Creator"])).trim();
   const volume=n(get(["Total Outreach Volume","Outreach Volume","Total Outreach"]));
-  const openRate=n(get(["Open Rate"])); const openCount=n(get(["Open Count","Open Count"]));
+  const openRate=openRateValue(get(["Open Rate"])); const openCount=Math.max(0,n(get(["Open Count","Open Count"])));
   const bounce=n(get(["Bounced","Bounce"])); const bounceRate=n(get(["Bounce back rate","Bounce Rate"]));
   return {activity_date,employee_name:employee,email_account_text:account,prospect_email:account,subject,stage,content,content_link:link,content_creator:creator,outreach_volume:volume,open_count:openCount,open_rate:openRate,positive_replies:n(get(["Positive Replies","Positive Response","Qualified leads"])),neutral_replies:n(get(["Neutral Replies","Neutral Response"])),negative_replies:n(get(["Negative Replies","Negative Response"])),unsubscribes:n(get(["Unsubscribe","Unsubscribes"])),bounced:bounce,auto_responses:n(get(["Auto Response","Auto Responses"])),clicks:n(get(["Clicks"])),bounce_rate:bounceRate,qualified_leads:n(get(["Qualified leads","Qualified Leads"])),follow_ups:n(get(["Follow-ups","Follow Ups"])),industry:String(get(["Industry"])),region:String(get(["Country","Region"])),lead_source:String(get(["Lead Source"])),campaign:String(get(["Campaign"])),freshness:/recycl/i.test(String(get(["Fresh / Recycled","Fresh/Old Account","Freshness"])))?"recycled":"fresh",channel:/contact form/i.test(sheet)?"contact_form":"cold_email",source_sheet:sheet,source_row:rowNumber,source_file:fileName};
 }
@@ -58,7 +59,7 @@ function aggregate(rows:OutboundActivity[]){
   const pc=responseMeta(r.response_note||"");
   const hasPC=pc.positive+pc.neutral+pc.negative>0;
   a.outreach+=n(r.outreach_volume);
-  a.open+=n(r.open_count)||Math.round(n(r.outreach_volume)*n(r.open_rate)/100);
+  a.open+=Math.min(Math.max(0,n(r.outreach_volume)),Math.max(0,n(r.open_count)||Math.round(Math.max(0,n(r.outreach_volume))*openRateValue(r.open_rate)/100)));
   a.positive+=Math.max(0,n(r.positive_replies)-(hasPC?pc.positive:0));
   a.neutral+=Math.max(0,n(r.neutral_replies)-(hasPC?pc.neutral:0));
   a.negative+=Math.max(0,n(r.negative_replies)-(hasPC?pc.negative:0));
@@ -187,11 +188,11 @@ function Report({title,subtitle,activities,team=[],profile,session,sequences=[],
     const x=m.get(k)||{name:k,outreach:0,open:0,pos:0,neutral:0,negative:0,bounce:0,clicks:0,leads:0,pcPositive:0,pcNeutral:0,pcNegative:0,pcAccounts:new Set<string>()};
     const outreach=n(a.outreach_volume);
     const openCount=n(a.open_count);
-    const reportOpenRateValue=n(a.open_rate);
+    const reportOpenRateValue=openRateValue(a.open_rate);
     const pc=responseMeta(a.response_note||"");
     const hasPC=pc.positive+pc.neutral+pc.negative>0;
     x.outreach+=outreach;
-    x.open+=openCount||Math.round(outreach*reportOpenRateValue/100);
+    x.open+=Math.min(Math.max(0,outreach),Math.max(0,openCount||Math.round(Math.max(0,outreach)*reportOpenRateValue/100)));
     x.pos+=Math.max(0,n(a.positive_replies)-(hasPC?pc.positive:0));
     x.neutral+=Math.max(0,n(a.neutral_replies)-(hasPC?pc.neutral:0));
     x.negative+=Math.max(0,n(a.negative_replies)-(hasPC?pc.negative:0));
@@ -274,7 +275,7 @@ function rowSignature(r:Row){
   id:r.id||null,account:r.account,subject:r.subject,content:r.content,email_account_text:r.email_account_text,content_sequence:r.content_sequence||1,
   campaign:r.campaign||"",lead_source:r.lead_source||"",sequence_id:r.sequence_id||null,stage:r.stage||"",
   content_link:r.content_link||"",content_creator:r.content_creator||"",outreach_volume:n(r.outreach_volume),
-  open_rate:n(r.open_rate),positive_entry:r.positive_entry,neutral_entry:r.neutral_entry,negative_entry:r.negative_entry,
+  open_rate:openRateValue(r.open_rate),positive_entry:r.positive_entry,neutral_entry:r.neutral_entry,negative_entry:r.negative_entry,
   unsubscribes:n(r.unsubscribes),bounced:n(r.bounced),clicks:n(r.clicks)
  });
 }
@@ -443,7 +444,7 @@ function CountryTile({tile,sequences,selectedSequence,patch,paste,addRows,saveCo
    <td className="px-3 py-2"><div className="flex items-center gap-1"><input value={r.content_link||""} onChange={e=>patch(tile.country,i,"content_link",e.target.value)} placeholder="Link" className="w-52 rounded-lg bg-white/5 px-2 py-2 outline-none"/><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startColumnDrag(i,"content_link")}} onDragEnd={()=>setColumnDrag(null)} title="Drag down to copy Content Link" className="flex h-8 w-5 cursor-grab items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
    <td className="px-3 py-2"><div className="flex items-center gap-1"><input value={r.content_creator||""} onChange={e=>patch(tile.country,i,"content_creator",e.target.value)} placeholder="Creator" className="w-52 rounded-lg bg-white/5 px-2 py-2 outline-none"/><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startColumnDrag(i,"content_creator")}} onDragEnd={()=>setColumnDrag(null)} title="Drag down to copy Content Creator" className="flex h-8 w-5 cursor-grab items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
    <td className="px-3 py-2"><div className="flex items-center gap-1"><input type="number" min="0" value={r.outreach_volume??0} onChange={e=>patch(tile.country,i,"outreach_volume",n(e.target.value))} className="w-32 rounded-lg bg-white/5 px-2 py-2 outline-none"/><span draggable onDragStart={e=>{e.dataTransfer.effectAllowed="copy";startColumnDrag(i,"outreach_volume")}} onDragEnd={()=>setColumnDrag(null)} title="Drag down to copy No. of Outreach to the selected rows" aria-label="Drag to fill outreach count down" className="flex h-8 w-5 shrink-0 cursor-grab select-none items-center justify-center rounded bg-white/10 text-[10px] font-black text-slate-500 active:cursor-grabbing">⋮⋮</span></div></td>
-   <td className="px-3 py-2"><input type="number" min="0" max="100" step="0.1" value={r.open_rate??0} onChange={e=>patch(tile.country,i,"open_rate",n(e.target.value))} className="w-28 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
+   <td className="px-3 py-2"><input type="number" min="0" max="100" step="0.1" value={openRateValue(r.open_rate)} onChange={e=>patch(tile.country,i,"open_rate",openRateValue(e.target.value))} className="w-28 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
    {([["positive_entry","Positive Replies"],["neutral_entry","Neutral Replies"],["negative_entry","Negative Replies"]] as const).map(([k,label])=><td key={k} className="px-3 py-2"><select value={(r as any)[k]||"0"} onChange={e=>patch(tile.country,i,k,e.target.value)} className="w-24 rounded-lg bg-white/5 px-2 py-2 outline-none">{RESPONSE_CHOICES.map(v=>v==="PC_SEPARATOR"?<option key={v} disabled>────────</option>:<option key={v} value={v}>{v==="0"?"0":isPC(v)?responseCount(v)+" (PC)":v}</option>)}</select></td>)}
    <td className="px-3 py-2"><input type="number" value={r.unsubscribes??0} onChange={e=>patch(tile.country,i,"unsubscribes",n(e.target.value))} className="w-24 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
    <td className="px-3 py-2"><input type="number" value={r.bounced??0} onChange={e=>patch(tile.country,i,"bounced",n(e.target.value))} className="w-20 rounded-lg bg-white/5 px-2 py-2 outline-none"/></td>
