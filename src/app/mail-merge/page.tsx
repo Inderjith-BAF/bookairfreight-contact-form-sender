@@ -111,11 +111,35 @@ export default function MailMergePage(){
   return parts.length?parts.join(", "):"none";
  };
  const loadFreshLeads=useCallback(async()=>{
-  const d=await api("/api/leads?country="+encodeURIComponent(form.country)+"&page=1&pageSize=1000");
-  const all=(d.leads||[]) as Lead[];
-  const eligible=all.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
+  // Load the full visible Master Lead Sheet in pages; the API still enforces member ownership.
+  // Normalize country aliases locally so US/USA/United States variants do not hide new leads.
+  const pageSize=1000;
+  const all:Lead[]=[];
+  for(let page=1;page<=100;page++){
+   const d=await api("/api/leads?page="+page+"&pageSize="+pageSize);
+   const batch=(d.leads||[]) as Lead[];
+   all.push(...batch);
+   if(batch.length<pageSize)break;
+  }
+  const countryKey=(v:string)=>String(v||"").trim().toLowerCase().replace(/[^a-z]/g,"");
+  const aliases:Record<string,string[]>={
+   us:["us","usa","unitedstates","unitedstatesofamerica"],
+   usa:["us","usa","unitedstates","unitedstatesofamerica"],
+   unitedstates:["us","usa","unitedstates","unitedstatesofamerica"],
+   unitedstatesofamerica:["us","usa","unitedstates","unitedstatesofamerica"],
+   uk:["uk","gb","unitedkingdom","greatbritain"],
+   unitedkingdom:["uk","gb","unitedkingdom","greatbritain"],
+   au:["au","australia"],australia:["au","australia"],
+   uae:["uae","unitedarabemirates"],unitedarabemirates:["uae","unitedarabemirates"],
+   canada:["canada","ca"]
+  };
+  const selectedCountry=countryKey(form.country);
+  const matchingCountry=selectedCountry?new Set(aliases[selectedCountry]||[selectedCountry]):null;
+  const countryLeads=matchingCountry?all.filter(lead=>matchingCountry.has(countryKey(lead.country))):all;
+  const eligible=countryLeads.filter((x:Lead)=>!x.suppression_reason&&!blockedStatuses.includes(x.current_status));
   setLeads(eligible);
-  setMsg(`Lead eligibility check: ${eligible.length} eligible; removed ${all.length-eligible.length} blocked/suppressed leads (${statusRemovalSummary(all)}).`);
+  setSelected(current=>current.filter(id=>eligible.some(lead=>lead.id===id)));
+  setMsg(`Master Lead Sheet refresh: loaded ${all.length} visible leads; ${countryLeads.length} match ${form.country||"all countries"}; ${eligible.length} eligible. Removed ${countryLeads.length-eligible.length} blocked/suppressed leads (${statusRemovalSummary(countryLeads)}).`);
   return eligible;
  },[api,form.country]);
 
