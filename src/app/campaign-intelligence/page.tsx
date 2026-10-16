@@ -422,6 +422,11 @@ export default function CampaignIntelligence() {
                               <span>Suppressed: <b>{row.metrics.suppressed || 0}</b></span>
                               <span>Bounced: <b>{row.metrics.bounces || 0}</b></span>
                             </div>
+                            {Number(row.metrics.stage_ineligible || 0) > 0 && (
+                              <div className="mt-2 font-black text-amber-700">
+                                Stage check: {row.metrics.stage_ineligible} ready/queued no longer match this campaign stage
+                              </div>
+                            )}
                             {Number(row.metrics.data_integrity?.unaccounted || 0) > 0 && (
                               <div className="mt-2 font-black text-red-600">
                                 Data check: {row.metrics.data_integrity.unaccounted} unaccounted
