@@ -41,6 +41,11 @@ export async function POST(request:Request){
  const eligible=(rows||[]).filter((r:any)=>{
   const l=r.master_leads;
   if(!l||l.suppression_reason||blockedStatuses.includes(String(l.current_status||"")))return false;
+  // Retry means resume recipients that were already added to this campaign but
+  // were never sent. Do not re-apply campaign-stage eligibility here: the lead
+  // may have changed status after the original campaign was created, and the
+  // user's explicit retry action is to finish this campaign's unsent recipients.
+  if(isRetry)return true;
   const group=String(campaign.campaign_group||"");
   if(group==="Fresh Outreach")return !l.last_contacted_at;
   if(group==="Follow-up 1")return l.current_status==="Fresh Outreach"&&Boolean(l.last_contacted_at);
@@ -63,7 +68,7 @@ export async function POST(request:Request){
  // created or queued (for example, another Follow-up 3 campaign advanced the
  // Master Lead Sheet status). Do not leave those recipients permanently
  // pending; mark them skipped so Retry/Paused state reflects reality.
- const campaignIneligibleRows=(rows||[]).filter((r:any)=>!trulyBlocked.some((blocked:any)=>blocked.id===r.id)).filter((r:any)=>{
+ const campaignIneligibleRows=isRetry?[]:(rows||[]).filter((r:any)=>!trulyBlocked.some((blocked:any)=>blocked.id===r.id)).filter((r:any)=>{
   const l=r.master_leads;
   if(!l)return false;
   const group=String(campaign.campaign_group||"");
