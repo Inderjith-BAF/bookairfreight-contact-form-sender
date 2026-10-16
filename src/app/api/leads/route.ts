@@ -168,7 +168,7 @@ export async function GET(request: Request) {
     leads = leads.slice(startIndex, startIndex + pageSize);
   }
 
-  return NextResponse.json({ leads, total: leadOwner ? filteredTotal : count || 0, page, pageSize, batches: isFullLeadAccess ? (batches || []) : [], team: visibleTeam });
+  return NextResponse.json({ leads, total: leadOwner ? filteredTotal : count || 0, page, pageSize, batches: isFullLeadAccess ? (batches || []) : [], team: visibleTeam, role: profile.role });
 }
 
 export async function POST(request: Request) {
