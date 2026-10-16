@@ -7,9 +7,24 @@ export async function POST(request:Request){
  const admin=getSupabaseAdmin(); if(!admin)return NextResponse.json({error:"Supabase is not configured."},{status:500});
  const b=await request.json().catch(()=>null); const type=String(b?.event_type||"").toLowerCase(); const providerId=String(b?.provider_message_id||b?.message_id||"");
  if(!type)return NextResponse.json({error:"event_type is required."},{status:400});
- let query=admin.from("mail_merge_campaign_recipients").select("*").limit(1); if(providerId)query=query.eq("provider_message_id",providerId);
- else if(b?.email)query=query.eq("lead_id",String(b.lead_id||""));
- const {data:rows}=await query; const row=rows?.[0]; if(!row)return NextResponse.json({accepted:true,matched:false});
+ let row:any=null;
+ if(providerId){
+  const {data:rows}=await admin.from("mail_merge_campaign_recipients").select("*").eq("provider_message_id",providerId).limit(1);
+  row=rows?.[0]||null;
+ } else {
+  const leadId=String(b?.lead_id||"");
+  let leadIds:string[]=[];
+  if(leadId) leadIds=[leadId];
+  else if(b?.email){
+   const {data:lead}=await admin.from("master_leads").select("id").ilike("email",String(b.email).trim()).maybeSingle();
+   if(lead?.id)leadIds=[String(lead.id)];
+  }
+  if(leadIds.length){
+   const {data:rows}=await admin.from("mail_merge_campaign_recipients").select("*").in("lead_id",leadIds).in("status",["Sent","Replied","Auto Response"]).order("sent_at",{ascending:false}).limit(1);
+   row=rows?.[0]||null;
+  }
+ }
+ if(!row)return NextResponse.json({accepted:true,matched:false});
  const leadId=row.lead_id; const now=new Date().toISOString(); let status=row.status; const patch:any={updated_at:now};
  if(type.includes("bounce")){status="Bounced";patch.status=status;patch.error_message=String(b?.reason||"Provider reported bounce");await admin.from("master_leads").update({current_status:"Bounced",suppression_reason:"Bounce reported by provider",suppressed_at:now,updated_at:now}).eq("id",leadId);}
  else if(type.includes("unsubscribe")){status="Suppressed";patch.status=status;patch.error_message="Unsubscribe reported by provider";await admin.from("master_leads").update({current_status:"Unsubscribed",suppression_reason:"Unsubscribe reported by provider",suppressed_at:now,updated_at:now}).eq("id",leadId);}
