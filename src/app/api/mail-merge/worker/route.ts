@@ -12,10 +12,16 @@ function authorized(request:Request){
 }
 
 async function finishCampaign(admin:any,campaignId:string){
- const {count:queued}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Queued");
- const {count:active}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Sending");
- const {count:ready}=await admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Ready");
- if(!queued&&!active) await admin.from("mail_merge_campaigns").update({status:ready?"Paused":"Completed",updated_at:new Date().toISOString()}).eq("id",campaignId);
+ const [{count:queued},{count:active},{count:ready},{count:failed},{data:campaign}] = await Promise.all([
+  admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Queued"),
+  admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Sending"),
+  admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Ready"),
+  admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Failed"),
+  admin.from("mail_merge_campaigns").select("status").eq("id",campaignId).maybeSingle()
+ ]);
+ if(queued||active||!campaign||campaign.status==="Paused")return;
+ const nextStatus=(ready||failed)?"Paused":"Completed";
+ await admin.from("mail_merge_campaigns").update({status:nextStatus,updated_at:new Date().toISOString()}).eq("id",campaignId);
 }
 
 async function dispatchAccount(admin:any,request:Request,accountId:string){
