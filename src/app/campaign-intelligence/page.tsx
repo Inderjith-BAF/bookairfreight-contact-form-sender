@@ -209,7 +209,7 @@ export default function CampaignIntelligence() {
           </button>
         </header>
 
-        <div className="os-stagger mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="os-stagger mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
           {cards.map(([label, value, Icon]) => (
             <div
               key={String(label)}
