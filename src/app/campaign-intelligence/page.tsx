@@ -37,6 +37,7 @@ export default function CampaignIntelligence() {
   const [actionMsg, setActionMsg] = useState("");
   const [activityDate, setActivityDate] = useState("");
   const [syncingCampaignId, setSyncingCampaignId] = useState("");
+  const [retryingCampaignId, setRetryingCampaignId] = useState("");
 
   const load = useCallback(
     async (t = token) => {
@@ -110,6 +111,31 @@ export default function CampaignIntelligence() {
       setErr(error instanceof Error ? error.message : "Reply sync failed");
     } finally {
       setSyncingCampaignId("");
+    }
+  }
+
+  async function retryPausedCampaign(campaign: Row) {
+    if (!token || busy || syncingCampaignId || retryingCampaignId) return;
+    setRetryingCampaignId(campaign.id);
+    setErr("");
+    setActionMsg("");
+    try {
+      const response = await fetch("/api/mail-merge/queue", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ campaignId: campaign.id, action: "retry" }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Campaign retry failed");
+      setActionMsg(data.message || "Campaign retry completed.");
+      await load(token);
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Campaign retry failed");
+    } finally {
+      setRetryingCampaignId("");
     }
   }
 
@@ -258,7 +284,7 @@ export default function CampaignIntelligence() {
             </div>
             <button
               onClick={addSelectedToOutbound}
-              disabled={busy || !!syncingCampaignId || !selectedIds.length}
+              disabled={busy || !!syncingCampaignId || !!retryingCampaignId || !selectedIds.length}
               className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
             >
               {busy
@@ -353,6 +379,7 @@ export default function CampaignIntelligence() {
                     </td>
                     <td className="p-3">{row.metrics.recipients}</td>
                     <td className="p-3">{row.metrics.eligible}</td>
+                    <td className="p-3 font-bold text-amber-600">{row.metrics.pending || 0}</td>
                     <td className="p-3">{row.metrics.sent}</td>
                     <td className="p-3">{row.metrics.opens}</td>
                     <td className="p-3">{row.metrics.replies}</td>
@@ -373,16 +400,36 @@ export default function CampaignIntelligence() {
                         : "—"}
                     </td>
                     <td className="p-3">
-                      <button
-                        type="button"
-                        onClick={() => syncCampaignReplies(row)}
-                        disabled={busy || !!syncingCampaignId}
-                        className="whitespace-nowrap rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 disabled:opacity-50"
-                      >
-                        {syncingCampaignId === row.id
-                          ? "Syncing…"
-                          : "Sync replies"}
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        {row.status === "Paused" && (
+                          <div className="max-w-xs text-[10px] leading-4 text-amber-700">
+                            {row.metrics.pause_reason || "Paused — reason unavailable."}
+                            {Number(row.metrics.pending || 0) > 0 && (
+                              <div className="mt-1 font-bold">{row.metrics.pending} remaining to retry</div>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          {row.status === "Paused" && Number(row.metrics.pending || 0) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => retryPausedCampaign(row)}
+                              disabled={busy || !!syncingCampaignId || !!retryingCampaignId}
+                              className="whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                            >
+                              {retryingCampaignId === row.id ? "Retrying…" : "Retry remaining"}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => syncCampaignReplies(row)}
+                            disabled={busy || !!syncingCampaignId || !!retryingCampaignId}
+                            className="whitespace-nowrap rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 disabled:opacity-50"
+                          >
+                            {syncingCampaignId === row.id ? "Syncing…" : "Sync replies"}
+                          </button>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))}
