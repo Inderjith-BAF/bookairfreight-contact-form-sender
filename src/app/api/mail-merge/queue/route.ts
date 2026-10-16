@@ -59,6 +59,29 @@ export async function POST(request:Request){
  }).length;
  reasons.lead_record_missing=(rows||[]).filter((r:any)=>!r.master_leads).length;
 
+ // A lead can become ineligible for this campaign after the recipient was
+ // created or queued (for example, another Follow-up 3 campaign advanced the
+ // Master Lead Sheet status). Do not leave those recipients permanently
+ // pending; mark them skipped so Retry/Paused state reflects reality.
+ const campaignIneligibleRows=(rows||[]).filter((r:any)=>!trulyBlocked.some((blocked:any)=>blocked.id===r.id)).filter((r:any)=>{
+  const l=r.master_leads;
+  if(!l)return false;
+  const group=String(campaign.campaign_group||"");
+  if(group==="Fresh Outreach")return Boolean(l.last_contacted_at);
+  if(group==="Follow-up 1")return !(l.current_status==="Fresh Outreach"&&Boolean(l.last_contacted_at));
+  if(group==="Follow-up 2")return !(l.current_status==="Follow-up 1"&&Boolean(l.last_contacted_at));
+  if(group==="Follow-up 3")return !(l.current_status==="Follow-up 2"&&Boolean(l.last_contacted_at));
+  return false;
+ });
+ if(campaignIneligibleRows.length){
+  await admin.from("mail_merge_campaign_recipients").update({
+   status:"Skipped",
+   send_not_before:null,
+   error_message:"Lead no longer matches the Master Lead Sheet campaign-stage eligibility.",
+   updated_at:new Date().toISOString()
+  }).in("id",campaignIneligibleRows.map((r:any)=>r.id)).in("status",["Ready","Queued"]);
+ }
+
  const byBatch=new Map<string,any[]>();
  for(const r of shuffle(eligible)){
   const k=`${r.sender_account_id||"unassigned"}::${r.batch_id||"legacy"}`;
@@ -115,13 +138,17 @@ export async function POST(request:Request){
  }
 
  const skipped=(rows||[]).length-queued;
- await admin.from("mail_merge_campaigns").update({status:queued?"Queued":"Paused",updated_at:new Date().toISOString()}).eq("id",campaignId);
- await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:isRetry?"campaign_retry_queued":"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 1/2/3/4/5 minutes",member_order:"independent accounts",parallelism:"all eligible accounts concurrently"}});
+ const remainingDispatchable=eligible.length-candidates.length;
+ const finalStatus=queued?"Queued":remainingDispatchable>0?"Paused":"Completed";
+ await admin.from("mail_merge_campaigns").update({status:finalStatus,updated_at:new Date().toISOString()}).eq("id",campaignId);
+ await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:isRetry?"campaign_retry_queued":"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,reasons,pacing:"account-level 1/2/3/4/5 minutes",member_order:"independent accounts",parallelism:"all eligible accounts concurrently"}});
 
  return NextResponse.json({
-  queued,skipped,reasons,status:queued?"Queued":"Paused",
+  queued,skipped,reasons,status:finalStatus,
   message:queued
    ?(isRetry?"Retry queued "+queued+" remaining recipients from where the campaign stopped. Previously queued recipients were resumed without touching already-sent recipients.":"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 1, 2, 3, 4, or 5 minute gap.")
-   :"No remaining recipients could be queued. Check the pause reason, mailbox connections, account limits, and recipient eligibility."
+   :remainingDispatchable>0
+    ?"No recipients could be queued right now. Check mailbox connections and account limits."
+    :"No remaining recipients are eligible for this campaign stage. Ineligible recipients were skipped; already-sent recipients were not touched."
  });
 }
