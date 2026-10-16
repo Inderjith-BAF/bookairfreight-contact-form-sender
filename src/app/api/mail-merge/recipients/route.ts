@@ -16,7 +16,15 @@ export async function POST(request:Request){
  const {data:leads,error}=await admin.from("master_leads").select("*").in("id",leadIds); if(error)return NextResponse.json({error:error.message},{status:500});
  if(profile.role==="member"&&(leads||[]).some((lead:any)=>lead.lead_owner!==profile.id))return NextResponse.json({error:"Members can only add leads they uploaded to a campaign."},{status:403});
  const blocked=(leads||[]).filter((l:any)=>l.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative","Needs Review"].includes(l.current_status));
- const eligible=(leads||[]).filter((l:any)=>!blocked.some((x:any)=>x.id===l.id)); if(!eligible.length)return NextResponse.json({error:"No selected recipients are eligible to send."},{status:409});
+ const eligible=(leads||[]).filter((l:any)=>{
+  if(blocked.some((x:any)=>x.id===l.id))return false;
+  const group=String(campaign.campaign_group||"");
+  if(group==="Fresh Outreach")return !l.last_contacted_at;
+  if(group==="Follow-up 1")return l.current_status==="Fresh Outreach"&&Boolean(l.last_contacted_at);
+  if(group==="Follow-up 2")return l.current_status==="Follow-up 1"&&Boolean(l.last_contacted_at);
+  if(group==="Follow-up 3")return l.current_status==="Follow-up 2"&&Boolean(l.last_contacted_at);
+  return true;
+ }); if(!eligible.length)return NextResponse.json({error:"No selected recipients are eligible for this campaign stage."},{status:409});
  const {data:existing}=await admin.from("mail_merge_campaign_recipients").select("lead_id").eq("campaign_id",campaignId).in("lead_id",eligible.map((l:any)=>l.id)); const seen=new Set((existing||[]).map((x:any)=>x.lead_id)); const fresh=eligible.filter((l:any)=>!seen.has(l.id));
  if(!fresh.length)return NextResponse.json({added:0,skipped:eligible.length,blocked:blocked.length,message:"All eligible selected recipients were already saved in this campaign."});
  const rows=fresh.map((lead:any)=>({campaign_id:campaignId,lead_id:lead.id,sender_account_id:senderAccountId,batch_id:batchId,subject:render(subjectOverride||campaign.subject,lead),body:render(bodyOverride||campaign.body,lead),status:"Ready"}));
