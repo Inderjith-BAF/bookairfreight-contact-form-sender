@@ -73,7 +73,8 @@ async function dispatchAccount(admin:any,request:Request,accountId:string){
  // Re-check stage eligibility immediately before provider delivery. A lead can
  // advance in Master Lead Sheet after the recipient was queued, so queue-time
  // eligibility alone is not enough to prevent duplicate/out-of-order follow-ups.
- if(!campaignStageEligible(String(campaign.campaign_group||""),lead)){
+ const isExplicitCampaignRetry=String(row.error_message||"").startsWith("Retry resumed from Campaign Intelligence.");
+ if(!campaignStageEligible(String(campaign.campaign_group||""),lead) && !isExplicitCampaignRetry){
   await admin.from("mail_merge_campaign_recipients").update({
    status:"Skipped",
    send_not_before:null,
