@@ -37,6 +37,9 @@ export async function GET(request: Request) {
   const lastContactDate = searchParams.get("lastContactDate") || "";
   const lastReplyDate = searchParams.get("lastReplyDate") || "";
   const exportCsv = searchParams.get("export") === "csv";
+  if (exportCsv && !["admin","lead_generation_admin"].includes(profile.role)) {
+    return NextResponse.json({ error: "Only Admin and Lead Generation Admin can export the Master Lead Sheet." }, { status: 403 });
+  }
   const page = Math.max(1, Number(searchParams.get("page") || 1));
   const pageSize = Math.min(1000, Math.max(10, Number(searchParams.get("pageSize") || 50)));
   const { data: team, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
@@ -77,11 +80,25 @@ export async function GET(request: Request) {
   if (updatedDate) { const d=dayBounds(updatedDate); query=query.gte("updated_at",d.from).lte("updated_at",d.to); }
   if (lastContactDate) { const d=dayBounds(lastContactDate); query=query.gte("last_contacted_at",d.from).lte("last_contacted_at",d.to); }
   if (lastReplyDate) { const d=dayBounds(lastReplyDate); query=query.gte("last_replied_at",d.from).lte("last_replied_at",d.to); }
-  const [{ data, error, count }, { data: batches, error: batchError }] = await Promise.all([
-    query,
-    admin.from("lead_import_batches").select("*").order("started_at", { ascending: false }).limit(20)
-  ]);
-  if (error) return NextResponse.json({ error: "Could not load Master Lead Sheet: " + error.message }, { status: 500 });
+  let data: any[] = [];
+  let count: number | null = null;
+  if (exportCsv || leadOwner) {
+    // Export and owner filtering must operate on the complete matching registry,
+    // not the first PostgREST page. PostgREST commonly caps responses at 1,000.
+    for (let offset = 0; offset < 100000; offset += 1000) {
+      const { data: pageRows, error: pageError, count: pageCount } = await query.range(offset, offset + 999);
+      if (pageError) return NextResponse.json({ error: "Could not load Master Lead Sheet: " + pageError.message }, { status: 500 });
+      if (count === null && typeof pageCount === "number") count = pageCount;
+      data.push(...(pageRows || []));
+      if (!pageRows || pageRows.length < 1000) break;
+    }
+  } else {
+    const result = await query;
+    if (result.error) return NextResponse.json({ error: "Could not load Master Lead Sheet: " + result.error.message }, { status: 500 });
+    data = result.data || [];
+    count = result.count;
+  }
+  const { data: batches, error: batchError } = await admin.from("lead_import_batches").select("*").order("started_at", { ascending: false }).limit(20);
   // Import-batch metadata is ancillary; do not block lead browsing if its table/query is unavailable.
   if (batchError) console.error("Master Lead Sheet import-batch metadata unavailable:", batchError.message);
   const ownerIds = [...new Set((data || []).map((lead: any) => lead.lead_owner).filter(Boolean))];
@@ -324,9 +341,19 @@ export async function PATCH(request: Request) {
   const isResponse = ["Positive","Neutral","Negative"].includes(status);
   const patch: Record<string, unknown> = {
     current_status: status,
-    response_classification: isResponse ? status : null,
     updated_at: new Date().toISOString()
   };
+  // A normal workflow-status change must not erase a classification that was
+  // already recorded from a human reply. Only explicit response classification
+  // changes are allowed to change this field.
+  if (isResponse) patch.response_classification = status;
+  else if (body?.responseClassification !== undefined) {
+    const requested = body.responseClassification === null ? null : String(body.responseClassification);
+    if (requested !== null && !["Positive","Neutral","Negative"].includes(requested)) {
+      return NextResponse.json({ error: "Unsupported response classification." }, { status: 400 });
+    }
+    patch.response_classification = requested;
+  }
   if (isResponse) { patch.suppression_reason = "Response classified: " + status; patch.suppressed_at = new Date().toISOString(); patch.last_replied_at = new Date().toISOString(); }
   if (status === "Suppressed") { patch.suppression_reason = String(body?.suppressionReason || "Manually suppressed"); patch.suppressed_at = new Date().toISOString(); }
   if (status === "Bounced" || status === "Unsubscribed") { patch.suppression_reason = status; patch.suppressed_at = new Date().toISOString(); }
