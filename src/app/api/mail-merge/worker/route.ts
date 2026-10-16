@@ -74,7 +74,11 @@ async function dispatchAccount(admin:any,request:Request,accountId:string){
   const now=new Date().toISOString();
   const providerId=String(response.messageId||""),providerThreadId=String(response.threadId||"");
   await admin.from("mail_merge_campaign_recipients").update({status:"Sent",sent_at:now,provider_message_id:providerId,provider_thread_id:providerThreadId||null,updated_at:now,error_message:null}).eq("id",row.id);
-  await admin.from("master_leads").update({last_contacted_at:now,current_status:"Fresh Outreach",updated_at:now}).eq("id",lead.id);
+  const campaignGroup=String(campaign.campaign_group||"");
+  const nextLeadStatus=["Fresh Outreach","Follow-up 1","Follow-up 2","Follow-up 3"].includes(campaignGroup)
+    ? campaignGroup
+    : (String(lead.current_status||"New")==="New" ? "Fresh Outreach" : String(lead.current_status||"Fresh Outreach"));
+  await admin.from("master_leads").update({last_contacted_at:now,current_status:nextLeadStatus,updated_at:now}).eq("id",lead.id);
   const {data:acct}=await admin.from("outbound_email_accounts").select("total_sent").eq("id",row.sender_account_id).single();
   await admin.from("outbound_email_accounts").update({last_sent_at:now,total_sent:Number(acct?.total_sent||0)+1}).eq("id",row.sender_account_id);
   await admin.from("mail_merge_events").insert({campaign_recipient_id:row.id,campaign_id:campaignId,lead_id:lead.id,sender_account_id:row.sender_account_id,actor_id:campaign.created_by,event_type:"sent",details:{provider_message_id:providerId,provider_thread_id:providerThreadId||null,threaded_reply:sameSubject,dispatcher:"account",account_id:row.sender_account_id}});
