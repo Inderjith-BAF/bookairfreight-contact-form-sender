@@ -21,21 +21,37 @@ export async function GET(request:Request){
  for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").ilike("event_type","%bounce%").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});bounceEvents.push(...(page||[]));if(!page||page.length<1000)break;}
  const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||allRecipients.some((r:any)=>r.campaign_id===c.id&&r.sender_account_id===account)));
  const accountMap=new Map((accounts||[]).map((a:any)=>[String(a.id),a]));
+ const leadMap=new Map((leads||[]).map((l:any)=>[String(l.id),l]));
+ const stageEligible=(campaign:any,r:any)=>{
+  const l=leadMap.get(String(r.lead_id||""));
+  if(!l||l.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative","Needs Review"].includes(String(l.current_status||"")))return false;
+  const contacted=Boolean(l.last_contacted_at);
+  const group=String(campaign.campaign_group||"");
+  if(group==="Fresh Outreach")return !contacted;
+  if(group==="Follow-up 1")return l.current_status==="Fresh Outreach"&&contacted;
+  if(group==="Follow-up 2")return l.current_status==="Follow-up 1"&&contacted;
+  if(group==="Follow-up 3")return l.current_status==="Follow-up 2"&&contacted;
+  return true;
+ };
  const sentByCampaign=new Map();
  for(const event of sentEvents){const campaignId=String(event.campaign_id||""),recipientId=String(event.campaign_recipient_id||"");if(!campaignId||!recipientId)continue;const ids=sentByCampaign.get(campaignId)||new Set();ids.add(recipientId);sentByCampaign.set(campaignId,ids);}
  const pauseReason=(campaign:any,rs:any[])=>{
   if(campaign.status!=="Paused")return null;
   const ready=rs.filter((r:any)=>r.status==="Ready"),queued=rs.filter((r:any)=>r.status==="Queued"),sending=rs.filter((r:any)=>r.status==="Sending"),failed=rs.filter((r:any)=>r.status==="Failed"),suppressed=rs.filter((r:any)=>r.status==="Suppressed"),bounced=rs.filter((r:any)=>r.status==="Bounced");
-  if(ready.length){
-   const readyAccounts=[...new Set(ready.map((r:any)=>String(r.sender_account_id||"")).filter(Boolean))];
+  const stageReady=ready.filter((r:any)=>stageEligible(campaign,r)),stageQueued=queued.filter((r:any)=>stageEligible(campaign,r));
+  const stageIneligible=ready.length+queued.length-stageReady.length-stageQueued.length;
+  if(stageReady.length||stageQueued.length){
+   const dispatchable=[...stageReady,...stageQueued];
+   const readyAccounts=[...new Set(dispatchable.map((r:any)=>String(r.sender_account_id||"")).filter(Boolean))];
    const disconnected=readyAccounts.some(id=>{const a=accountMap.get(id);return !a||a.health_status==="Paused"||a.connection_status!=="Connected";});
    if(disconnected)return "Paused — one or more sending accounts need reconnection or health review.";
    const now=Date.now(),dayStart=new Date();dayStart.setHours(0,0,0,0);const hourStart=now-60*60*1000;
    const capacityAvailable=readyAccounts.some(id=>{const a=accountMap.get(id);if(!a)return false;const sentToday=allRecipients.filter((r:any)=>String(r.sender_account_id||"")===id&&r.sent_at&&new Date(r.sent_at).getTime()>=dayStart.getTime()).length;const sentHour=allRecipients.filter((r:any)=>String(r.sender_account_id||"")===id&&r.sent_at&&new Date(r.sent_at).getTime()>=hourStart).length;return sentToday<Number(a.daily_send_limit||100)&&sentHour<Number(a.hourly_send_limit||20);});
    if(!capacityAvailable)return "Paused — sending account daily/hourly capacity is currently exhausted.";
-   return "Paused — remaining recipients are ready to dispatch.";
+   return "Paused — "+(stageIneligible?stageIneligible+" queued/ready recipient(s) are no longer eligible; ":"")+"remaining eligible recipients are ready to dispatch.";
   }
-  if(queued.length||sending.length){const parts=[];if(queued.length)parts.push(queued.length+" queued");if(sending.length)parts.push(sending.length+" currently sending");return "Paused — "+parts.join(" and ")+". Resume dispatch to continue.";}
+  if(stageIneligible)return "Paused — "+stageIneligible+" remaining recipient(s) no longer match the Master Lead Sheet campaign-stage eligibility.";
+  if(sending.length)return "Paused — "+sending.length+" currently sending. Resume dispatch to continue.";
   if(failed.length)return "Paused — "+failed.length+" send failure(s) need review before retry.";
   if(bounced.length)return "Paused — "+bounced.length+" bounced recipient(s) are suppressed from further outreach.";
   if(suppressed.length)return "Paused — "+suppressed.length+" recipient(s) are suppressed and cannot be sent.";
@@ -54,9 +70,12 @@ export async function GET(request:Request){
   const ready=rs.filter((r:any)=>r.status==="Ready").length,queued=rs.filter((r:any)=>r.status==="Queued").length,sending=rs.filter((r:any)=>r.status==="Sending").length,failed=rs.filter((r:any)=>r.status==="Failed").length,skipped=rs.filter((r:any)=>r.status==="Skipped").length,suppressed=rs.filter((r:any)=>r.status==="Suppressed").length,bounced=bounceIds.size,replies=rs.filter((r:any)=>r.status==="Replied").length,autoResponses=rs.filter((r:any)=>r.status==="Auto Response").length;
   const opens=rs.reduce((n:number,r:any)=>n+Number(r.open_count||0),0),positive=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Positive").length,neutral=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Neutral").length,negative=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Negative").length;
   const unsubscribes=(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.current_status==="Unsubscribed").length;
-  const eligible=Math.max(0,rs.length-suppressed-skipped),pending=ready+queued+sending,retryable=ready+queued;
+  const stageEligibleRecipients=rs.filter((r:any)=>stageEligible(c,r)&&!["Suppressed","Skipped"].includes(String(r.status||"")));
+  const eligible=stageEligibleRecipients.length;
+  const pending=ready+queued+sending;
+  const retryable=rs.filter((r:any)=>["Ready","Queued"].includes(String(r.status||""))&&stageEligible(c,r)).length;
   const accounted=Math.min(rs.length,sent+failed+skipped+suppressed+pending);
-  return {...c,metrics:{imported:0,recipients:rs.length,eligible,pending,ready,queued,sending,retryable,failed,skipped,suppressed,sent,opens,replies,autoResponses,positive,neutral,negative,bounces:bounced,unsubscribes,completion_rate:eligible?Math.min(100,sent/eligible*100):0,completion_time:c.completed_at&&c.started_at?Math.max(0,new Date(c.completed_at).getTime()-new Date(c.started_at).getTime()):null,status_counts:{Ready:ready,Queued:queued,Sending:sending,Sent:sent,Replied:replies,"Auto Response":autoResponses,Failed:failed,Bounced:bounced,Suppressed:suppressed,Skipped:skipped},data_integrity:{accounted,unaccounted:Math.max(0,rs.length-accounted)},pause_reason:pauseReason(c,rs)}};
+  return {...c,metrics:{imported:0,recipients:rs.length,eligible,pending,ready,queued,sending,retryable,failed,skipped,suppressed,sent,opens,replies,autoResponses,positive,neutral,negative,bounces:bounced,unsubscribes,completion_rate:eligible?Math.min(100,sent/eligible*100):0,completion_time:c.completed_at&&c.started_at?Math.max(0,new Date(c.completed_at).getTime()-new Date(c.started_at).getTime()):null,status_counts:{Ready:ready,Queued:queued,Sending:sending,Sent:sent,Replied:replies,"Auto Response":autoResponses,Failed:failed,Bounced:bounced,Suppressed:suppressed,Skipped:skipped},data_integrity:{accounted,unaccounted:Math.max(0,rs.length-accounted)},pause_reason:pauseReason(c,rs),stage_ineligible:Math.max(0,ready+queued-retryable)}};
  });
  const totals=rows.reduce((a:any,r:any)=>{for(const k of Object.keys(r.metrics))if(typeof r.metrics[k]==="number")a[k]=(a[k]||0)+r.metrics[k];return a},{});
  return NextResponse.json({campaigns:rows,totals,batches:batches||[],accounts:accounts||[],filters:{countries:[...new Set((campaigns||[]).map((c:any)=>c.country).filter(Boolean))],groups:[...new Set((campaigns||[]).map((c:any)=>c.campaign_group).filter(Boolean))]}});
