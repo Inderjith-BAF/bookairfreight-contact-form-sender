@@ -38,7 +38,7 @@ async function dispatchAccount(admin:any,request:Request,accountId:string){
  const {data:row,error:rowError}=await admin.from("mail_merge_campaign_recipients").select("*,master_leads(*),outbound_email_accounts(*)").eq("id",claimed[0].id).maybeSingle();
  if(rowError||!row)return {sent:0,failed:0,disconnected:0,error:rowError?.message||"Claimed recipient could not be loaded."};
  const lead=row.master_leads,account=row.outbound_email_accounts,campaignId=String(row.campaign_id);
- const {data:campaign}=await admin.from("mail_merge_campaigns").select("id,created_by,status").eq("id",campaignId).maybeSingle();
+ const {data:campaign}=await admin.from("mail_merge_campaigns").select("id,created_by,status,campaign_group").eq("id",campaignId).maybeSingle();
  if(!campaign)return {sent:0,failed:1,disconnected:0,error:"Campaign not found for claimed recipient."};
 
  // A campaign can be paused while a worker is already processing a queued
