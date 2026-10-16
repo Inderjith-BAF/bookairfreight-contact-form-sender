@@ -1,41 +1,60 @@
-import { NextResponse } from "next/server"; import { requireOutboundUser } from "@/lib/outbound-auth";
+import { NextResponse } from "next/server";
+import { requireOutboundUser } from "@/lib/outbound-auth";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
-export async function GET(request:Request){const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;const {admin,profile}=auth;const {searchParams}=new URL(request.url);
-const country=searchParams.get("country")||"",group=searchParams.get("group")||"",account=searchParams.get("account")||"";
-const [{data:campaigns,error:cErr},{data:recipients,error:rErr},{data:leads,error:lErr},{data:accounts,error:aErr},{data:batches,error:bErr},{data:sentEvents,error:eErr}]=await Promise.all([
- profile.role==="member" ? admin.from("mail_merge_campaigns").select("*").eq("created_by",profile.id).order("created_at",{ascending:false}).limit(500) : admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(500),
- admin.from("mail_merge_campaign_recipients").select("*").range(0,999),
- admin.from("master_leads").select("id,country,current_status,response_classification,suppression_status,last_contacted_at,last_replied_at"),
- profile.role==="member" ? admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error").eq("employee_id",profile.id) : admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error"),
- profile.role==="member" ? admin.from("lead_import_batches").select("*").eq("imported_by",profile.id).order("started_at",{ascending:false}).limit(200) : admin.from("lead_import_batches").select("*").order("started_at",{ascending:false}).limit(200),
- admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id").eq("event_type","sent").range(0,49999)
-]);if(cErr||rErr||lErr||aErr||bErr||eErr)return NextResponse.json({error:cErr?.message||rErr?.message||lErr?.message||aErr?.message||bErr?.message||eErr?.message},{status:500});
-let allRecipients:any[]=[...(recipients||[])]; if(!rErr){for(let offset=1000;offset<50000;offset+=1000){const {data:page,error:pageError}=await admin.from("mail_merge_campaign_recipients").select("*").range(offset,offset+999);if(pageError)return NextResponse.json({error:pageError.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}}
-const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||((allRecipients||[]).filter((r:any)=>r.campaign_id===c.id).some((r:any)=>r.sender_account_id===account))));
-const accountMap=new Map((accounts||[]).map((a:any)=>[String(a.id),a]));
-const pauseReason=(campaign:any,rs:any[])=>{
- if(campaign.status!=="Paused")return null;
- const ready=rs.filter((r:any)=>r.status==="Ready");
- if(!ready.length){
-  if(rs.some((r:any)=>r.status==="Failed"))return "Paused — send failures need review before retry.";
+const SENT_STATUSES=new Set(["Sent","Replied","Auto Response","Bounced"]);
+export async function GET(request:Request){
+ const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
+ const {admin,profile}=auth;const {searchParams}=new URL(request.url);
+ const country=searchParams.get("country")||"",group=searchParams.get("group")||"",account=searchParams.get("account")||"";
+ const [{data:campaigns,error:cErr},{data:leads,error:lErr},{data:accounts,error:aErr},{data:batches,error:bErr}]=await Promise.all([
+  profile.role==="member"?admin.from("mail_merge_campaigns").select("*").eq("created_by",profile.id).order("created_at",{ascending:false}).limit(500):admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(500),
+  admin.from("master_leads").select("id,country,current_status,response_classification,suppression_status,last_contacted_at,last_replied_at"),
+  profile.role==="member"?admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error").eq("employee_id",profile.id):admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error"),
+  profile.role==="member"?admin.from("lead_import_batches").select("*").eq("imported_by",profile.id).order("started_at",{ascending:false}).limit(200):admin.from("lead_import_batches").select("*").order("started_at",{ascending:false}).limit(200)
+ ]);
+ if(cErr||lErr||aErr||bErr)return NextResponse.json({error:cErr?.message||lErr?.message||aErr?.message||bErr?.message},{status:500});
+ const allRecipients:any[]=[];
+ for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("*").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
+ const sentEvents:any[]=[];
+ for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").eq("event_type","sent").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});sentEvents.push(...(page||[]));if(!page||page.length<1000)break;}
+ const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||allRecipients.some((r:any)=>r.campaign_id===c.id&&r.sender_account_id===account)));
+ const accountMap=new Map((accounts||[]).map((a:any)=>[String(a.id),a]));
+ const sentByCampaign=new Map();
+ for(const event of sentEvents){const campaignId=String(event.campaign_id||""),recipientId=String(event.campaign_recipient_id||"");if(!campaignId||!recipientId)continue;const ids=sentByCampaign.get(campaignId)||new Set();ids.add(recipientId);sentByCampaign.set(campaignId,ids);}
+ const pauseReason=(campaign:any,rs:any[])=>{
+  if(campaign.status!=="Paused")return null;
+  const ready=rs.filter((r:any)=>r.status==="Ready"),queued=rs.filter((r:any)=>r.status==="Queued"),sending=rs.filter((r:any)=>r.status==="Sending"),failed=rs.filter((r:any)=>r.status==="Failed"),suppressed=rs.filter((r:any)=>r.status==="Suppressed"),bounced=rs.filter((r:any)=>r.status==="Bounced");
+  if(ready.length){
+   const readyAccounts=[...new Set(ready.map((r:any)=>String(r.sender_account_id||"")).filter(Boolean))];
+   const disconnected=readyAccounts.some(id=>{const a=accountMap.get(id);return !a||a.health_status==="Paused"||a.connection_status!=="Connected";});
+   if(disconnected)return "Paused — one or more sending accounts need reconnection or health review.";
+   const now=Date.now(),dayStart=new Date();dayStart.setHours(0,0,0,0);const hourStart=now-60*60*1000;
+   const capacityAvailable=readyAccounts.some(id=>{const a=accountMap.get(id);if(!a)return false;const sentToday=allRecipients.filter((r:any)=>String(r.sender_account_id||"")===id&&r.sent_at&&new Date(r.sent_at).getTime()>=dayStart.getTime()).length;const sentHour=allRecipients.filter((r:any)=>String(r.sender_account_id||"")===id&&r.sent_at&&new Date(r.sent_at).getTime()>=hourStart).length;return sentToday<Number(a.daily_send_limit||100)&&sentHour<Number(a.hourly_send_limit||20);});
+   if(!capacityAvailable)return "Paused — sending account daily/hourly capacity is currently exhausted.";
+   return "Paused — remaining recipients are ready to dispatch.";
+  }
+  if(queued.length||sending.length){const parts=[];if(queued.length)parts.push(queued.length+" queued");if(sending.length)parts.push(sending.length+" currently sending");return "Paused — "+parts.join(" and ")+". Resume dispatch to continue.";}
+  if(failed.length)return "Paused — "+failed.length+" send failure(s) need review before retry.";
+  if(bounced.length)return "Paused — "+bounced.length+" bounced recipient(s) are suppressed from further outreach.";
+  if(suppressed.length)return "Paused — "+suppressed.length+" recipient(s) are suppressed and cannot be sent.";
   return "Paused — no dispatchable recipients remain.";
- }
- const readyAccounts=[...new Set(ready.map((r:any)=>String(r.sender_account_id||"")).filter(Boolean))];
- const disconnected=readyAccounts.some(id=>{const a=accountMap.get(id);return !a||a.health_status==="Paused"||a.connection_status!=="Connected";});
- if(disconnected)return "Paused — one or more sending accounts need reconnection or health review.";
- const now=Date.now(),dayStart=new Date();dayStart.setHours(0,0,0,0);const hourStart=now-60*60*1000;
- const capacityAvailable=readyAccounts.some(id=>{
-  const a=accountMap.get(id);if(!a)return false;
-  const sentToday=allRecipients.filter((r:any)=>String(r.sender_account_id||"")===id&&r.sent_at&&new Date(r.sent_at).getTime()>=dayStart.getTime()).length;
-  const sentHour=allRecipients.filter((r:any)=>String(r.sender_account_id||"")===id&&r.sent_at&&new Date(r.sent_at).getTime()>=hourStart).length;
-  return sentToday<Number(a.daily_send_limit||100)&&sentHour<Number(a.hourly_send_limit||20);
+ };
+ const rows=cs.map((c:any)=>{
+  const rs=allRecipients.filter((r:any)=>r.campaign_id===c.id);
+  const sentFromEvents=sentByCampaign.get(String(c.id))||new Set();
+  const sentRecipients=rs.filter((r:any)=>Boolean(r.sent_at)||SENT_STATUSES.has(String(r.status)));
+  const sentIds=new Set([...Array.from(sentFromEvents),...sentRecipients.map((r:any)=>String(r.id))]);
+  const sent=sentIds.size;
+  const ready=rs.filter((r:any)=>r.status==="Ready").length,queued=rs.filter((r:any)=>r.status==="Queued").length,sending=rs.filter((r:any)=>r.status==="Sending").length,failed=rs.filter((r:any)=>r.status==="Failed").length,skipped=rs.filter((r:any)=>r.status==="Skipped").length,suppressed=rs.filter((r:any)=>r.status==="Suppressed").length,bounced=rs.filter((r:any)=>r.status==="Bounced").length,replies=rs.filter((r:any)=>r.status==="Replied").length,autoResponses=rs.filter((r:any)=>r.status==="Auto Response").length;
+  const opens=rs.reduce((n:number,r:any)=>n+Number(r.open_count||0),0),positive=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Positive").length,neutral=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Neutral").length,negative=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Negative").length;
+  const unsubscribes=(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.current_status==="Unsubscribed").length;
+  const eligible=Math.max(0,rs.length-suppressed-skipped),pending=ready+queued+sending,retryable=ready+queued;
+  const accounted=Math.min(rs.length,sent+failed+skipped+suppressed+pending);
+  return {...c,metrics:{imported:0,recipients:rs.length,eligible,pending,ready,queued,sending,retryable,failed,skipped,suppressed,sent,opens,replies,autoResponses,positive,neutral,negative,bounces:bounced,unsubscribes,completion_rate:eligible?Math.min(100,sent/eligible*100):0,completion_time:c.completed_at&&c.started_at?Math.max(0,new Date(c.completed_at).getTime()-new Date(c.started_at).getTime()):null,status_counts:{Ready:ready,Queued:queued,Sending:sending,Sent:sent,Replied:replies,"Auto Response":autoResponses,Failed:failed,Bounced:bounced,Suppressed:suppressed,Skipped:skipped},data_integrity:{accounted,unaccounted:Math.max(0,rs.length-accounted)},pause_reason:pauseReason(c,rs)}};
  });
- if(!capacityAvailable)return "Paused — sending account daily/hourly capacity is currently exhausted.";
- return "Paused — remaining recipients are waiting to be dispatched.";
-};
-const sentByCampaign=new Map<string,Set<string>>();for(const event of sentEvents||[]){const campaignId=String(event.campaign_id||""),recipientId=String(event.campaign_recipient_id||"");if(!campaignId||!recipientId)continue;const ids=sentByCampaign.get(campaignId)||new Set<string>();ids.add(recipientId);sentByCampaign.set(campaignId,ids);}const rows=cs.map((c:any)=>{const rs=(allRecipients||[]).filter((r:any)=>r.campaign_id===c.id);const sent=sentByCampaign.get(String(c.id))?.size||0;const pending=rs.filter((r:any)=>r.status==="Ready").length;const opens=rs.reduce((n:any,r:any)=>n+Number(r.open_count||0),0);const replies=rs.filter((r:any)=>r.status==="Replied").length;const autoResponses=rs.filter((r:any)=>r.status==="Auto Response").length;const bounces=rs.filter((r:any)=>["Bounced","Failed"].includes(r.status)).length;const suppressed=rs.filter((r:any)=>r.status==="Suppressed").length;const repliedLeadIds=new Set(rs.filter((r:any)=>r.status==="Replied").map((r:any)=>String(r.lead_id||"")));const positive=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Positive").length;const neutral=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Neutral").length;const negative=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Negative").length;return {...c,metrics:{imported:0,recipients:rs.length,eligible:rs.filter((r:any)=>r.status!=="Suppressed").length,sent,pending,pause_reason:pauseReason(c,rs),opens,replies,autoResponses,positive,neutral,negative,bounces,unsubscribes:(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.current_status==="Unsubscribed").length,completion_time:c.completed_at&&c.started_at?Math.max(0,new Date(c.completed_at).getTime()-new Date(c.started_at).getTime()):null}}});
-const totals=rows.reduce((a:any,r:any)=>{for(const k of Object.keys(r.metrics)){if(typeof r.metrics[k]==="number")a[k]=(a[k]||0)+r.metrics[k]}return a},{});
-return NextResponse.json({campaigns:rows,totals,batches: batches||[],accounts:accounts||[],filters:{countries:[...new Set((campaigns||[]).map((c:any)=>c.country).filter(Boolean))],groups:[...new Set((campaigns||[]).map((c:any)=>c.campaign_group).filter(Boolean))]}})}
+ const totals=rows.reduce((a:any,r:any)=>{for(const k of Object.keys(r.metrics))if(typeof r.metrics[k]==="number")a[k]=(a[k]||0)+r.metrics[k];return a},{});
+ return NextResponse.json({campaigns:rows,totals,batches:batches||[],accounts:accounts||[],filters:{countries:[...new Set((campaigns||[]).map((c:any)=>c.country).filter(Boolean))],groups:[...new Set((campaigns||[]).map((c:any)=>c.campaign_group).filter(Boolean))]}});
+}
 
 export async function POST(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
