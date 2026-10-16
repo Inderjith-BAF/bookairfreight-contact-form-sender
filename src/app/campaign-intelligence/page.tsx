@@ -327,6 +327,7 @@ export default function CampaignIntelligence() {
                     "Status",
                     "Recipients",
                     "Eligible",
+                    "Pending",
                     "Sent",
                     "Opens",
                     "Replies",
