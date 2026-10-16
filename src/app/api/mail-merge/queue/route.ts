@@ -41,15 +41,21 @@ export async function POST(request:Request){
  const eligible=(rows||[]).filter((r:any)=>{
   const l=r.master_leads;
   if(!l||l.suppression_reason||blockedStatuses.includes(String(l.current_status||"")))return false;
-  if(campaign.campaign_group==="Fresh Outreach"&&l.last_contacted_at)return false;
-  if(["Follow-up 1","Follow-up 2","Follow-up 3"].includes(campaign.campaign_group)&&!l.last_contacted_at)return false;
+  const group=String(campaign.campaign_group||"");
+  if(group==="Fresh Outreach")return !l.last_contacted_at;
+  if(group==="Follow-up 1")return l.current_status==="Fresh Outreach"&&Boolean(l.last_contacted_at);
+  if(group==="Follow-up 2")return l.current_status==="Follow-up 1"&&Boolean(l.last_contacted_at);
+  if(group==="Follow-up 3")return l.current_status==="Follow-up 2"&&Boolean(l.last_contacted_at);
   return true;
  });
  reasons.campaign_ineligible=(rows||[]).filter((r:any)=>{
   const l=r.master_leads;
   if(!l||l.suppression_reason||blockedStatuses.includes(String(l.current_status||"")))return false;
-  return (campaign.campaign_group==="Fresh Outreach"&&Boolean(l.last_contacted_at))||
-   (["Follow-up 1","Follow-up 2","Follow-up 3"].includes(campaign.campaign_group)&&!l.last_contacted_at);
+  const group=String(campaign.campaign_group||"");
+  return (group==="Fresh Outreach"&&Boolean(l.last_contacted_at))||
+   (group==="Follow-up 1"&&!(l.current_status==="Fresh Outreach"&&Boolean(l.last_contacted_at)))||
+   (group==="Follow-up 2"&&!(l.current_status==="Follow-up 1"&&Boolean(l.last_contacted_at)))||
+   (group==="Follow-up 3"&&!(l.current_status==="Follow-up 2"&&Boolean(l.last_contacted_at)));
  }).length;
  reasons.lead_record_missing=(rows||[]).filter((r:any)=>!r.master_leads).length;
 
