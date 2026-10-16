@@ -79,9 +79,8 @@ export async function POST(request: Request) {
       let messages: any[] = [];
       if (account.provider === "google") {
         let pageToken = "";
-        for (let page = 0; page < 1; page++) {
+        for (let page = 0; page < 10; page++) {
           const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-          // Include Spam as well as Inbox: automatic replies are often classified as spam.
           url.searchParams.set("includeSpamTrash", "true");
           url.searchParams.set("maxResults", "100");
           url.searchParams.set("q", "{in:inbox in:spam} newer_than:30d");
@@ -89,7 +88,6 @@ export async function POST(request: Request) {
           const r = await fetch(url, { headers: { Authorization: "Bearer " + access } });
           const d = await r.json();
           if (!r.ok) throw new Error(d.error?.message || "Gmail inbox sync failed.");
-          // Fetch message details concurrently in small groups to avoid hundreds of serial round trips per mailbox.
           const listed = (d.messages || []).slice(0, 100);
           for (let offset = 0; offset < listed.length; offset += 10) {
             const group = listed.slice(offset, offset + 10);
@@ -107,19 +105,27 @@ export async function POST(request: Request) {
       } else {
         // Scan both Inbox and Junk Email; automatic replies can be classified as junk.
         for (const folder of ["inbox", "junkemail"]) {
-          const url = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder + "/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body&$orderby=receivedDateTime%20desc";
-          const r = await fetch(url, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
-          const d = await r.json();
-          if (!r.ok) throw new Error(d.error?.message || ("Microsoft " + folder + " sync failed."));
-          messages.push(...(d.value || []).slice(0, 100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), headers: m.internetMessageHeaders || [], body: String(m.body?.content || ""), snippet: "" })));
+          let url: string | null = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder + "/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body&$orderby=receivedDateTime%20desc";
+          for (let page = 0; page < 10 && url; page++) {
+            const r = await fetch(url, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error?.message || ("Microsoft " + folder + " sync failed."));
+            messages.push(...(d.value || []).slice(0, 100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), headers: m.internetMessageHeaders || [], body: String(m.body?.content || ""), snippet: "" })));
+            url = typeof d["@odata.nextLink"] === "string" ? d["@odata.nextLink"] : null;
+          }
         }
       }
       checked += messages.length;
-      const { data: sent, error: sentError } = await admin.from("mail_merge_campaign_recipients")
-        .select("id,campaign_id,lead_id,sender_account_id,provider_thread_id,provider_message_id,status,subject,created_at")
-        .eq("sender_account_id", account.id).in("status", ["Sent", "Replied", "Auto Response", "Bounced"])
-        .order("created_at", { ascending: false }).limit(2000);
-      if (sentError) throw new Error(sentError.message);
+      const sent: any[] = [];
+      for (let offset = 0; offset < 50000; offset += 1000) {
+        const { data: pageRows, error: sentError } = await admin.from("mail_merge_campaign_recipients")
+          .select("id,campaign_id,lead_id,sender_account_id,provider_thread_id,provider_message_id,status,subject,created_at")
+          .eq("sender_account_id", account.id).in("status", ["Sent", "Replied", "Auto Response", "Bounced"])
+          .order("created_at", { ascending: false }).range(offset, offset + 999);
+        if (sentError) throw new Error(sentError.message);
+        sent.push(...(pageRows || []));
+        if (!pageRows || pageRows.length < 1000) break;
+      }
       const leadIds = [...new Set((sent || []).map((row: any) => row.lead_id))];
       const { data: leads, error: leadsError } = leadIds.length
         ? await admin.from("master_leads").select("id,email,current_status").in("id", leadIds)
