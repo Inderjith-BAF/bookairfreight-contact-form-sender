@@ -23,7 +23,10 @@ export async function POST(request:Request){
  if(ce||!campaign)return NextResponse.json({error:ce?.message||"Campaign not found."},{status:404});
  if(campaign.created_by!==profile.id)return NextResponse.json({error:"This saved campaign belongs to another user."},{status:403});
 
- const {data:rows,error}=await admin.from("mail_merge_campaign_recipients").select("*,master_leads(*)").eq("campaign_id",campaignId).eq("status","Ready");
+ const statusQuery=isRetry
+  ? admin.from("mail_merge_campaign_recipients").select("*,master_leads(*)").eq("campaign_id",campaignId).in("status",["Ready","Queued"])
+  : admin.from("mail_merge_campaign_recipients").select("*,master_leads(*)").eq("campaign_id",campaignId).eq("status","Ready");
+ const {data:rows,error}=await statusQuery;
  if(error)return NextResponse.json({error:error.message},{status:500});
 
  const reasons={disconnected:0,daily_hourly_cap:0,unassigned:0,eligible_blocked:0,campaign_ineligible:0,lead_record_missing:0};
@@ -100,7 +103,7 @@ export async function POST(request:Request){
  let queued=0;
  const now=new Date().toISOString();
  for(const r of candidates){
-  const {data:updated,error:updateError}=await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:now,error_message:null,updated_at:now}).eq("id",r.id).eq("status","Ready").select("id").maybeSingle();
+  const {data:updated,error:updateError}=await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:now,error_message:null,updated_at:now}).eq("id",r.id).eq("status",String(r.status||"Ready")).select("id").maybeSingle();
   if(updateError)return NextResponse.json({error:updateError.message},{status:500});
   if(updated)queued++;
  }
@@ -112,7 +115,7 @@ export async function POST(request:Request){
  return NextResponse.json({
   queued,skipped,reasons,status:queued?"Queued":"Paused",
   message:queued
-   ?(isRetry?"Retry queued "+queued+" remaining recipients from where the campaign stopped.":"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 1, 2, 3, 4, or 5 minute gap.")
+   ?(isRetry?"Retry queued "+queued+" remaining recipients from where the campaign stopped. Previously queued recipients were resumed without touching already-sent recipients.":"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 1, 2, 3, 4, or 5 minute gap.")
    :"No remaining recipients could be queued. Check the pause reason, mailbox connections, account limits, and recipient eligibility."
  });
 }
