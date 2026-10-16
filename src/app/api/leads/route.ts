@@ -40,8 +40,10 @@ export async function GET(request: Request) {
   if (exportCsv && !["admin","lead_generation_admin"].includes(profile.role)) {
     return NextResponse.json({ error: "Only Admin and Lead Generation Admin can export the Master Lead Sheet." }, { status: 403 });
   }
-  const page = Math.max(1, Number(searchParams.get("page") || 1));
-  const pageSize = Math.min(1000, Math.max(10, Number(searchParams.get("pageSize") || 50)));
+  const pageNumber = Number(searchParams.get("page") || 1);
+  const requestedPageSize = Number(searchParams.get("pageSize") || 50);
+  const page = Number.isFinite(pageNumber) ? Math.max(1, Math.floor(pageNumber)) : 1;
+  const pageSize = Number.isFinite(requestedPageSize) ? Math.min(1000, Math.max(10, Math.floor(requestedPageSize))) : 50;
   const { data: team, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   const isFullLeadAccess = profile.role === "admin" || profile.role === "lead_generation_admin";
   const memberLeadOwner = isFullLeadAccess ? "" : profile.id;
