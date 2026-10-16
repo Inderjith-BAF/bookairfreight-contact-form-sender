@@ -397,10 +397,14 @@ export default function CampaignIntelligence() {
                     <td className="p-3 text-rose-600">{row.metrics.bounces}</td>
                     <td className="p-3">{row.metrics.unsubscribes}</td>
                     <td className="p-3 text-xs text-slate-500">
+                      <div className="font-bold text-slate-700">
+                        {Number(row.metrics.completion_rate || 0).toFixed(1)}%
+                      </div>
                       {row.metrics.completion_time
-                        ? Math.round(row.metrics.completion_time / 60000) +
-                          " min"
-                        : "—"}
+                        ? Math.round(row.metrics.completion_time / 60000) + " min"
+                        : row.status === "Completed"
+                          ? "Completed"
+                          : "In progress"}
                     </td>
                     <td className="p-3">
                       <div className="flex flex-col gap-2">
