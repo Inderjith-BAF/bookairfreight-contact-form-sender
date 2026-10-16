@@ -16,7 +16,7 @@ export async function POST(request:Request){
  if("error" in auth)return auth.error;
  const {admin,profile}=auth;
  const b=await request.json().catch(()=>null);
- const campaignId=String(b?.campaignId||"");
+ const campaignId=String(b?.campaignId||""); const isRetry=b?.action==="retry";
  if(!campaignId)return NextResponse.json({error:"Campaign ID is required."},{status:400});
 
  const {data:campaign,error:ce}=await admin.from("mail_merge_campaigns").select("*").eq("id",campaignId).maybeSingle();
@@ -81,8 +81,8 @@ export async function POST(request:Request){
    const dayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
    const hourStart=new Date(now.getTime()-60*60*1000).toISOString();
    const [{count:sentToday},{count:sentHour}]=await Promise.all([
-    admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",dayStart),
-    admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).eq("status","Sent").gte("sent_at",hourStart)
+    admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).not("sent_at","is",null).gte("sent_at",dayStart),
+    admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("sender_account_id",sender).not("sent_at","is",null).gte("sent_at",hourStart)
    ]);
    remainingDaily.set(sender,Math.max(0,Number(account.daily_send_limit||100)-Number(sentToday||0)));
    remainingHourly.set(sender,Math.max(0,Number(account.hourly_send_limit||20)-Number(sentHour||0)));
@@ -107,12 +107,12 @@ export async function POST(request:Request){
 
  const skipped=(rows||[]).length-queued;
  await admin.from("mail_merge_campaigns").update({status:queued?"Queued":"Paused",updated_at:new Date().toISOString()}).eq("id",campaignId);
- await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 1/2/3/4/5 minutes",member_order:"independent accounts",parallelism:"all eligible accounts concurrently"}});
+ await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:isRetry?"campaign_retry_queued":"campaign_queued",entity_type:"campaign",entity_id:campaignId,after_value:{queued,skipped,pacing:"account-level 1/2/3/4/5 minutes",member_order:"independent accounts",parallelism:"all eligible accounts concurrently"}});
 
  return NextResponse.json({
   queued,skipped,reasons,status:queued?"Queued":"Paused",
   message:queued
-   ?"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 1, 2, 3, 4, or 5 minute gap."
-   :"No recipients could be queued. Check mailbox connections, account limits, and recipient eligibility."
+   ?(isRetry?"Retry queued "+queued+" remaining recipients from where the campaign stopped.":"Queued "+queued+" recipients. All eligible sending accounts can run concurrently; each account independently selects a 1, 2, 3, 4, or 5 minute gap.")
+   :"No remaining recipients could be queued. Check the pause reason, mailbox connections, account limits, and recipient eligibility."
  });
 }
