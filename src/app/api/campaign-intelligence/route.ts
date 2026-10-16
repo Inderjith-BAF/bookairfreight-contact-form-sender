@@ -17,6 +17,8 @@ export async function GET(request:Request){
  for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("*").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
  const sentEvents:any[]=[];
  for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").eq("event_type","sent").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});sentEvents.push(...(page||[]));if(!page||page.length<1000)break;}
+ const bounceEvents:any[]=[];
+ for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").ilike("event_type","%bounce%").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});bounceEvents.push(...(page||[]));if(!page||page.length<1000)break;}
  const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||allRecipients.some((r:any)=>r.campaign_id===c.id&&r.sender_account_id===account)));
  const accountMap=new Map((accounts||[]).map((a:any)=>[String(a.id),a]));
  const sentByCampaign=new Map();
@@ -45,7 +47,11 @@ export async function GET(request:Request){
   const sentRecipients=rs.filter((r:any)=>Boolean(r.sent_at)||SENT_STATUSES.has(String(r.status)));
   const sentIds=new Set([...Array.from(sentFromEvents),...sentRecipients.map((r:any)=>String(r.id))]);
   const sent=sentIds.size;
-  const ready=rs.filter((r:any)=>r.status==="Ready").length,queued=rs.filter((r:any)=>r.status==="Queued").length,sending=rs.filter((r:any)=>r.status==="Sending").length,failed=rs.filter((r:any)=>r.status==="Failed").length,skipped=rs.filter((r:any)=>r.status==="Skipped").length,suppressed=rs.filter((r:any)=>r.status==="Suppressed").length,bounced=rs.filter((r:any)=>r.status==="Bounced").length,replies=rs.filter((r:any)=>r.status==="Replied").length,autoResponses=rs.filter((r:any)=>r.status==="Auto Response").length;
+  const bounceIds=new Set([
+    ...rs.filter((r:any)=>r.status==="Bounced").map((r:any)=>String(r.id)),
+    ...bounceEvents.filter((e:any)=>String(e.campaign_id||"")===String(c.id)&&e.campaign_recipient_id).map((e:any)=>String(e.campaign_recipient_id))
+  ]);
+  const ready=rs.filter((r:any)=>r.status==="Ready").length,queued=rs.filter((r:any)=>r.status==="Queued").length,sending=rs.filter((r:any)=>r.status==="Sending").length,failed=rs.filter((r:any)=>r.status==="Failed").length,skipped=rs.filter((r:any)=>r.status==="Skipped").length,suppressed=rs.filter((r:any)=>r.status==="Suppressed").length,bounced=bounceIds.size,replies=rs.filter((r:any)=>r.status==="Replied").length,autoResponses=rs.filter((r:any)=>r.status==="Auto Response").length;
   const opens=rs.reduce((n:number,r:any)=>n+Number(r.open_count||0),0),positive=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Positive").length,neutral=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Neutral").length,negative=rs.filter((r:any)=>r.status==="Replied"&&r.response_classification==="Negative").length;
   const unsubscribes=(leads||[]).filter((l:any)=>rs.some((r:any)=>r.lead_id===l.id)&&l.current_status==="Unsubscribed").length;
   const eligible=Math.max(0,rs.length-suppressed-skipped),pending=ready+queued+sending,retryable=ready+queued;
