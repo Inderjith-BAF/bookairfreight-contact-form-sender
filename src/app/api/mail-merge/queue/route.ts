@@ -137,7 +137,7 @@ export async function POST(request:Request){
  let queued=0;
  const now=new Date().toISOString();
  for(const r of candidates){
-  const {data:updated,error:updateError}=await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:now,error_message:null,updated_at:now}).eq("id",r.id).eq("status",String(r.status||"Ready")).select("id").maybeSingle();
+  const {data:updated,error:updateError}=await admin.from("mail_merge_campaign_recipients").update({status:"Queued",queued_at:now,send_not_before:now,error_message:isRetry?"Retry resumed from Campaign Intelligence.":null,updated_at:now}).eq("id",r.id).eq("status",String(r.status||"Ready")).select("id").maybeSingle();
   if(updateError)return NextResponse.json({error:updateError.message},{status:500});
   if(updated)queued++;
  }
