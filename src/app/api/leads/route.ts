@@ -371,14 +371,14 @@ export async function PATCH(request: Request) {
       .from("mail_merge_campaign_recipients")
       .select("id,campaign_id,sent_at")
       .eq("lead_id", id)
-      .eq("status", "Replied")
+      .in("status", ["Sent","Replied"])
       .order("sent_at", { ascending: false })
       .limit(1);
     if (repliedError) return NextResponse.json({ error: repliedError.message }, { status: 500 });
     if (repliedRecipients?.length) {
       const { error: classificationError } = await admin
         .from("mail_merge_campaign_recipients")
-        .update({ response_classification: status })
+        .update({ status: "Replied", response_classification: status })
         .eq("id", repliedRecipients[0].id);
       if (classificationError) return NextResponse.json({ error: classificationError.message }, { status: 500 });
     }
