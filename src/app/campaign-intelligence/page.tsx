@@ -81,6 +81,8 @@ export default function CampaignIntelligence() {
   const cards = [
     ["Recipients", totals.recipients || 0, Send],
     ["Sent", totals.sent || 0, Send],
+    ["Pending", totals.pending || 0, Clock],
+    ["Failed", totals.failed || 0, ShieldAlert],
     ["Opens", totals.opens || 0, TrendingUp],
     ["Replies", totals.replies || 0, Reply],
     ["Auto Responses", totals.autoResponses || 0, Clock],
@@ -405,13 +407,26 @@ export default function CampaignIntelligence() {
                         {row.status === "Paused" && (
                           <div className="max-w-xs text-[10px] leading-4 text-amber-700">
                             {row.metrics.pause_reason || "Paused — reason unavailable."}
-                            {Number(row.metrics.pending || 0) > 0 && (
-                              <div className="mt-1 font-bold">{row.metrics.pending} remaining to retry</div>
+                            {Number(row.metrics.retryable || 0) > 0 && (
+                              <div className="mt-1 font-bold">{row.metrics.retryable} ready/queued to retry</div>
+                            )}
+                            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] text-slate-600">
+                              <span>Ready: <b>{row.metrics.ready || 0}</b></span>
+                              <span>Queued: <b>{row.metrics.queued || 0}</b></span>
+                              <span>Sending: <b>{row.metrics.sending || 0}</b></span>
+                              <span>Failed: <b>{row.metrics.failed || 0}</b></span>
+                              <span>Suppressed: <b>{row.metrics.suppressed || 0}</b></span>
+                              <span>Bounced: <b>{row.metrics.bounces || 0}</b></span>
+                            </div>
+                            {Number(row.metrics.data_integrity?.unaccounted || 0) > 0 && (
+                              <div className="mt-2 font-black text-red-600">
+                                Data check: {row.metrics.data_integrity.unaccounted} unaccounted
+                              </div>
                             )}
                           </div>
                         )}
                         <div className="flex gap-2">
-                          {row.status === "Paused" && Number(row.metrics.pending || 0) > 0 && (
+                          {row.status === "Paused" && Number(row.metrics.retryable || 0) > 0 && (
                             <button
                               type="button"
                               onClick={() => retryPausedCampaign(row)}
