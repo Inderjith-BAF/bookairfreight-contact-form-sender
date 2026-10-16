@@ -11,6 +11,16 @@ function authorized(request:Request){
  return Boolean(secret&&request.headers.get("authorization")===`Bearer ${secret}`);
 }
 
+function campaignStageEligible(campaignGroup:string, lead:any){
+ if(!lead)return false;
+ const contacted=Boolean(lead.last_contacted_at);
+ if(campaignGroup==="Fresh Outreach")return !contacted;
+ if(campaignGroup==="Follow-up 1")return lead.current_status==="Fresh Outreach"&&contacted;
+ if(campaignGroup==="Follow-up 2")return lead.current_status==="Follow-up 1"&&contacted;
+ if(campaignGroup==="Follow-up 3")return lead.current_status==="Follow-up 2"&&contacted;
+ return true;
+}
+
 async function finishCampaign(admin:any,campaignId:string){
  const [{count:queued},{count:active},{count:ready},{count:failed},{data:campaign}] = await Promise.all([
   admin.from("mail_merge_campaign_recipients").select("id",{count:"exact",head:true}).eq("campaign_id",campaignId).eq("status","Queued"),
@@ -58,6 +68,20 @@ async function dispatchAccount(admin:any,request:Request,accountId:string){
    updated_at:new Date().toISOString()
   }).eq("id",row.id).eq("status","Sending");
   return {sent:0,failed:0,disconnected:0,paused:1};
+ }
+
+ // Re-check stage eligibility immediately before provider delivery. A lead can
+ // advance in Master Lead Sheet after the recipient was queued, so queue-time
+ // eligibility alone is not enough to prevent duplicate/out-of-order follow-ups.
+ if(!campaignStageEligible(String(campaign.campaign_group||""),lead)){
+  await admin.from("mail_merge_campaign_recipients").update({
+   status:"Skipped",
+   send_not_before:null,
+   error_message:"Lead no longer matches the Master Lead Sheet campaign-stage eligibility.",
+   updated_at:new Date().toISOString()
+  }).eq("id",row.id).eq("status","Sending");
+  await finishCampaign(admin,campaignId);
+  return {sent:0,failed:0,disconnected:0,skipped:1};
  }
 
  if(!account||account.connection_status!=="Connected"||!account.refresh_token_encrypted){
