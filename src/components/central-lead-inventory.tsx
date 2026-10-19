@@ -98,7 +98,7 @@ export function CentralLeadInventory() {
     if (!res.ok) throw new Error(data.error || "Could not load central inventory");
     setLeads(data.leads || []); setTeam(data.team || []); setCurrentRole(String(data.currentRole || "").toLowerCase());
     setInventoryTotal(Number(data.total || 0)); setServerPageCount(Number(data.pageCount || 1));
-  }, [q, source, tablePage]);
+  }, [q, source, tablePage, tablePageSize]);
   useEffect(() => {
     let alive = true;
     (async () => {
