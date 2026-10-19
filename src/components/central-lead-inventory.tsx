@@ -6,7 +6,7 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { ArrowDownToLine, Check, FileUp, GripVertical, LoaderCircle, RefreshCw, Search, Upload, Users } from "lucide-react";
 
 type TeamMember = { id: string; full_name: string; role: string; active: boolean };
-type Lead = { id: string; __renderKey?: string; [key: string]: any };
+type Lead = { id: string; [key: string]: any };
 const COLUMNS = [
   ["location_on_site","Location On Site"],["country","Country"],["company_name","Company Name"],
   ["first_name","First Name"],["last_name","Last Name"],["title","Title"],["email","Email"],
@@ -73,8 +73,6 @@ export function CentralLeadInventory() {
   const [currentRole, setCurrentRole] = useState("");
   const [q, setQ] = useState("");
   const [tablePage, setTablePage] = useState(1);
-  const [inventoryTotal, setInventoryTotal] = useState(0);
-  const [serverPageCount, setServerPageCount] = useState(1);
   const tablePageSize = 100;
   const [source, setSource] = useState("");
   const [paste, setPaste] = useState("");
@@ -83,25 +81,21 @@ export function CentralLeadInventory() {
   const [message, setMessage] = useState("");
   const [dragFill, setDragFill] = useState<DragFill>(null);
   const [selected, setSelected] = useState<string[]>([]);
-  const [bulkAssignee, setBulkAssignee] = useState("");
-  const [bulkAssignCount, setBulkAssignCount] = useState(400);
   const [columnFilters, setColumnFilters] = useState<Record<string,string>>({});
   const [excelFilters, setExcelFilters] = useState<Record<string,string[]>>({});
   const [openExcelFilter, setOpenExcelFilter] = useState<string | null>(null);
   const [draftExcelFilter, setDraftExcelFilter] = useState<string[]>([]);
-  const [filterOptions, setFilterOptions] = useState<Record<string,string[]>>({});
-  const [loadingFilterOptions, setLoadingFilterOptions] = useState(false);
   const [excelFilterSearch, setExcelFilterSearch] = useState("");
   const [excelFilterPosition, setExcelFilterPosition] = useState<{top:number;left:number} | null>(null);
   const [summary, setSummary] = useState<{added:number;duplicate:number;invalid:number;total:number;results?:{row:number;email:string;result:string;reason:string}[]}|null>(null);
-  const load = useCallback(async (t: string, requestedPage = tablePage) => {
-    const params = new URLSearchParams({ q, source, page: String(requestedPage), pageSize: String(tablePageSize), filters: JSON.stringify({ column: columnFilters, excel: excelFilters }) });
-    const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + t }, cache: "no-store" });
+  const load = useCallback(async (t: string) => {
+    const params = new URLSearchParams({ q, source });
+    const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + t } });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not load central inventory");
     setLeads(data.leads || []); setTeam(data.team || []); setCurrentRole(String(data.currentRole || "").toLowerCase());
-    setInventoryTotal(Number(data.total || 0)); setServerPageCount(Number(data.pageCount || 1));
-  }, [q, source, tablePage, tablePageSize, columnFilters, excelFilters]);
+    setSelected(old => old.filter(id => (data.leads || []).some((row:Lead) => row.id === id)));
+  }, [q, source]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -109,11 +103,11 @@ export function CentralLeadInventory() {
       if (!alive) return;
       if (!data.session) { setError("Sign in through the existing Outbound OS first."); return; }
       setToken(data.session.access_token);
-    })().catch(e => { if (alive) setError(e instanceof Error ? e.message : "Could not load inventory"); });
+      try { await load(data.session.access_token); } catch (e) { setError(e instanceof Error ? e.message : "Could not load inventory"); }
+    })();
     return () => { alive = false; };
-  }, [supabase]);
-  useEffect(() => { if (!token) return; let alive = true; const timer = window.setTimeout(() => { load(token, tablePage).catch(e => { if (alive) setError(e instanceof Error ? e.message : "Could not refresh inventory"); }); }, q || source ? 250 : 0); return () => { alive = false; window.clearTimeout(timer); }; }, [token, load, tablePage, q, source]);
-  useEffect(() => { setTablePage(1); }, [q, source]);
+  }, [supabase, load]);
+  useEffect(() => { if (token) load(token).catch(e => setError(e instanceof Error ? e.message : "Could not refresh inventory")); }, [token, load]);
 
   async function uploadRows(rows: Record<string, unknown>[]) {
     if (!token || !rows.length) return;
@@ -148,7 +142,7 @@ export function CentralLeadInventory() {
       setSummary({ added, duplicate, invalid, total: rows.length, results });
       setMessage("Upload complete. Added " + added.toLocaleString() + ", skipped duplicates " + duplicate.toLocaleString() + ", invalid " + invalid.toLocaleString() + ". Existing Master Lead Sheet records were not changed.");
       setPaste("");
-      setTablePage(1); await load(token, 1);
+      await load(token);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -169,130 +163,40 @@ export function CentralLeadInventory() {
   async function fillAssignment(ids: string[], field: AssignmentField, value: string) {
     if (!token || !ids.length) return;
     setBusy(true); setError(""); setMessage("");
-    let updated = 0;
     try {
-      // The API accepts at most 500 IDs per request. Chunk drag-fill ranges so
-      // long ranges are saved completely instead of failing as one oversized PATCH.
-      const batchSize = 400;
-      for (let offset = 0; offset < ids.length; offset += batchSize) {
-        const batch = ids.slice(offset, offset + batchSize);
-        const res = await fetch("/api/lead-inventory", {method:"PATCH",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({ids:batch,field,value})});
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Could not save assignment");
-        updated += Number(data.updated || batch.length);
-        const batchSet = new Set(batch);
-        setLeads(old => old.map(row => batchSet.has(row.id) ? {...row,[field]:value} : row));
-        setMessage("Saving drag-fill: " + updated.toLocaleString() + " of " + ids.length.toLocaleString() + " rows…");
-      }
-      setMessage(`Copied the same ${field === "fresh_outreach_assigned_to" ? "team member" : "date"} to ${updated.toLocaleString()} row(s).`);
-    } catch (e) { setError((e instanceof Error ? e.message : "Could not save assignment") + (updated ? " Successfully saved " + updated + " row(s) before the error." : "")); }
+      const res = await fetch("/api/lead-inventory", {method:"PATCH",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({ids,field,value})});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save assignment");
+      setLeads(old => old.map(row => ids.includes(row.id) ? {...row,[field]:value} : row));
+      setMessage(`Copied the same ${field === "fresh_outreach_assigned_to" ? "team member" : "date"} to ${data.updated} row(s).`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save assignment"); }
     finally { setBusy(false); setDragFill(null); }
   }
-  async function assignQuantityFromFiltered() {
-    if (!token || !bulkAssignee) { setError("Choose a team member first."); return; }
-    const quantity = Math.floor(Number(bulkAssignCount));
-    if (!Number.isFinite(quantity) || quantity < 1 || quantity > 5000) { setError("Choose a quantity between 1 and 5,000."); return; }
-    setBusy(true); setError(""); setMessage("");
-    try {
-      const res = await fetch("/api/lead-inventory", {
-        method: "PATCH",
-        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "assign_filtered", limit: quantity, assignee: bulkAssignee, q, source, countries: excelFilters.country || [], filters: { column: columnFilters, excel: excelFilters } })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not assign filtered leads");
-      setMessage("Assigned " + Number(data.updated || 0).toLocaleString() + " of the requested " + quantity.toLocaleString() + " leads to " + bulkAssignee + ".");
-      await load(token, tablePage);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not assign filtered leads");
-    } finally { setBusy(false); }
-  }
-  async function applyBulkAssignment(unassign = false) {
-    if (!token || !selected.length) return;
-    if (!unassign && !bulkAssignee) {
-      setError("Choose a team member, or use Unassign selected to clear assignments.");
-      return;
-    }
-    const value = unassign ? "" : bulkAssignee;
-    const ids = [...new Set(selected)];
-    setBusy(true); setError(""); setMessage("");
-    let updated = 0;
-    try {
-      const batchSize = 400;
-      for (let offset = 0; offset < ids.length; offset += batchSize) {
-        const batch = ids.slice(offset, offset + batchSize);
-        const res = await fetch("/api/lead-inventory", {
-          method: "PATCH",
-          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: batch, field: "fresh_outreach_assigned_to", value })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Could not update selected assignments");
-        if (unassign) {
-          const dateRes = await fetch("/api/lead-inventory", {
-            method: "PATCH",
-            headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-            body: JSON.stringify({ ids: batch, field: "fresh_outreach_assigned_date", value: "" })
-          });
-          const dateData = await dateRes.json();
-          if (!dateRes.ok) throw new Error(dateData.error || "Assignments were cleared, but assignment dates could not be cleared.");
-        }
-        updated += Number(data.updated || batch.length);
-        const batchIds = new Set(batch);
-        setLeads(old => old.map(row => batchIds.has(row.id) ? { ...row, fresh_outreach_assigned_to: value, ...(unassign ? { fresh_outreach_assigned_date: "" } : {}) } : row));
-        setMessage((unassign ? "Unassigning" : "Assigning to " + value + ":") + " " + updated.toLocaleString() + " of " + ids.length.toLocaleString() + " leads…");
-      }
-      if (unassign) setLeads(old => old.map(row => ids.includes(row.id) ? { ...row, fresh_outreach_assigned_to: "", fresh_outreach_assigned_date: "" } : row));
-      setMessage(unassign
-        ? "Unassigned " + updated.toLocaleString() + " selected lead(s)."
-        : "Assigned " + updated.toLocaleString() + " selected lead(s) to " + value + ".");
-      setSelected([]);
-    } catch (e) {
-      setError((e instanceof Error ? e.message : "Bulk assignment failed") + (updated ? " Successfully updated " + updated.toLocaleString() + " lead(s) before the error." : ""));
-    } finally {
-      setBusy(false);
-    }
-  }
-  function beginDrag(field: AssignmentField, value: string, sourceId?: string) {
-    setDragFill({field,value});
-    if (sourceId) (window as any).__inventoryDragSource = sourceId;
-  }
+  function beginDrag(field: AssignmentField, value: string) { setDragFill({field,value}); }
   function dropFill(targetId: string, field: AssignmentField) {
     if (!dragFill || dragFill.field !== field) return;
-    // Work on the visible page only: hidden/filtered rows should not be
-    // unexpectedly changed by a drag-fill gesture.
-    const start = pageRows.findIndex(row => row.id === targetId);
+    const start = leads.findIndex(row => row.id === targetId);
     const sourceId = (window as any).__inventoryDragSource as string | undefined;
-    const sourceIndex = pageRows.findIndex(row => row.id === sourceId);
-    if (start < 0 || sourceIndex < 0) {
-      setError("Drag from a populated assignment cell on the same visible page.");
-      setDragFill(null);
-      return;
-    }
-    const lo = Math.min(start, sourceIndex);
-    const hi = Math.max(start, sourceIndex);
-    const ids = pageRows.slice(lo, hi + 1).map(row => row.id);
+    const sourceIndex = leads.findIndex(row => row.id === sourceId);
+    const lo = Math.min(start, sourceIndex < 0 ? start : sourceIndex);
+    const hi = Math.max(start, sourceIndex < 0 ? start : sourceIndex);
+    const ids = leads.slice(lo, hi + 1).map(row => row.id);
     void fillAssignment(ids, field, dragFill.value);
   }
-  const excelFilterKeys = useMemo(() => ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"], []);
-  const excelFilterOptions = (key: string) => filterOptions[key] || [];
-  const visible = leads;
-  const openExcelFilterMenu = async (key: string, rect?: DOMRect) => {
+  const excelFilterKeys = ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"];
+  const excelFilterOptions = (key: string) => Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b));
+  const visible = leads.filter(row => COLUMNS.every(([key]) => {
+    const textFilter = columnFilters[key]?.trim();
+    if (textFilter && !String(row[key] ?? "").toLowerCase().includes(textFilter.toLowerCase())) return false;
+    const selectedValues = excelFilters[key];
+    if (excelFilterKeys.includes(key) && selectedValues?.length) { const value = key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim(); if (!selectedValues.includes(value)) return false; }
+    return true;
+  }));
+  const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
     if (rect) setExcelFilterPosition({top: Math.min(rect.bottom + 4, window.innerHeight - 320), left: Math.min(rect.left, window.innerWidth - 280)});
     setOpenExcelFilter(key);
     setDraftExcelFilter(excelFilters[key] ?? []);
     setExcelFilterSearch("");
-    if (!token) return;
-    setLoadingFilterOptions(true);
-    try {
-      const params = new URLSearchParams({ filterField: key, q, source, filters: JSON.stringify({ column: columnFilters, excel: excelFilters }) });
-      const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not load filter values");
-      setFilterOptions(old => ({ ...old, [key]: Array.isArray(data.values) ? data.values : [] }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load filter values");
-    } finally { setLoadingFilterOptions(false); }
   };
   const toggleDraftExcelValue = (value: string) => setDraftExcelFilter(old => old.includes(value) ? old.filter(item => item !== value) : [...old, value]);
   const applyExcelFilter = () => {
@@ -300,10 +204,10 @@ export function CentralLeadInventory() {
     setExcelFilters(old => ({...old, [openExcelFilter]: draftExcelFilter}));
     setOpenExcelFilter(null);
   };
-  const pageCount = serverPageCount;
+  const pageCount = Math.max(1, Math.ceil(visible.length / tablePageSize));
   const currentPage = Math.min(tablePage, pageCount);
-  const pageRows: Lead[] = visible.map((row: Lead, index: number): Lead => ({ ...row, __renderKey: String(row.id || "lead") + "-" + ((currentPage - 1) * tablePageSize + index) }));
-  const visibleIds = useMemo(() => visible.map(row => row.id), [visible]);
+  const pageRows = visible.slice((currentPage - 1) * tablePageSize, currentPage * tablePageSize);
+  const visibleIds = visible.map(row => row.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selected.includes(id));
   const toggleAll = (checked:boolean) => setSelected(old => checked ? [...new Set([...old, ...visibleIds])] : old.filter(id => !visibleIds.includes(id)));
   const downloadSelected = () => {
@@ -345,12 +249,12 @@ export function CentralLeadInventory() {
       setError("Clipboard access was blocked by the browser. Use Export selected to download the same rows.");
     }
   }
-  const assignedCount = useMemo(() => leads.filter(row => String(row.fresh_outreach_assigned_to || "").trim()).length, [leads]);
-  const excelFilterPopup = openExcelFilter && excelFilterPosition && typeof document !== "undefined" ? createPortal(<div style={{position:"fixed",top:excelFilterPosition.top,left:excelFilterPosition.left,zIndex:9999}} className="w-64 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-normal text-slate-800 shadow-xl"><input autoFocus value={excelFilterSearch} onChange={e=>setExcelFilterSearch(e.target.value)} placeholder="Search values" className="mb-2 w-full rounded-md border border-slate-200 px-2 py-1.5 outline-none focus:border-blue-400"/><div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2"><button type="button" onClick={()=>setDraftExcelFilter(excelFilterOptions(openExcelFilter))} disabled={loadingFilterOptions} className="font-semibold text-blue-700 hover:underline">Select all</button><button type="button" onClick={()=>setDraftExcelFilter([])} className="font-semibold text-slate-500 hover:underline">Clear</button></div><div className="max-h-52 overflow-auto">{loadingFilterOptions ? <div className="p-4 text-center text-slate-500">Loading all matching values…</div> : excelFilterOptions(openExcelFilter).filter(value=>value.toLowerCase().includes(excelFilterSearch.toLowerCase())).map(value=><label key={value||"__blank"} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 hover:bg-blue-50"><input type="checkbox" checked={draftExcelFilter.includes(value)} onChange={()=>toggleDraftExcelValue(value)} className="rounded border-slate-300"/><span className="truncate">{value || "(Blanks)"}</span></label>)}</div><div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-2"><button type="button" onClick={()=>setOpenExcelFilter(null)} className="rounded-md border border-slate-200 px-3 py-1.5">Cancel</button><button type="button" onClick={applyExcelFilter} disabled={loadingFilterOptions} className="rounded-md bg-blue-600 px-3 py-1.5 font-semibold text-white">Apply</button></div></div>,document.body) : null;
+  const assignedCount = leads.filter(row => String(row.fresh_outreach_assigned_to || "").trim()).length;
+  const excelFilterPopup = openExcelFilter && excelFilterPosition && typeof document !== "undefined" ? createPortal(<div style={{position:"fixed",top:excelFilterPosition.top,left:excelFilterPosition.left,zIndex:9999}} className="w-64 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-normal text-slate-800 shadow-xl"><input autoFocus value={excelFilterSearch} onChange={e=>setExcelFilterSearch(e.target.value)} placeholder="Search values" className="mb-2 w-full rounded-md border border-slate-200 px-2 py-1.5 outline-none focus:border-blue-400"/><div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2"><button type="button" onClick={()=>setDraftExcelFilter(excelFilterOptions(openExcelFilter))} className="font-semibold text-blue-700 hover:underline">Select all</button><button type="button" onClick={()=>setDraftExcelFilter([])} className="font-semibold text-slate-500 hover:underline">Clear</button></div><div className="max-h-52 overflow-auto">{excelFilterOptions(openExcelFilter).filter(value=>value.toLowerCase().includes(excelFilterSearch.toLowerCase())).map(value=><label key={value||"__blank"} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 hover:bg-blue-50"><input type="checkbox" checked={draftExcelFilter.includes(value)} onChange={()=>toggleDraftExcelValue(value)} className="rounded border-slate-300"/><span className="truncate">{value || "(Blanks)"}</span></label>)}</div><div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-2"><button type="button" onClick={()=>setOpenExcelFilter(null)} className="rounded-md border border-slate-200 px-3 py-1.5">Cancel</button><button type="button" onClick={applyExcelFilter} className="rounded-md bg-blue-600 px-3 py-1.5 font-semibold text-white">Apply</button></div></div>,document.body) : null;
   return <main className="min-h-screen space-y-5 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 text-slate-900 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-blue-100 bg-white/90 p-6 shadow-sm">
       <div><div className="text-xs font-black uppercase tracking-[.22em] text-indigo-500">BookAirfreight · Lead Operations</div><h1 className="mt-2 text-3xl font-black">Central Lead Inventory</h1><p className="mt-1 text-sm text-slate-500">Shared lead pool · email-based duplicate protection · spreadsheet-style assignment</p></div>
-      <div className="grid grid-cols-3 gap-2 text-center">{[[inventoryTotal,"Total leads"],[Math.max(0,leads.length-assignedCount),"Unassigned on page"],[assignedCount,"Assigned on page"]].map(([n,label])=><div key={String(label)} className="rounded-2xl bg-blue-50 px-4 py-3"><div className="text-xl font-black tabular-nums">{n}</div><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div></div>)}</div>
+      <div className="grid grid-cols-3 gap-2 text-center">{[[leads.length,"Visible leads"],[leads.length-assignedCount,"Unassigned"],[assignedCount,"Assigned"]].map(([n,label])=><div key={String(label)} className="rounded-2xl bg-blue-50 px-4 py-3"><div className="text-xl font-black tabular-nums">{n}</div><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div></div>)}</div>
     </header>
     {["admin", "lead_generation_admin"].includes(currentRole) && (
     <section className="rounded-3xl border border-blue-100 bg-white p-5 shadow-sm">
@@ -362,9 +266,9 @@ export function CentralLeadInventory() {
     </section>
     )}
     <section className="overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-50 p-4"><div><h2 className="font-black">Central inventory sheet</h2></div><div className="flex flex-wrap gap-2"><label className="relative"><Search size={14} className="absolute left-3 top-3 text-slate-400"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search all columns" className="w-48 rounded-xl border border-blue-100 py-2 pl-8 pr-3 text-sm"/></label><input value={source} onChange={e=>setSource(e.target.value)} placeholder="Filter data source" className="w-44 rounded-xl border border-blue-100 px-3 py-2 text-sm"/><button onClick={()=>setSelected(old=>[...new Set([...old,...visibleIds])])} disabled={!visibleIds.length||allVisibleSelected} className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-40">Select all filtered ({visibleIds.length})</button><button onClick={()=>setSelected(old=>old.filter(id=>!visibleIds.includes(id)))} disabled={!visibleIds.some(id=>selected.includes(id))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 disabled:opacity-40">Clear filtered</button><button onClick={()=>void copyFilteredContactForms()} disabled={!visible.length} className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-bold text-cyan-800 disabled:opacity-40">Copy contact forms ({visible.length})</button><select aria-label="Bulk assign team member" value={bulkAssignee} onChange={e=>setBulkAssignee(e.target.value)} disabled={busy} className="max-w-44 rounded-xl border border-blue-100 bg-white px-3 py-2 text-sm disabled:opacity-40"><option value="">Assign to…</option>{team.map(member=><option key={member.id} value={member.full_name}>{member.full_name}</option>)}</select><label className="flex items-center gap-2 rounded-xl border border-blue-100 px-2 py-1 text-xs text-slate-600">Assign <input aria-label="Number of filtered leads to assign" type="number" min={1} max={5000} step={1} value={bulkAssignCount} onChange={e=>setBulkAssignCount(Math.max(1,Math.min(5000,Number(e.target.value)||1)))} className="w-20 rounded-md border border-blue-100 px-2 py-1.5 text-sm"/><span>from filtered</span></label><button onClick={()=>void assignQuantityFromFiltered()} disabled={busy||!bulkAssignee} className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-40">{busy?"Assigning…":"Assign from filtered"}</button><button onClick={()=>void applyBulkAssignment(false)} disabled={busy||!selected.length||!bulkAssignee} className="rounded-xl border border-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:opacity-40">Assign selected ({selected.length})</button><button onClick={()=>void applyBulkAssignment(true)} disabled={busy||!selected.length} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 disabled:opacity-40">Unassign selected ({selected.length})</button><button onClick={()=>void copySelectedForMailMerge()} disabled={!selected.length} className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"><Check className="mr-1 inline" size={15}/> Copy for Mail Merge ({selected.length})</button>{["admin","lead_generation_admin"].includes(currentRole) && <button onClick={downloadSelected} disabled={!selected.length} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-bold text-indigo-600 disabled:opacity-40"><ArrowDownToLine className="mr-1 inline" size={15}/> Export selected</button>}<button onClick={()=>token&&load(token)} className="rounded-xl border border-blue-100 p-2 text-indigo-600" title="Refresh"><RefreshCw size={16}/></button></div></div>
-      <div className="max-h-[70vh] overflow-auto"><table className="w-max min-w-full border-collapse text-left text-xs"><thead className="sticky top-0 z-20 bg-blue-50 text-[11px] font-black text-slate-600"><tr><th className="sticky left-0 z-30 bg-blue-50 px-3 py-3"><input type="checkbox" checked={allVisibleSelected} onChange={e=>toggleAll(e.target.checked)} aria-label="Select all filtered results"/></th>{COLUMNS.map(([,label])=><th key={label} className="min-w-44 whitespace-nowrap border-b border-blue-100 px-3 py-3">{label}</th>)}</tr><tr className="bg-amber-50"><th className="sticky left-0 z-30 bg-amber-50 px-2 py-2 text-[10px] text-amber-900">FILTER</th>{COLUMNS.map(([key,label])=><th key={key} className="relative border-b border-amber-100 px-2 py-2">{excelFilterKeys.includes(key) ? <div className="relative min-w-40"><button type="button" aria-label={"Excel filter "+label} aria-expanded={openExcelFilter===key} onClick={e=>openExcelFilter===key?setOpenExcelFilter(null):openExcelFilterMenu(key,e.currentTarget.getBoundingClientRect())} className={"flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-[11px] font-normal "+(excelFilters[key]?.length?"border-blue-400 bg-blue-50 text-blue-900":"border-amber-200 bg-white text-slate-600")}><span className="truncate">{excelFilters[key]?.length ? excelFilters[key].length+" selected" : "Filter "+label}</span><span>▾</span></button></div> : <input aria-label={"Filter "+label} type={key.endsWith("_date") ? "date" : "text"} value={columnFilters[key]||""} onChange={e=>setColumnFilters(old=>({...old,[key]:e.target.value}))} placeholder={key.endsWith("_date") ? undefined : "Filter "+label} className="w-40 rounded-md border border-amber-200 bg-white px-2 py-1.5 text-[11px] font-normal text-slate-800 placeholder:text-slate-400"/>}</th>)}</tr></thead><tbody>{pageRows.map((row,index)=><tr key={row.__renderKey} className={index%2?"bg-slate-50/70":"bg-white"}><td className="sticky left-0 z-10 border-b border-blue-50 bg-inherit px-3 py-2"><input type="checkbox" checked={selected.includes(row.id)} onChange={e=>setSelected(old=>e.target.checked?[...old,row.id]:old.filter(id=>id!==row.id))} aria-label={"Select "+row.email}/></td>{COLUMNS.map(([key,label])=><td key={key} onDragOver={e=>{if(key==="fresh_outreach_assigned_to"||key==="fresh_outreach_assigned_date")e.preventDefault()}} onDrop={e=>{if(key==="fresh_outreach_assigned_to"||key==="fresh_outreach_assigned_date"){e.preventDefault();dropFill(row.id,key)}}} className="border-b border-blue-50 px-3 py-2 align-top"><div className="flex min-w-36 items-center gap-1">{key==="fresh_outreach_assigned_to"?<><select value={row[key]||""} disabled={busy} onChange={e=>void fillAssignment([row.id],key,e.target.value)} onDragStart={()=>beginDrag(key,row[key]||"",row.id)} onDragEnd={()=>setDragFill(null)} draggable={Boolean(row[key])} onMouseDown={()=>{(window as any).__inventoryDragSource=row.id}} className="w-48 rounded-lg border border-blue-100 bg-white px-2 py-1.5 text-xs"><option value="">Unassigned</option>{team.map(member=><option key={member.id} value={member.full_name}>{member.full_name}</option>)}</select><span title="Drag this cell to copy the selected member" draggable onDragStart={e=>{(window as any).__inventoryDragSource=row.id;beginDrag(key,row[key]||"",row.id);e.dataTransfer.effectAllowed="copy"}} className="cursor-grab text-slate-400"><GripVertical size={15}/></span></>:key==="fresh_outreach_assigned_date"?<><input type="date" value={row[key]||""} disabled={busy} onChange={e=>void fillAssignment([row.id],key,e.target.value)} onMouseDown={()=>{(window as any).__inventoryDragSource=row.id}} className="w-40 rounded-lg border border-blue-100 bg-white px-2 py-1.5 text-xs"/><span title="Drag this cell to copy the exact date" draggable onDragStart={e=>{(window as any).__inventoryDragSource=row.id;beginDrag(key,row[key]||"");e.dataTransfer.effectAllowed="copy"}} className="cursor-grab text-slate-400"><GripVertical size={15}/></span></>:<span className="max-w-72 whitespace-normal break-words">{row[key]||"—"}</span>}</div></td>)}</tr>)}</tbody></table>{!visible.length&&<div className="p-10 text-center text-sm text-slate-500">No inventory leads found. Upload new leads to populate this sheet.</div>}</div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-50 px-4 py-3 text-xs text-slate-500"><div><Users className="mr-1 inline" size={14}/>{inventoryTotal.toLocaleString()} total leads · showing {inventoryTotal ? ((currentPage - 1) * tablePageSize + 1).toLocaleString() + "–" + Math.min(currentPage * tablePageSize, inventoryTotal).toLocaleString() : "0"} · {selected.length.toLocaleString()} selected overall. Select all selects this loaded page.</div><div className="flex items-center gap-2"><button type="button" disabled={currentPage <= 1} onClick={() => setTablePage(p => Math.max(1, p - 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button><span>Page {currentPage} of {pageCount}</span><button type="button" disabled={currentPage >= pageCount} onClick={() => setTablePage(p => Math.min(pageCount, p + 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-50 p-4"><div><h2 className="font-black">Central inventory sheet</h2></div><div className="flex flex-wrap gap-2"><label className="relative"><Search size={14} className="absolute left-3 top-3 text-slate-400"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search all columns" className="w-48 rounded-xl border border-blue-100 py-2 pl-8 pr-3 text-sm"/></label><input value={source} onChange={e=>setSource(e.target.value)} placeholder="Filter data source" className="w-44 rounded-xl border border-blue-100 px-3 py-2 text-sm"/><button onClick={()=>setSelected(old=>[...new Set([...old,...visibleIds])])} disabled={!visibleIds.length||allVisibleSelected} className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-40">Select all filtered ({visibleIds.length})</button><button onClick={()=>setSelected(old=>old.filter(id=>!visibleIds.includes(id)))} disabled={!visibleIds.some(id=>selected.includes(id))} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 disabled:opacity-40">Clear filtered</button><button onClick={()=>void copyFilteredContactForms()} disabled={!visible.length} className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-bold text-cyan-800 disabled:opacity-40">Copy contact forms ({visible.length})</button><button onClick={()=>void copySelectedForMailMerge()} disabled={!selected.length} className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"><Check className="mr-1 inline" size={15}/> Copy for Mail Merge ({selected.length})</button>{["admin","lead_generation_admin"].includes(currentRole) && <button onClick={downloadSelected} disabled={!selected.length} className="rounded-xl border border-blue-100 px-3 py-2 text-sm font-bold text-indigo-600 disabled:opacity-40"><ArrowDownToLine className="mr-1 inline" size={15}/> Export selected</button>}<button onClick={()=>token&&load(token)} className="rounded-xl border border-blue-100 p-2 text-indigo-600" title="Refresh"><RefreshCw size={16}/></button></div></div>
+      <div className="max-h-[70vh] overflow-auto"><table className="w-max min-w-full border-collapse text-left text-xs"><thead className="sticky top-0 z-20 bg-blue-50 text-[11px] font-black text-slate-600"><tr><th className="sticky left-0 z-30 bg-blue-50 px-3 py-3"><input type="checkbox" checked={allVisibleSelected} onChange={e=>toggleAll(e.target.checked)} aria-label="Select all filtered results"/></th>{COLUMNS.map(([,label])=><th key={label} className="min-w-44 whitespace-nowrap border-b border-blue-100 px-3 py-3">{label}</th>)}</tr><tr className="bg-amber-50"><th className="sticky left-0 z-30 bg-amber-50 px-2 py-2 text-[10px] text-amber-900">FILTER</th>{COLUMNS.map(([key,label])=><th key={key} className="relative border-b border-amber-100 px-2 py-2">{excelFilterKeys.includes(key) ? <div className="relative min-w-40"><button type="button" aria-label={"Excel filter "+label} aria-expanded={openExcelFilter===key} onClick={e=>openExcelFilter===key?setOpenExcelFilter(null):openExcelFilterMenu(key,e.currentTarget.getBoundingClientRect())} className={"flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-[11px] font-normal "+(excelFilters[key]?.length?"border-blue-400 bg-blue-50 text-blue-900":"border-amber-200 bg-white text-slate-600")}><span className="truncate">{excelFilters[key]?.length ? excelFilters[key].length+" selected" : "Filter "+label}</span><span>▾</span></button></div> : <input aria-label={"Filter "+label} value={columnFilters[key]||""} onChange={e=>setColumnFilters(old=>({...old,[key]:e.target.value}))} placeholder={"Filter "+label} className="w-40 rounded-md border border-amber-200 bg-white px-2 py-1.5 text-[11px] font-normal text-slate-800 placeholder:text-slate-400"/>}</th>)}</tr></thead><tbody>{pageRows.map((row,index)=><tr key={row.id} className={index%2?"bg-slate-50/70":"bg-white"}><td className="sticky left-0 z-10 border-b border-blue-50 bg-inherit px-3 py-2"><input type="checkbox" checked={selected.includes(row.id)} onChange={e=>setSelected(old=>e.target.checked?[...old,row.id]:old.filter(id=>id!==row.id))} aria-label={"Select "+row.email}/></td>{COLUMNS.map(([key,label])=><td key={key} onDragOver={e=>{if(key==="fresh_outreach_assigned_to"||key==="fresh_outreach_assigned_date")e.preventDefault()}} onDrop={e=>{if(key==="fresh_outreach_assigned_to"||key==="fresh_outreach_assigned_date"){e.preventDefault();dropFill(row.id,key)}}} className="border-b border-blue-50 px-3 py-2 align-top"><div className="flex min-w-36 items-center gap-1">{key==="fresh_outreach_assigned_to"?<><select value={row[key]||""} disabled={busy} onChange={e=>void fillAssignment([row.id],key,e.target.value)} onDragStart={()=>beginDrag(key,row[key]||"")} onDragEnd={()=>setDragFill(null)} draggable={Boolean(row[key])} onMouseDown={()=>{(window as any).__inventoryDragSource=row.id}} className="w-48 rounded-lg border border-blue-100 bg-white px-2 py-1.5 text-xs"><option value="">Unassigned</option>{team.map(member=><option key={member.id} value={member.full_name}>{member.full_name}</option>)}</select><span title="Drag this cell to copy the selected member" draggable onDragStart={e=>{(window as any).__inventoryDragSource=row.id;beginDrag(key,row[key]||"");e.dataTransfer.effectAllowed="copy"}} className="cursor-grab text-slate-400"><GripVertical size={15}/></span></>:key==="fresh_outreach_assigned_date"?<><input type="date" value={row[key]||""} disabled={busy} onChange={e=>void fillAssignment([row.id],key,e.target.value)} onMouseDown={()=>{(window as any).__inventoryDragSource=row.id}} className="w-40 rounded-lg border border-blue-100 bg-white px-2 py-1.5 text-xs"/><span title="Drag this cell to copy the exact date" draggable onDragStart={e=>{(window as any).__inventoryDragSource=row.id;beginDrag(key,row[key]||"");e.dataTransfer.effectAllowed="copy"}} className="cursor-grab text-slate-400"><GripVertical size={15}/></span></>:<span className="max-w-72 whitespace-normal break-words">{row[key]||"—"}</span>}</div></td>)}</tr>)}</tbody></table>{!visible.length&&<div className="p-10 text-center text-sm text-slate-500">No inventory leads found. Upload new leads to populate this sheet.</div>}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-50 px-4 py-3 text-xs text-slate-500"><div><Users className="mr-1 inline" size={14}/>{visible.length.toLocaleString()} filtered leads · showing {visible.length ? ((currentPage - 1) * tablePageSize + 1).toLocaleString() + "–" + Math.min(currentPage * tablePageSize, visible.length).toLocaleString() : "0"} · {selected.length.toLocaleString()} selected overall. Select all filtered still selects every match.</div><div className="flex items-center gap-2"><button type="button" disabled={currentPage <= 1} onClick={() => setTablePage(p => Math.max(1, p - 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Previous</button><span>Page {currentPage} of {pageCount}</span><button type="button" disabled={currentPage >= pageCount} onClick={() => setTablePage(p => Math.min(pageCount, p + 1))} className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">Next</button></div></div>
     </section>
   {excelFilterPopup}</main>;
 }

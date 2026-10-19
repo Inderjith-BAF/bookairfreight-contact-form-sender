@@ -43,85 +43,29 @@ export async function GET(request: Request) {
   if ("error" in auth) return auth.error;
   const { admin } = auth;
   const url = new URL(request.url);
-  const q = clean(url.searchParams.get("q")).slice(0, 160);
-  const source = clean(url.searchParams.get("source")).slice(0, 120);
-  const pageRaw = Number(url.searchParams.get("page") || "1");
-  const sizeRaw = Number(url.searchParams.get("pageSize") || "600");
-  const page = Number.isFinite(pageRaw) ? Math.max(1, Math.floor(pageRaw)) : 1;
-  const pageSize = Number.isFinite(sizeRaw) ? Math.min(600, Math.max(25, Math.floor(sizeRaw))) : 600;
-  const filterPayload = (() => { try { return JSON.parse(url.searchParams.get("filters") || "{}"); } catch { return {}; } })();
-  const filterField = clean(url.searchParams.get("filterField"));
-  if (filterField) {
-    const { data: values, error: valuesError } = await admin.rpc("central_lead_inventory_filter_values", {
-      p_field: filterField,
-      p_q: q,
-      p_source: source,
-      p_column_filters: filterPayload?.column && typeof filterPayload.column === "object" ? filterPayload.column : {},
-      p_excel_filters: filterPayload?.excel && typeof filterPayload.excel === "object" ? filterPayload.excel : {},
-      p_limit: 1000
-    });
-    if (valuesError) return NextResponse.json({ error: valuesError.message }, { status: 500 });
-    return NextResponse.json({ values: (values || []).map((row: {value:string}) => row.value), totalValues: (values || []).length });
-  }
-  const textFilters = filterPayload?.column && typeof filterPayload.column === "object" ? filterPayload.column as Record<string, unknown> : {};
-  const excelFilters = filterPayload?.excel && typeof filterPayload.excel === "object" ? filterPayload.excel as Record<string, unknown> : {};
-
-  const { data: members, error: teamError } = await admin
-    .from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
+  const q = clean(url.searchParams.get("q")).toLowerCase();
+  const source = clean(url.searchParams.get("source"));
+  const { data: members, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
-
-  // Never download the full inventory into the browser. Each request returns
-  // at most one page, so memory use stays bounded as the table grows to 1M+ rows.
-  let query = admin.from("central_lead_inventory")
-    .select("id,created_at,location_on_site,country,company_name,first_name,last_name,title,email,main_product_description,secondary_product_description,main_industry,main_additional_tag,secondary_industry,secondary_additional_tag,qualified_lead,assigned_to,assigned_date,ecommerce_platform_used,data_from_lead_generation_team,data_source,email_finding_assigned_to,email_finding_assigned_date,business_personal_email,contact_form,fresh_outreach_assigned_to,fresh_outreach_assigned_date", { count: "exact" })
-    .order("created_at", { ascending: false }).order("id", { ascending: false });
-  if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
-  if (q) {
-    const escaped = q.replace(/[(),.]/g, " ").replace(/[%_]/g, "");
-    const pattern = "%" + escaped + "%";
-    query = query.or([
-      "location_on_site","country","company_name","first_name","last_name","title","email",
-      "main_product_description","secondary_product_description","main_industry","main_additional_tag",
-      "secondary_industry","secondary_additional_tag","qualified_lead","assigned_to","ecommerce_platform_used",
-      "data_from_lead_generation_team","data_source","email_finding_assigned_to","business_personal_email",
-      "contact_form","fresh_outreach_assigned_to"
-    ].map(field => field + ".ilike." + pattern).join(","));
+  // Page through the inventory instead of silently stopping at the API's default 1,000 rows.
+  const pageSize = 1000;
+  const data: any[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    let query = admin.from("central_lead_inventory").select("*").order("created_at", { ascending: false }).range(offset, offset + pageSize - 1);
+    if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
+    const { data: page, error } = await query;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    data.push(...(page || []));
+    if (!page || page.length < pageSize) break;
   }
-  const allowedFilterFields = new Set(Object.keys(fields));
-  for (const [field, rawValue] of Object.entries(textFilters)) {
-    if (!allowedFilterFields.has(field)) continue;
-    const value = clean(rawValue);
-    if (!value) continue;
-    if (field.endsWith("_date")) query = query.eq(field, value);
-    else query = query.ilike(field, "%" + value.replace(/[%_]/g, "") + "%");
-  }
-  for (const [field, rawValues] of Object.entries(excelFilters)) {
-    if (!allowedFilterFields.has(field) || !Array.isArray(rawValues) || !rawValues.length) continue;
-    const values = rawValues.map(clean).slice(0, 250);
-    if (!values.length) continue;
-    const includeBlanks = values.includes("");
-    const nonBlankValues = values.filter(Boolean);
-    if (includeBlanks) {
-      const quoted = nonBlankValues.map(value => '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"');
-      const conditions = [field + ".is.null", field + ".eq."];
-      if (quoted.length) conditions.push(field + ".in.(" + quoted.join(",") + ")");
-      query = query.or(conditions.join(","));
-    } else {
-      query = query.in(field, nonBlankValues);
-    }
-  }
-  const from = (page - 1) * pageSize;
-  const { data: leads, count, error } = await query.range(from, from + pageSize - 1);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({
-    leads: leads || [],
-    total: count || 0,
-    page,
-    pageSize,
-    pageCount: Math.max(1, Math.ceil((count || 0) / pageSize)),
-    team: members || [],
-    currentRole: auth.profile.role
-  });
+  const leads = (data || []).filter((row: any) => !q || [
+    row.location_on_site,row.country,row.company_name,row.first_name,row.last_name,row.title,row.email,
+    row.main_product_description,row.secondary_product_description,row.main_industry,row.main_additional_tag,
+    row.secondary_industry,row.secondary_additional_tag,row.qualified_lead,row.assigned_to,row.assigned_date,
+    row.ecommerce_platform_used,row.data_from_lead_generation_team,row.data_source,row.email_finding_assigned_to,
+    row.email_finding_assigned_date,row.business_personal_email,row.contact_form,row.fresh_outreach_assigned_to,row.fresh_outreach_assigned_date
+  ].some(v => String(v || "").toLowerCase().includes(q)));
+  return NextResponse.json({ leads, total: leads.length, team: members || [], currentRole: auth.profile.role });
 }
 
 export async function POST(request: Request) {
@@ -214,69 +158,6 @@ export async function PATCH(request: Request) {
   if ("error" in auth) return auth.error;
   const { admin } = auth;
   const body = await request.json().catch(() => null);
-  if (body?.action === "assign_filtered") {
-    const requested = Number(body?.limit);
-    const limit = Number.isFinite(requested) ? Math.min(5000, Math.max(1, Math.floor(requested))) : 0;
-    const assignee = clean(body?.assignee);
-    const source = clean(body?.source).slice(0, 120);
-    const q = clean(body?.q).slice(0, 160);
-    const countries = Array.isArray(body?.countries) ? body.countries.map(clean).filter(Boolean).slice(0, 100) : [];
-    const filterPayload = body?.filters && typeof body.filters === "object" ? body.filters : {};
-    const textFilters = filterPayload.column && typeof filterPayload.column === "object" ? filterPayload.column as Record<string, unknown> : {};
-    const excelFilters = filterPayload.excel && typeof filterPayload.excel === "object" ? filterPayload.excel as Record<string, unknown> : {};
-    if (!limit || !assignee) return NextResponse.json({ error: "Choose an assignee and a valid quantity between 1 and 5,000." }, { status: 400 });
-    const { data: person, error: personError } = await admin.from("outbound_profiles").select("id,full_name,active").eq("full_name", assignee).eq("active", true).maybeSingle();
-    if (personError || !person) return NextResponse.json({ error: "Select an active team member." }, { status: 400 });
-    let query = admin.from("central_lead_inventory").select("id").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
-    if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
-    if (countries.length === 1) query = query.eq("country", countries[0]);
-    else if (countries.length > 1) query = query.in("country", countries);
-    if (q) {
-      const escaped = q.replace(/[(),.]/g, " ").replace(/[%_]/g, "");
-      const pattern = "%" + escaped + "%";
-      const searchConditions = [
-        "location_on_site","country","company_name","first_name","last_name","title","email",
-        "main_product_description","secondary_product_description","main_industry","main_additional_tag",
-        "secondary_industry","secondary_additional_tag","qualified_lead","assigned_to","ecommerce_platform_used",
-        "data_from_lead_generation_team","data_source","email_finding_assigned_to","business_personal_email",
-        "contact_form","fresh_outreach_assigned_to"
-      ].map(field => field + ".ilike." + pattern).join(",");
-      query = query.or("and(or(fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.),or(" + searchConditions + "))");
-    }
-    if (!q) query = query.or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.");
-    const allowedFilterFields = new Set(Object.keys(fields));
-    for (const [field, rawValue] of Object.entries(textFilters)) {
-      if (!allowedFilterFields.has(field)) continue;
-      const value = clean(rawValue);
-      if (!value) continue;
-      if (field.endsWith("_date")) query = query.eq(field, value);
-      else query = query.ilike(field, "%" + value.replace(/[%_]/g, "") + "%");
-    }
-    for (const [field, rawValues] of Object.entries(excelFilters)) {
-      if (!allowedFilterFields.has(field) || !Array.isArray(rawValues) || !rawValues.length) continue;
-      const values = rawValues.map(clean).slice(0, 250);
-      if (!values.length) continue;
-      const includeBlanks = values.includes("");
-      const nonBlankValues = values.filter(Boolean);
-      if (includeBlanks) {
-        const quoted = nonBlankValues.map(value => '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"');
-        const conditions = [field + ".is.null", field + ".eq."];
-        if (quoted.length) conditions.push(field + ".in.(" + quoted.join(",") + ")");
-        query = query.or(conditions.join(","));
-      } else {
-        query = query.in(field, nonBlankValues);
-      }
-    }
-    const { data: candidates, error: findError } = await query;
-    if (findError) return NextResponse.json({ error: findError.message }, { status: 500 });
-    const idsToAssign = (candidates || []).map((row: {id:string}) => row.id);
-    if (!idsToAssign.length) return NextResponse.json({ updated: 0, requested: limit, assignee, message: "No unassigned leads matched those filters." });
-    const { data: updatedRows, error: updateError } = await admin.from("central_lead_inventory")
-      .update({ fresh_outreach_assigned_to: assignee, fresh_outreach_assigned_date: new Date().toISOString().slice(0,10), updated_at: new Date().toISOString() })
-      .in("id", idsToAssign).select("id");
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
-    return NextResponse.json({ updated: updatedRows?.length || 0, requested: limit, assignee });
-  }
   const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];
   const field = String(body?.field || "");
   const value = clean(body?.value);
