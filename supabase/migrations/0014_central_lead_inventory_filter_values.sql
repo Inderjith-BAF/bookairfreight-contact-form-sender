@@ -61,8 +61,9 @@ begin
     if vals is null or cardinality(vals) = 0 then continue; end if;
     if '' = any(vals) then
       where_sql := where_sql || format(' and (%I is null or %I::text = %L', f, f, '');
-      if cardinality(vals) > 1 then
-        where_sql := where_sql || format(' or %I::text = any(%L::text[])', f, vals[array_lower(vals,1)+1:array_upper(vals,1)]);
+      vals := array_remove(vals, '');
+      if cardinality(vals) > 0 then
+        where_sql := where_sql || format(' or %I::text = any(%L::text[])', f, vals);
       end if;
       where_sql := where_sql || ')';
     else
