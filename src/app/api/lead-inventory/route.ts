@@ -185,7 +185,7 @@ export async function PATCH(request: Request) {
     if (!limit || !assignee) return NextResponse.json({ error: "Choose an assignee and a valid quantity between 1 and 5,000." }, { status: 400 });
     const { data: person, error: personError } = await admin.from("outbound_profiles").select("id,full_name,active").eq("full_name", assignee).eq("active", true).maybeSingle();
     if (personError || !person) return NextResponse.json({ error: "Select an active team member." }, { status: 400 });
-    let query = admin.from("central_lead_inventory").select("id").or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+    let query = admin.from("central_lead_inventory").select("id").is("fresh_outreach_assigned_to", null).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
     if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
     if (countries.length === 1) query = query.eq("country", countries[0]);
     else if (countries.length > 1) query = query.in("country", countries);
