@@ -6,7 +6,7 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { ArrowDownToLine, Check, FileUp, GripVertical, LoaderCircle, RefreshCw, Search, Upload, Users } from "lucide-react";
 
 type TeamMember = { id: string; full_name: string; role: string; active: boolean };
-type Lead = { id: string; [key: string]: any };
+type Lead = { id: string; __renderKey?: string; [key: string]: any };
 const COLUMNS = [
   ["location_on_site","Location On Site"],["country","Country"],["company_name","Company Name"],
   ["first_name","First Name"],["last_name","Last Name"],["title","Title"],["email","Email"],
@@ -202,7 +202,7 @@ export function CentralLeadInventory() {
     const ids = pageRows.slice(lo, hi + 1).map(row => row.id);
     void fillAssignment(ids, field, dragFill.value);
   }
-  const excelFilterKeys = ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"];
+  const excelFilterKeys = useMemo(() => ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"], []);
   const filterOptions = useMemo(() => Object.fromEntries(excelFilterKeys.map(key => [key, Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b))])) as Record<string,string[]>, [leads]);
   const excelFilterOptions = (key: string) => filterOptions[key] || [];
   const visible = useMemo(() => leads.filter(row => COLUMNS.every(([key]) => {
