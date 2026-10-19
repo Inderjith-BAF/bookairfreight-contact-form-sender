@@ -53,6 +53,7 @@ export async function GET(request: Request) {
     admin.from("central_lead_inventory")
       .select("created_at,fresh_outreach_assigned_to,business_personal_email,data_from_lead_generation_team,data_source,country,main_industry")
       .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(page * pageSize, Math.min(total - 1, (page + 1) * pageSize - 1))
   ));
   const failed = pages.find(page => page.error);
