@@ -75,7 +75,7 @@ export function CentralLeadInventory() {
   const [tablePage, setTablePage] = useState(1);
   const [inventoryTotal, setInventoryTotal] = useState(0);
   const [serverPageCount, setServerPageCount] = useState(1);
-  const tablePageSize = 600;
+  const tablePageSize = 100;
   const [source, setSource] = useState("");
   const [paste, setPaste] = useState("");
   const [busy, setBusy] = useState(false);
@@ -110,6 +110,7 @@ export function CentralLeadInventory() {
     return () => { alive = false; };
   }, [supabase]);
   useEffect(() => { if (!token) return; let alive = true; const timer = window.setTimeout(() => { load(token, tablePage).catch(e => { if (alive) setError(e instanceof Error ? e.message : "Could not refresh inventory"); }); }, q || source ? 250 : 0); return () => { alive = false; window.clearTimeout(timer); }; }, [token, load, tablePage, q, source]);
+  useEffect(() => { setTablePage(1); }, [q, source]);
 
   async function uploadRows(rows: Record<string, unknown>[]) {
     if (!token || !rows.length) return;
@@ -323,7 +324,7 @@ export function CentralLeadInventory() {
   return <main className="min-h-screen space-y-5 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 text-slate-900 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-blue-100 bg-white/90 p-6 shadow-sm">
       <div><div className="text-xs font-black uppercase tracking-[.22em] text-indigo-500">BookAirfreight · Lead Operations</div><h1 className="mt-2 text-3xl font-black">Central Lead Inventory</h1><p className="mt-1 text-sm text-slate-500">Shared lead pool · email-based duplicate protection · spreadsheet-style assignment</p></div>
-      <div className="grid grid-cols-3 gap-2 text-center">{[[inventoryTotal,"Total leads"],[Math.max(0,inventoryTotal-assignedCount),"Unassigned (loaded page estimate)"],[assignedCount,"Assigned (loaded page)"]].map(([n,label])=><div key={String(label)} className="rounded-2xl bg-blue-50 px-4 py-3"><div className="text-xl font-black tabular-nums">{n}</div><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div></div>)}</div>
+      <div className="grid grid-cols-3 gap-2 text-center">{[[inventoryTotal,"Total leads"],[Math.max(0,leads.length-assignedCount),"Unassigned on page"],[assignedCount,"Assigned on page"]].map(([n,label])=><div key={String(label)} className="rounded-2xl bg-blue-50 px-4 py-3"><div className="text-xl font-black tabular-nums">{n}</div><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div></div>)}</div>
     </header>
     {["admin", "lead_generation_admin"].includes(currentRole) && (
     <section className="rounded-3xl border border-blue-100 bg-white p-5 shadow-sm">
