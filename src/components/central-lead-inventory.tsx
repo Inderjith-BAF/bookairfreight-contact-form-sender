@@ -203,14 +203,15 @@ export function CentralLeadInventory() {
     void fillAssignment(ids, field, dragFill.value);
   }
   const excelFilterKeys = ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"];
-  const excelFilterOptions = (key: string) => Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b));
-  const visible = leads.filter(row => COLUMNS.every(([key]) => {
+  const filterOptions = useMemo(() => Object.fromEntries(excelFilterKeys.map(key => [key, Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b))])) as Record<string,string[]>, [leads]);
+  const excelFilterOptions = (key: string) => filterOptions[key] || [];
+  const visible = useMemo(() => leads.filter(row => COLUMNS.every(([key]) => {
     const textFilter = columnFilters[key]?.trim();
     if (textFilter && !String(row[key] ?? "").toLowerCase().includes(textFilter.toLowerCase())) return false;
     const selectedValues = excelFilters[key];
     if (excelFilterKeys.includes(key) && selectedValues?.length) { const value = key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim(); if (!selectedValues.includes(value)) return false; }
     return true;
-  }));
+  })), [leads, columnFilters, excelFilters]);
   const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
     if (rect) setExcelFilterPosition({top: Math.min(rect.bottom + 4, window.innerHeight - 320), left: Math.min(rect.left, window.innerWidth - 280)});
     setOpenExcelFilter(key);
@@ -226,7 +227,7 @@ export function CentralLeadInventory() {
   const pageCount = Math.max(1, Math.ceil(visible.length / tablePageSize));
   const currentPage = Math.min(tablePage, pageCount);
   const pageRows = visible.slice((currentPage - 1) * tablePageSize, currentPage * tablePageSize);
-  const visibleIds = visible.map(row => row.id);
+  const visibleIds = useMemo(() => visible.map(row => row.id), [visible]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selected.includes(id));
   const toggleAll = (checked:boolean) => setSelected(old => checked ? [...new Set([...old, ...visibleIds])] : old.filter(id => !visibleIds.includes(id)));
   const downloadSelected = () => {
@@ -268,7 +269,7 @@ export function CentralLeadInventory() {
       setError("Clipboard access was blocked by the browser. Use Export selected to download the same rows.");
     }
   }
-  const assignedCount = leads.filter(row => String(row.fresh_outreach_assigned_to || "").trim()).length;
+  const assignedCount = useMemo(() => leads.filter(row => String(row.fresh_outreach_assigned_to || "").trim()).length, [leads]);
   const excelFilterPopup = openExcelFilter && excelFilterPosition && typeof document !== "undefined" ? createPortal(<div style={{position:"fixed",top:excelFilterPosition.top,left:excelFilterPosition.left,zIndex:9999}} className="w-64 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-normal text-slate-800 shadow-xl"><input autoFocus value={excelFilterSearch} onChange={e=>setExcelFilterSearch(e.target.value)} placeholder="Search values" className="mb-2 w-full rounded-md border border-slate-200 px-2 py-1.5 outline-none focus:border-blue-400"/><div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2"><button type="button" onClick={()=>setDraftExcelFilter(excelFilterOptions(openExcelFilter))} className="font-semibold text-blue-700 hover:underline">Select all</button><button type="button" onClick={()=>setDraftExcelFilter([])} className="font-semibold text-slate-500 hover:underline">Clear</button></div><div className="max-h-52 overflow-auto">{excelFilterOptions(openExcelFilter).filter(value=>value.toLowerCase().includes(excelFilterSearch.toLowerCase())).map(value=><label key={value||"__blank"} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 hover:bg-blue-50"><input type="checkbox" checked={draftExcelFilter.includes(value)} onChange={()=>toggleDraftExcelValue(value)} className="rounded border-slate-300"/><span className="truncate">{value || "(Blanks)"}</span></label>)}</div><div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-2"><button type="button" onClick={()=>setOpenExcelFilter(null)} className="rounded-md border border-slate-200 px-3 py-1.5">Cancel</button><button type="button" onClick={applyExcelFilter} className="rounded-md bg-blue-600 px-3 py-1.5 font-semibold text-white">Apply</button></div></div>,document.body) : null;
   return <main className="min-h-screen space-y-5 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 text-slate-900 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-blue-100 bg-white/90 p-6 shadow-sm">
