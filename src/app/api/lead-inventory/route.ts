@@ -49,6 +49,9 @@ export async function GET(request: Request) {
   const sizeRaw = Number(url.searchParams.get("pageSize") || "600");
   const page = Number.isFinite(pageRaw) ? Math.max(1, Math.floor(pageRaw)) : 1;
   const pageSize = Number.isFinite(sizeRaw) ? Math.min(600, Math.max(25, Math.floor(sizeRaw))) : 600;
+  const filterPayload = (() => { try { return JSON.parse(url.searchParams.get("filters") || "{}"); } catch { return {}; } })();
+  const textFilters = filterPayload?.column && typeof filterPayload.column === "object" ? filterPayload.column as Record<string, unknown> : {};
+  const excelFilters = filterPayload?.excel && typeof filterPayload.excel === "object" ? filterPayload.excel as Record<string, unknown> : {};
 
   const { data: members, error: teamError } = await admin
     .from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
@@ -70,6 +73,20 @@ export async function GET(request: Request) {
       "data_from_lead_generation_team","data_source","email_finding_assigned_to","business_personal_email",
       "contact_form","fresh_outreach_assigned_to"
     ].map(field => field + ".ilike." + pattern).join(","));
+  }
+  const allowedFilterFields = new Set(Object.keys(fields));
+  for (const [field, rawValue] of Object.entries(textFilters)) {
+    if (!allowedFilterFields.has(field)) continue;
+    const value = clean(rawValue);
+    if (!value) continue;
+    if (field.endsWith("_date")) query = query.eq(field, value);
+    else query = query.ilike(field, "%" + value.replace(/[%_]/g, "") + "%");
+  }
+  for (const [field, rawValues] of Object.entries(excelFilters)) {
+    if (!allowedFilterFields.has(field) || !Array.isArray(rawValues) || !rawValues.length) continue;
+    const values = rawValues.map(clean).filter(Boolean).slice(0, 250);
+    if (!values.length) continue;
+    query = query.in(field, values);
   }
   const from = (page - 1) * pageSize;
   const { data: leads, count, error } = await query.range(from, from + pageSize - 1);
