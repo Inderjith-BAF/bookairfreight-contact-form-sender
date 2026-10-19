@@ -195,7 +195,7 @@ export function CentralLeadInventory() {
       const res = await fetch("/api/lead-inventory", {
         method: "PATCH",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "assign_filtered", limit: quantity, assignee: bulkAssignee, q, source, countries: excelFilters.country || [] })
+        body: JSON.stringify({ action: "assign_filtered", limit: quantity, assignee: bulkAssignee, q, source, countries: excelFilters.country || [], filters: { column: columnFilters, excel: excelFilters } })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not assign filtered leads");
@@ -273,7 +273,7 @@ export function CentralLeadInventory() {
     void fillAssignment(ids, field, dragFill.value);
   }
   const excelFilterKeys = useMemo(() => ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"], []);
-  const filterOptions = useMemo(() => Object.fromEntries(excelFilterKeys.map(key => { const values = leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()).filter(Boolean); if (key === "fresh_outreach_assigned_to") values.push(...team.map(member => member.full_name)); if (key === "country") values.push(...Object.values(COUNTRY_ALIASES), "United States", "Canada", "Australia", "India", "China", "Japan", "Brazil", "Mexico", "Singapore", "United Arab Emirates", "South Africa", "New Zealand"); return [key, Array.from(new Set(values)).sort((a,b) => a.localeCompare(b))]; })) as Record<string,string[]>, [leads, team]);
+  const filterOptions = useMemo(() => Object.fromEntries(excelFilterKeys.map(key => { const values = leads.map(row => String(row[key] ?? "").trim()).filter(Boolean); if (key === "fresh_outreach_assigned_to") values.push(...team.map(member => member.full_name)); if (key === "country") values.push(...Object.keys(COUNTRY_ALIASES).map(value => value.replace(/\b[a-z]/g, letter => letter.toUpperCase())), "United States", "Canada", "Australia", "India", "China", "Japan", "Brazil", "Mexico", "Singapore", "United Arab Emirates", "South Africa", "New Zealand", "United Kingdom", "Germany", "France", "Italy", "Spain", "Netherlands", "Ireland", "Belgium", "Sweden", "Norway", "Denmark", "Poland", "Portugal", "Switzerland", "Austria", "Finland", "Greece", "Czechia", "Romania", "Hungary", "Türkiye", "United Arab Emirates", "Saudi Arabia", "Indonesia", "Malaysia", "Thailand", "Philippines", "Vietnam", "Bangladesh", "Pakistan", "Sri Lanka"); return [key, Array.from(new Set(values)).sort((a,b) => a.localeCompare(b))]; })) as Record<string,string[]>, [leads, team]);
   const excelFilterOptions = (key: string) => filterOptions[key] || [];
   const visible = leads;
   const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
