@@ -175,6 +175,41 @@ export async function PATCH(request: Request) {
   if ("error" in auth) return auth.error;
   const { admin } = auth;
   const body = await request.json().catch(() => null);
+  if (body?.action === "assign_filtered") {
+    const requested = Number(body?.limit);
+    const limit = Number.isFinite(requested) ? Math.min(5000, Math.max(1, Math.floor(requested))) : 0;
+    const assignee = clean(body?.assignee);
+    const source = clean(body?.source).slice(0, 120);
+    const q = clean(body?.q).slice(0, 160);
+    const countries = Array.isArray(body?.countries) ? body.countries.map(clean).filter(Boolean).slice(0, 100) : [];
+    if (!limit || !assignee) return NextResponse.json({ error: "Choose an assignee and a valid quantity between 1 and 5,000." }, { status: 400 });
+    const { data: person, error: personError } = await admin.from("outbound_profiles").select("id,full_name,active").eq("full_name", assignee).eq("active", true).maybeSingle();
+    if (personError || !person) return NextResponse.json({ error: "Select an active team member." }, { status: 400 });
+    let query = admin.from("central_lead_inventory").select("id").or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+    if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
+    if (countries.length === 1) query = query.eq("country", countries[0]);
+    else if (countries.length > 1) query = query.in("country", countries);
+    if (q) {
+      const escaped = q.replace(/[(),.]/g, " ").replace(/[%_]/g, "");
+      const pattern = "%" + escaped + "%";
+      query = query.or([
+        "location_on_site","country","company_name","first_name","last_name","title","email",
+        "main_product_description","secondary_product_description","main_industry","main_additional_tag",
+        "secondary_industry","secondary_additional_tag","qualified_lead","assigned_to","ecommerce_platform_used",
+        "data_from_lead_generation_team","data_source","email_finding_assigned_to","business_personal_email",
+        "contact_form","fresh_outreach_assigned_to"
+      ].map(field => field + ".ilike." + pattern).join(","));
+    }
+    const { data: candidates, error: findError } = await query;
+    if (findError) return NextResponse.json({ error: findError.message }, { status: 500 });
+    const idsToAssign = (candidates || []).map((row: {id:string}) => row.id);
+    if (!idsToAssign.length) return NextResponse.json({ updated: 0, requested: limit, assignee, message: "No unassigned leads matched those filters." });
+    const { data: updatedRows, error: updateError } = await admin.from("central_lead_inventory")
+      .update({ fresh_outreach_assigned_to: assignee, fresh_outreach_assigned_date: new Date().toISOString().slice(0,10), updated_at: new Date().toISOString() })
+      .in("id", idsToAssign).select("id");
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+    return NextResponse.json({ updated: updatedRows?.length || 0, requested: limit, assignee });
+  }
   const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];
   const field = String(body?.field || "");
   const value = clean(body?.value);
