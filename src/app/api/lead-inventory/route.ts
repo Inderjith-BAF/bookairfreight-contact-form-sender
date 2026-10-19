@@ -199,6 +199,9 @@ export async function PATCH(request: Request) {
     const source = clean(body?.source).slice(0, 120);
     const q = clean(body?.q).slice(0, 160);
     const countries = Array.isArray(body?.countries) ? body.countries.map(clean).filter(Boolean).slice(0, 100) : [];
+    const filterPayload = body?.filters && typeof body.filters === "object" ? body.filters : {};
+    const textFilters = filterPayload.column && typeof filterPayload.column === "object" ? filterPayload.column as Record<string, unknown> : {};
+    const excelFilters = filterPayload.excel && typeof filterPayload.excel === "object" ? filterPayload.excel as Record<string, unknown> : {};
     if (!limit || !assignee) return NextResponse.json({ error: "Choose an assignee and a valid quantity between 1 and 5,000." }, { status: 400 });
     const { data: person, error: personError } = await admin.from("outbound_profiles").select("id,full_name,active").eq("full_name", assignee).eq("active", true).maybeSingle();
     if (personError || !person) return NextResponse.json({ error: "Select an active team member." }, { status: 400 });
@@ -219,6 +222,20 @@ export async function PATCH(request: Request) {
       query = query.or("and(fresh_outreach_assigned_to.is.null,or(" + searchConditions + "))");
     }
     if (!q) query = query.is("fresh_outreach_assigned_to", null);
+    const allowedFilterFields = new Set(Object.keys(fields));
+    for (const [field, rawValue] of Object.entries(textFilters)) {
+      if (!allowedFilterFields.has(field)) continue;
+      const value = clean(rawValue);
+      if (!value) continue;
+      if (field.endsWith("_date")) query = query.eq(field, value);
+      else query = query.ilike(field, "%" + value.replace(/[%_]/g, "") + "%");
+    }
+    for (const [field, rawValues] of Object.entries(excelFilters)) {
+      if (!allowedFilterFields.has(field) || !Array.isArray(rawValues) || !rawValues.length) continue;
+      const values = rawValues.map(clean).filter(Boolean).slice(0, 250);
+      if (!values.length) continue;
+      query = query.in(field, values);
+    }
     const { data: candidates, error: findError } = await query;
     if (findError) return NextResponse.json({ error: findError.message }, { status: 500 });
     const idsToAssign = (candidates || []).map((row: {id:string}) => row.id);
