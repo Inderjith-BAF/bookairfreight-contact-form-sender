@@ -187,7 +187,8 @@ export function CentralLeadInventory() {
   }
   const excelFilterKeys = ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"];
   const excelFilterOptions = (key: string) => Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b));
-  const visible = leads.filter(row => COLUMNS.every(([key]) => {
+  const uniqueLeads = Array.from(new Map(leads.filter(row => row.id).map(row => [row.id, row])).values());
+  const visible = uniqueLeads.filter(row => COLUMNS.every(([key]) => {
     const textFilter = columnFilters[key]?.trim();
     if (textFilter && !String(row[key] ?? "").toLowerCase().includes(textFilter.toLowerCase())) return false;
     const selectedValues = excelFilters[key];
@@ -282,12 +283,12 @@ export function CentralLeadInventory() {
     if (!candidates.length) { setError("No unassigned leads match the current filters."); return; }
     await assignRows(candidates.map(row => row.id), bulkAssignee);
   }
-  const assignedCount = leads.filter(row => String(row.fresh_outreach_assigned_to || "").trim()).length;
+  const assignedCount = uniqueLeads.filter(row => String(row.fresh_outreach_assigned_to || "").trim()).length;
   const excelFilterPopup = openExcelFilter && excelFilterPosition && typeof document !== "undefined" ? createPortal(<div style={{position:"fixed",top:excelFilterPosition.top,left:excelFilterPosition.left,zIndex:9999}} className="w-64 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-normal text-slate-800 shadow-xl"><input autoFocus value={excelFilterSearch} onChange={e=>setExcelFilterSearch(e.target.value)} placeholder="Search values" className="mb-2 w-full rounded-md border border-slate-200 px-2 py-1.5 outline-none focus:border-blue-400"/><div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2"><button type="button" onClick={()=>setDraftExcelFilter(excelFilterOptions(openExcelFilter))} className="font-semibold text-blue-700 hover:underline">Select all</button><button type="button" onClick={()=>setDraftExcelFilter([])} className="font-semibold text-slate-500 hover:underline">Clear</button></div><div className="max-h-52 overflow-auto">{excelFilterOptions(openExcelFilter).filter(value=>value.toLowerCase().includes(excelFilterSearch.toLowerCase())).map(value=><label key={value||"__blank"} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 hover:bg-blue-50"><input type="checkbox" checked={draftExcelFilter.includes(value)} onChange={()=>toggleDraftExcelValue(value)} className="rounded border-slate-300"/><span className="truncate">{value || "(Blanks)"}</span></label>)}</div><div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-2"><button type="button" onClick={()=>setOpenExcelFilter(null)} className="rounded-md border border-slate-200 px-3 py-1.5">Cancel</button><button type="button" onClick={applyExcelFilter} className="rounded-md bg-blue-600 px-3 py-1.5 font-semibold text-white">Apply</button></div></div>,document.body) : null;
   return <main className="min-h-screen space-y-5 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 text-slate-900 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-blue-100 bg-white/90 p-6 shadow-sm">
       <div><div className="text-xs font-black uppercase tracking-[.22em] text-indigo-500">BookAirfreight · Lead Operations</div><h1 className="mt-2 text-3xl font-black">Central Lead Inventory</h1><p className="mt-1 text-sm text-slate-500">Shared lead pool · email-based duplicate protection · spreadsheet-style assignment</p></div>
-      <div className="grid grid-cols-3 gap-2 text-center">{[[leads.length,"Visible leads"],[leads.length-assignedCount,"Unassigned"],[assignedCount,"Assigned"]].map(([n,label])=><div key={String(label)} className="rounded-2xl bg-blue-50 px-4 py-3"><div className="text-xl font-black tabular-nums">{n}</div><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div></div>)}</div>
+      <div className="grid grid-cols-3 gap-2 text-center">{[[uniqueLeads.length,"Visible leads"],[uniqueLeads.length-assignedCount,"Unassigned"],[assignedCount,"Assigned"]].map(([n,label])=><div key={String(label)} className="rounded-2xl bg-blue-50 px-4 py-3"><div className="text-xl font-black tabular-nums">{n}</div><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div></div>)}</div>
     </header>
     {["admin", "lead_generation_admin"].includes(currentRole) && (
     <section className="rounded-3xl border border-blue-100 bg-white p-5 shadow-sm">
