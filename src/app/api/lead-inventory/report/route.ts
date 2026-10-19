@@ -47,20 +47,17 @@ export async function GET(request: Request) {
   const { count, error: countError } = await admin.from("central_lead_inventory").select("id", { count: "exact", head: true });
   if (countError) return NextResponse.json({ error: countError.message }, { status: 500 });
   const total = count || 0;
+  // Avoid launching hundreds/thousands of concurrent Supabase queries when the
+  // inventory grows. Aggregate bounded batches and release each batch promptly.
   const pageSize = 1000;
   const pageCount = Math.ceil(total / pageSize);
-  const pages = await Promise.all(Array.from({ length: pageCount }, (_, page) =>
-    admin.from("central_lead_inventory")
-      .select("created_at,fresh_outreach_assigned_to,business_personal_email,data_from_lead_generation_team,data_source,country,main_industry")
-      .order("created_at", { ascending: false })
-      .range(page * pageSize, Math.min(total - 1, (page + 1) * pageSize - 1))
-  ));
-  const failed = pages.find(page => page.error);
-  if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
-  const rows = pages.flatMap(page => page.data || []);
+  const sourceCounts = new Map<string,number>();
+  const rawSheetCounts = new Map<string,number>();
+  const countryCounts = new Map<string,number>();
+  const industryCounts = new Map<string,number>();
+  const last7 = new Map<string, number>();
   const today = new Date();
   const todayKey = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-  const last7 = new Map<string, number>();
   for (let offset = 6; offset >= 0; offset--) {
     const date = new Date();
     date.setDate(date.getDate() - offset);
@@ -68,20 +65,37 @@ export async function GET(request: Request) {
     last7.set(key, 0);
   }
   let assigned = 0, business = 0, personal = 0, addedToday = 0;
-  for (const row of rows) {
-    if (String(row.fresh_outreach_assigned_to || "").trim()) assigned++;
-    if (/business/i.test(String(row.business_personal_email || ""))) business++;
-    if (/personal/i.test(String(row.business_personal_email || ""))) personal++;
-    const day = String(row.created_at || "").slice(0, 10);
-    if (day === todayKey) addedToday++;
-    if (last7.has(day)) last7.set(day, (last7.get(day) || 0) + 1);
+  const bump = (map: Map<string,number>, key: string) => map.set(key, (map.get(key) || 0) + 1);
+  for (let batchStart = 0; batchStart < pageCount; batchStart += 5) {
+    const batchPages = await Promise.all(Array.from({ length: Math.min(5, pageCount - batchStart) }, (_, index) => {
+      const page = batchStart + index;
+      return admin.from("central_lead_inventory")
+        .select("created_at,fresh_outreach_assigned_to,business_personal_email,data_from_lead_generation_team,data_source,country,main_industry")
+        .order("created_at", { ascending: false }).order("id", { ascending: false })
+        .range(page * pageSize, Math.min(total - 1, (page + 1) * pageSize - 1));
+    }));
+    const failed = batchPages.find(page => page.error);
+    if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
+    for (const result of batchPages) for (const row of result.data || []) {
+      if (String(row.fresh_outreach_assigned_to || "").trim()) assigned++;
+      if (/business/i.test(String(row.business_personal_email || ""))) business++;
+      if (/personal/i.test(String(row.business_personal_email || ""))) personal++;
+      bump(sourceCounts, clean(row.data_from_lead_generation_team));
+      bump(rawSheetCounts, clean(row.data_source));
+      bump(countryCounts, normalizeCountry(row.country));
+      bump(industryCounts, clean(row.main_industry));
+      const day = String(row.created_at || "").slice(0, 10);
+      if (day === todayKey) addedToday++;
+      if (last7.has(day)) last7.set(day, (last7.get(day) || 0) + 1);
+    }
   }
+  const sorted = (map: Map<string,number>) => [...map.entries()].sort((a,b) => b[1] - a[1]);
   return NextResponse.json({
     total, addedToday, assigned, business, personal,
-    sources: countBy(rows, "data_from_lead_generation_team"),
-    rawSheets: countBy(rows, "data_source"),
-    countries: countBy(rows, "country"),
-    industries: countBy(rows, "main_industry"),
+    sources: sorted(sourceCounts),
+    rawSheets: sorted(rawSheetCounts),
+    countries: sorted(countryCounts),
+    industries: sorted(industryCounts),
     last7: [...last7.entries()].map(([key, count]) => ({ key, count }))
   });
 }
