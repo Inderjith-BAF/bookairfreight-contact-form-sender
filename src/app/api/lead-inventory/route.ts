@@ -185,21 +185,23 @@ export async function PATCH(request: Request) {
     if (!limit || !assignee) return NextResponse.json({ error: "Choose an assignee and a valid quantity between 1 and 5,000." }, { status: 400 });
     const { data: person, error: personError } = await admin.from("outbound_profiles").select("id,full_name,active").eq("full_name", assignee).eq("active", true).maybeSingle();
     if (personError || !person) return NextResponse.json({ error: "Select an active team member." }, { status: 400 });
-    let query = admin.from("central_lead_inventory").select("id").is("fresh_outreach_assigned_to", null).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+    let query = admin.from("central_lead_inventory").select("id").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
     if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
     if (countries.length === 1) query = query.eq("country", countries[0]);
     else if (countries.length > 1) query = query.in("country", countries);
     if (q) {
       const escaped = q.replace(/[(),.]/g, " ").replace(/[%_]/g, "");
       const pattern = "%" + escaped + "%";
-      query = query.or([
+      const searchConditions = [
         "location_on_site","country","company_name","first_name","last_name","title","email",
         "main_product_description","secondary_product_description","main_industry","main_additional_tag",
         "secondary_industry","secondary_additional_tag","qualified_lead","assigned_to","ecommerce_platform_used",
         "data_from_lead_generation_team","data_source","email_finding_assigned_to","business_personal_email",
         "contact_form","fresh_outreach_assigned_to"
-      ].map(field => field + ".ilike." + pattern).join(","));
+      ].map(field => field + ".ilike." + pattern).join(",");
+      query = query.or("and(fresh_outreach_assigned_to.is.null,or(" + searchConditions + "))");
     }
+    if (!q) query = query.is("fresh_outreach_assigned_to", null);
     const { data: candidates, error: findError } = await query;
     if (findError) return NextResponse.json({ error: findError.message }, { status: 500 });
     const idsToAssign = (candidates || []).map((row: {id:string}) => row.id);
