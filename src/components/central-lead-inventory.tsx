@@ -205,13 +205,13 @@ export function CentralLeadInventory() {
   const excelFilterKeys = useMemo(() => ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"], []);
   const filterOptions = useMemo(() => Object.fromEntries(excelFilterKeys.map(key => [key, Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b))])) as Record<string,string[]>, [leads]);
   const excelFilterOptions = (key: string) => filterOptions[key] || [];
-  const visible = useMemo(() => leads.filter(row => COLUMNS.every(([key]) => {
+  const visible = useMemo(() => leads.filter((row: Lead) => COLUMNS.every(([key]) => {
     const textFilter = columnFilters[key]?.trim();
     if (textFilter && !String(row[key] ?? "").toLowerCase().includes(textFilter.toLowerCase())) return false;
     const selectedValues = excelFilters[key];
     if (excelFilterKeys.includes(key) && selectedValues?.length) { const value = key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim(); if (!selectedValues.includes(value)) return false; }
     return true;
-  })), [leads, columnFilters, excelFilters]);
+  })), [leads, columnFilters, excelFilters, excelFilterKeys]);
   const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
     if (rect) setExcelFilterPosition({top: Math.min(rect.bottom + 4, window.innerHeight - 320), left: Math.min(rect.left, window.innerWidth - 280)});
     setOpenExcelFilter(key);
@@ -226,7 +226,7 @@ export function CentralLeadInventory() {
   };
   const pageCount = Math.max(1, Math.ceil(visible.length / tablePageSize));
   const currentPage = Math.min(tablePage, pageCount);
-  const pageRows = visible.slice((currentPage - 1) * tablePageSize, currentPage * tablePageSize).map((row, index) => ({ ...row, __renderKey: `${String(row.id || "lead")}-${(currentPage - 1) * tablePageSize + index}` }));
+  const pageRows: Lead[] = visible.slice((currentPage - 1) * tablePageSize, currentPage * tablePageSize).map((row: Lead, index: number): Lead => ({ ...row, __renderKey: `${String(row.id || "lead")}-${(currentPage - 1) * tablePageSize + index}` }));
   const visibleIds = useMemo(() => visible.map(row => row.id), [visible]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selected.includes(id));
   const toggleAll = (checked:boolean) => setSelected(old => checked ? [...new Set([...old, ...visibleIds])] : old.filter(id => !visibleIds.includes(id)));
