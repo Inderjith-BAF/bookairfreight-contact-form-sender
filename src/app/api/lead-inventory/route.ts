@@ -84,9 +84,18 @@ export async function GET(request: Request) {
   }
   for (const [field, rawValues] of Object.entries(excelFilters)) {
     if (!allowedFilterFields.has(field) || !Array.isArray(rawValues) || !rawValues.length) continue;
-    const values = rawValues.map(clean).filter(Boolean).slice(0, 250);
+    const values = rawValues.map(clean).slice(0, 250);
     if (!values.length) continue;
-    query = query.in(field, values);
+    const includeBlanks = values.includes("");
+    const nonBlankValues = values.filter(Boolean);
+    if (includeBlanks) {
+      const quoted = nonBlankValues.map(value => '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"');
+      const conditions = [field + ".is.null", field + ".eq."];
+      if (quoted.length) conditions.push(field + ".in.(" + quoted.join(",") + ")");
+      query = query.or(conditions.join(","));
+    } else {
+      query = query.in(field, nonBlankValues);
+    }
   }
   const from = (page - 1) * pageSize;
   const { data: leads, count, error } = await query.range(from, from + pageSize - 1);
@@ -232,9 +241,18 @@ export async function PATCH(request: Request) {
     }
     for (const [field, rawValues] of Object.entries(excelFilters)) {
       if (!allowedFilterFields.has(field) || !Array.isArray(rawValues) || !rawValues.length) continue;
-      const values = rawValues.map(clean).filter(Boolean).slice(0, 250);
+      const values = rawValues.map(clean).slice(0, 250);
       if (!values.length) continue;
-      query = query.in(field, values);
+      const includeBlanks = values.includes("");
+      const nonBlankValues = values.filter(Boolean);
+      if (includeBlanks) {
+        const quoted = nonBlankValues.map(value => '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"');
+        const conditions = [field + ".is.null", field + ".eq."];
+        if (quoted.length) conditions.push(field + ".in.(" + quoted.join(",") + ")");
+        query = query.or(conditions.join(","));
+      } else {
+        query = query.in(field, nonBlankValues);
+      }
     }
     const { data: candidates, error: findError } = await query;
     if (findError) return NextResponse.json({ error: findError.message }, { status: 500 });
