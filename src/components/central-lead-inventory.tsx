@@ -89,6 +89,8 @@ export function CentralLeadInventory() {
   const [excelFilters, setExcelFilters] = useState<Record<string,string[]>>({});
   const [openExcelFilter, setOpenExcelFilter] = useState<string | null>(null);
   const [draftExcelFilter, setDraftExcelFilter] = useState<string[]>([]);
+  const [filterOptions, setFilterOptions] = useState<Record<string,string[]>>({});
+  const [loadingFilterOptions, setLoadingFilterOptions] = useState(false);
   const [excelFilterSearch, setExcelFilterSearch] = useState("");
   const [excelFilterPosition, setExcelFilterPosition] = useState<{top:number;left:number} | null>(null);
   const [summary, setSummary] = useState<{added:number;duplicate:number;invalid:number;total:number;results?:{row:number;email:string;result:string;reason:string}[]}|null>(null);
@@ -273,14 +275,24 @@ export function CentralLeadInventory() {
     void fillAssignment(ids, field, dragFill.value);
   }
   const excelFilterKeys = useMemo(() => ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"], []);
-  const filterOptions = useMemo(() => Object.fromEntries(excelFilterKeys.map(key => { const values = leads.map(row => String(row[key] ?? "").trim()); return [key, Array.from(new Set(values)).sort((a,b) => { if (!a) return -1; if (!b) return 1; return a.localeCompare(b); })]; })) as Record<string,string[]>, [leads]);
   const excelFilterOptions = (key: string) => filterOptions[key] || [];
   const visible = leads;
-  const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
+  const openExcelFilterMenu = async (key: string, rect?: DOMRect) => {
     if (rect) setExcelFilterPosition({top: Math.min(rect.bottom + 4, window.innerHeight - 320), left: Math.min(rect.left, window.innerWidth - 280)});
     setOpenExcelFilter(key);
     setDraftExcelFilter(excelFilters[key] ?? []);
     setExcelFilterSearch("");
+    if (!token) return;
+    setLoadingFilterOptions(true);
+    try {
+      const params = new URLSearchParams({ filterField: key, q, source, filters: JSON.stringify({ column: columnFilters, excel: excelFilters }) });
+      const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load filter values");
+      setFilterOptions(old => ({ ...old, [key]: Array.isArray(data.values) ? data.values : [] }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load filter values");
+    } finally { setLoadingFilterOptions(false); }
   };
   const toggleDraftExcelValue = (value: string) => setDraftExcelFilter(old => old.includes(value) ? old.filter(item => item !== value) : [...old, value]);
   const applyExcelFilter = () => {
@@ -334,7 +346,7 @@ export function CentralLeadInventory() {
     }
   }
   const assignedCount = useMemo(() => leads.filter(row => String(row.fresh_outreach_assigned_to || "").trim()).length, [leads]);
-  const excelFilterPopup = openExcelFilter && excelFilterPosition && typeof document !== "undefined" ? createPortal(<div style={{position:"fixed",top:excelFilterPosition.top,left:excelFilterPosition.left,zIndex:9999}} className="w-64 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-normal text-slate-800 shadow-xl"><input autoFocus value={excelFilterSearch} onChange={e=>setExcelFilterSearch(e.target.value)} placeholder="Search values" className="mb-2 w-full rounded-md border border-slate-200 px-2 py-1.5 outline-none focus:border-blue-400"/><div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2"><button type="button" onClick={()=>setDraftExcelFilter(excelFilterOptions(openExcelFilter))} className="font-semibold text-blue-700 hover:underline">Select all</button><button type="button" onClick={()=>setDraftExcelFilter([])} className="font-semibold text-slate-500 hover:underline">Clear</button></div><div className="max-h-52 overflow-auto">{excelFilterOptions(openExcelFilter).filter(value=>value.toLowerCase().includes(excelFilterSearch.toLowerCase())).map(value=><label key={value||"__blank"} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 hover:bg-blue-50"><input type="checkbox" checked={draftExcelFilter.includes(value)} onChange={()=>toggleDraftExcelValue(value)} className="rounded border-slate-300"/><span className="truncate">{value || "(Blanks)"}</span></label>)}</div><div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-2"><button type="button" onClick={()=>setOpenExcelFilter(null)} className="rounded-md border border-slate-200 px-3 py-1.5">Cancel</button><button type="button" onClick={applyExcelFilter} className="rounded-md bg-blue-600 px-3 py-1.5 font-semibold text-white">Apply</button></div></div>,document.body) : null;
+  const excelFilterPopup = openExcelFilter && excelFilterPosition && typeof document !== "undefined" ? createPortal(<div style={{position:"fixed",top:excelFilterPosition.top,left:excelFilterPosition.left,zIndex:9999}} className="w-64 rounded-xl border border-slate-200 bg-white p-3 text-left text-xs font-normal text-slate-800 shadow-xl"><input autoFocus value={excelFilterSearch} onChange={e=>setExcelFilterSearch(e.target.value)} placeholder="Search values" className="mb-2 w-full rounded-md border border-slate-200 px-2 py-1.5 outline-none focus:border-blue-400"/><div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2"><button type="button" onClick={()=>setDraftExcelFilter(excelFilterOptions(openExcelFilter))} disabled={loadingFilterOptions} className="font-semibold text-blue-700 hover:underline">Select all</button><button type="button" onClick={()=>setDraftExcelFilter([])} className="font-semibold text-slate-500 hover:underline">Clear</button></div><div className="max-h-52 overflow-auto">{loadingFilterOptions ? <div className="p-4 text-center text-slate-500">Loading all matching values…</div> : excelFilterOptions(openExcelFilter).filter(value=>value.toLowerCase().includes(excelFilterSearch.toLowerCase())).map(value=><label key={value||"__blank"} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 hover:bg-blue-50"><input type="checkbox" checked={draftExcelFilter.includes(value)} onChange={()=>toggleDraftExcelValue(value)} className="rounded border-slate-300"/><span className="truncate">{value || "(Blanks)"}</span></label>)}</div><div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-2"><button type="button" onClick={()=>setOpenExcelFilter(null)} className="rounded-md border border-slate-200 px-3 py-1.5">Cancel</button><button type="button" onClick={applyExcelFilter} disabled={loadingFilterOptions} className="rounded-md bg-blue-600 px-3 py-1.5 font-semibold text-white">Apply</button></div></div>,document.body) : null;
   return <main className="min-h-screen space-y-5 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 text-slate-900 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-blue-100 bg-white/90 p-6 shadow-sm">
       <div><div className="text-xs font-black uppercase tracking-[.22em] text-indigo-500">BookAirfreight · Lead Operations</div><h1 className="mt-2 text-3xl font-black">Central Lead Inventory</h1><p className="mt-1 text-sm text-slate-500">Shared lead pool · email-based duplicate protection · spreadsheet-style assignment</p></div>
