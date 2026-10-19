@@ -50,6 +50,19 @@ export async function GET(request: Request) {
   const page = Number.isFinite(pageRaw) ? Math.max(1, Math.floor(pageRaw)) : 1;
   const pageSize = Number.isFinite(sizeRaw) ? Math.min(600, Math.max(25, Math.floor(sizeRaw))) : 600;
   const filterPayload = (() => { try { return JSON.parse(url.searchParams.get("filters") || "{}"); } catch { return {}; } })();
+  const filterField = clean(url.searchParams.get("filterField"));
+  if (filterField) {
+    const { data: values, error: valuesError } = await admin.rpc("central_lead_inventory_filter_values", {
+      p_field: filterField,
+      p_q: q,
+      p_source: source,
+      p_column_filters: filterPayload?.column && typeof filterPayload.column === "object" ? filterPayload.column : {},
+      p_excel_filters: filterPayload?.excel && typeof filterPayload.excel === "object" ? filterPayload.excel : {},
+      p_limit: 1000
+    });
+    if (valuesError) return NextResponse.json({ error: valuesError.message }, { status: 500 });
+    return NextResponse.json({ values: (values || []).map((row: {value:string}) => row.value), totalValues: (values || []).length });
+  }
   const textFilters = filterPayload?.column && typeof filterPayload.column === "object" ? filterPayload.column as Record<string, unknown> : {};
   const excelFilters = filterPayload?.excel && typeof filterPayload.excel === "object" ? filterPayload.excel as Record<string, unknown> : {};
 
