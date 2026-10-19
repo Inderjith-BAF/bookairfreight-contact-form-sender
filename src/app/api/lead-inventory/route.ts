@@ -51,7 +51,7 @@ export async function GET(request: Request) {
   const pageSize = 1000;
   const data: any[] = [];
   for (let offset = 0; ; offset += pageSize) {
-    let query = admin.from("central_lead_inventory").select("*").order("created_at", { ascending: false }).range(offset, offset + pageSize - 1);
+    let query = admin.from("central_lead_inventory").select("*").order("created_at", { ascending: false }).order("id", { ascending: true }).range(offset, offset + pageSize - 1);
     if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
     const { data: page, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
