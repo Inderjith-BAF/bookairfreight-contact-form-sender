@@ -203,6 +203,15 @@ export function CentralLeadInventory() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not update selected assignments");
+        if (unassign) {
+          const dateRes = await fetch("/api/lead-inventory", {
+            method: "PATCH",
+            headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: batch, field: "fresh_outreach_assigned_date", value: "" })
+          });
+          const dateData = await dateRes.json();
+          if (!dateRes.ok) throw new Error(dateData.error || "Assignments were cleared, but assignment dates could not be cleared.");
+        }
         updated += Number(data.updated || batch.length);
         const batchIds = new Set(batch);
         setLeads(old => old.map(row => batchIds.has(row.id) ? { ...row, fresh_outreach_assigned_to: value, ...(unassign ? { fresh_outreach_assigned_date: "" } : {}) } : row));
