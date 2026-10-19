@@ -219,9 +219,9 @@ export async function PATCH(request: Request) {
         "data_from_lead_generation_team","data_source","email_finding_assigned_to","business_personal_email",
         "contact_form","fresh_outreach_assigned_to"
       ].map(field => field + ".ilike." + pattern).join(",");
-      query = query.or("and(fresh_outreach_assigned_to.is.null,or(" + searchConditions + "))");
+      query = query.or("and(or(fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.),or(" + searchConditions + "))");
     }
-    if (!q) query = query.is("fresh_outreach_assigned_to", null);
+    if (!q) query = query.or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.");
     const allowedFilterFields = new Set(Object.keys(fields));
     for (const [field, rawValue] of Object.entries(textFilters)) {
       if (!allowedFilterFields.has(field)) continue;
