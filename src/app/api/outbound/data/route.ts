@@ -8,16 +8,34 @@ export async function GET(request: Request) {
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth; const { searchParams } = new URL(request.url);
   const from = searchParams.get("from"); const to = searchParams.get("to"); const channel = searchParams.get("channel"); const scope = searchParams.get("scope") === "team" ? "team" : "mine";
-  let query = admin.from("outbound_activities").select("*").order("activity_date", { ascending: false }).limit(5000);
-  if (profile.role === "member" && scope !== "team") query = query.eq("employee_id", profile.id);
-  if (from) query = query.gte("activity_date", from); if (to) query = query.lte("activity_date", to);
-  if (channel && channel !== "all") query = query.eq("channel", channel);
-  const [{ data: activities, error }, { data: sequences }, { data: team }, { data: accounts }] = await Promise.all([
-    query, admin.from("outbound_sequences").select("*").eq("active", true).order("created_at"),
+  const activitiesPromise = (async () => {
+    const all: any[] = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      let query = admin.from("outbound_activities").select("*")
+        .order("activity_date", { ascending: false })
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (profile.role === "member" && scope !== "team") query = query.eq("employee_id", profile.id);
+      if (from) query = query.gte("activity_date", from);
+      if (to) query = query.lte("activity_date", to);
+      if (channel && channel !== "all") query = query.eq("channel", channel);
+      const { data: page, error } = await query;
+      if (error) throw new Error(error.message);
+      all.push(...(page || []));
+      if (!page || page.length < pageSize) break;
+    }
+    return all;
+  })();
+  const [activities, sequencesResult, teamResult, accountsResult] = await Promise.all([
+    activitiesPromise,
+    admin.from("outbound_sequences").select("*").eq("active", true).order("created_at"),
     profile.role === "member" && scope !== "team" ? Promise.resolve({ data: [profile], error: null }) : admin.from("outbound_profiles").select("*").eq("active", true).order("full_name"),
     profile.role === "member" && scope !== "team" ? admin.from("outbound_email_accounts").select("email,employee_id").eq("employee_id",profile.id) : admin.from("outbound_email_accounts").select("email,employee_id").eq("active",true)
-  ]);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  ]).catch(error => { throw error; });
+  const sequences = sequencesResult.data;
+  const team = teamResult.data;
+  const accounts = accountsResult.data;
   const teamWithAccounts=(team??[]).map((member:any)=>({...member,accounts:(accounts??[]).filter((a:any)=>a.employee_id===member.id).map((a:any)=>a.email)}));
   return NextResponse.json({ profile, activities: activities ?? [], sequences: sequences ?? [], team: teamWithAccounts });
 }
