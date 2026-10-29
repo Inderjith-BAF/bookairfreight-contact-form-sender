@@ -91,11 +91,21 @@ export async function POST(request:Request){
  if(campaignError)return NextResponse.json({error:campaignError.message},{status:500});
  if(!campaigns?.length)return NextResponse.json({error:"No selected campaigns were found."},{status:404});
  if(profile.role==="member"&&campaigns.some((c:any)=>c.created_by!==profile.id))return NextResponse.json({error:"You can only add campaigns you created."},{status:403});
- const {data:recipients,error:recipientError}=await admin.from("mail_merge_campaign_recipients").select("campaign_id,lead_id,status,sent_at,open_count,subject,body,sender_account_id,response_classification,outbound_email_accounts(id,email,employee_id)").in("campaign_id",ids).in("status",["Sent","Replied","Auto Response","Bounced"]);
- if(recipientError)return NextResponse.json({error:recipientError.message},{status:500});
- const leadIds=[...new Set((recipients||[]).map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
- const {data:leads,error:leadError}=leadIds.length?await admin.from("master_leads").select("id,response_classification,current_status").in("id",leadIds):{data:[],error:null};
- if(leadError)return NextResponse.json({error:leadError.message},{status:500});
+ const recipients:any[]=[];
+ for(let offset=0;offset<50000;offset+=1000){
+  const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("campaign_id,lead_id,status,sent_at,open_count,subject,body,sender_account_id,response_classification,outbound_email_accounts(id,email,employee_id)").in("campaign_id",ids).in("status",["Sent","Replied","Auto Response","Bounced"]).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
+  if(error)return NextResponse.json({error:error.message},{status:500});
+  recipients.push(...(page||[]));
+  if(!page||page.length<1000)break;
+ }
+ const leadIds=[...new Set(recipients.map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
+ const leads:any[]=[];
+ for(let offset=0;offset<leadIds.length;offset+=1000){
+  const batch=leadIds.slice(offset,offset+1000);
+  const {data:page,error}=await admin.from("master_leads").select("id,response_classification,current_status").in("id",batch).order("id",{ascending:true});
+  if(error)return NextResponse.json({error:error.message},{status:500});
+  leads.push(...(page||[]));
+ }
  const leadById=new Map((leads||[]).map((l:any)=>[String(l.id),l]));
  const {data:profiles}=await admin.from("outbound_profiles").select("id,full_name");
  const names=new Map((profiles||[]).map((p:any)=>[p.id,p.full_name]));
