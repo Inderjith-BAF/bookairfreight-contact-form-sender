@@ -157,7 +157,8 @@ export async function POST(request:Request){
      added++;
     }
    }
-  } }
+  }
+ }
  await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaigns_added_to_my_outbound",entity_type:"campaign",after_value:{campaign_ids:ids,added,updated,no_sent:noSent}});
  return NextResponse.json({added,updated,noSent,message:"Added "+added+" account report row(s) and refreshed "+updated+" existing row(s) with the latest replies, automatic responses, response classifications, and bounces. "+noSent+" selected campaign(s) had no sent or responded emails."});
 }
