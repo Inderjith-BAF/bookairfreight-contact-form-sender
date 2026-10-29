@@ -137,7 +137,7 @@ export async function POST(request:Request){
     const bounced=sentRows.filter((r:any)=>r.status==="Bounced").length;
     const classified=(classification:string)=>sentRows.filter((r:any)=>r.status==="Replied"&&String(r.response_classification||"")===classification).length;
     const unsubscribes=sentRows.filter((r:any)=>String(leadById.get(String(r.lead_id))?.current_status||"")==="Unsubscribed").length;
-    const sentDates=sentRows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\\d{4}-\\d{2}-\\d{2}$/.test(d)).sort();
+    const sentDates=sentRows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
     const day=requestedDate||sentDates[0]||String(campaign.created_at||new Date().toISOString()).slice(0,10);
     const subject=String(sentRows[0]?.subject||campaign.subject||"").trim();
     const content=String(sentRows[0]?.body||campaign.body||"").trim();
