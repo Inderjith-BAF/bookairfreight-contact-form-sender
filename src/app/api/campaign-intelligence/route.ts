@@ -124,8 +124,8 @@ export async function POST(request:Request){
     if(!["Sent","Replied","Auto Response","Bounced"].includes(String(recipient.status)))continue;
     const subject=String(recipient.subject||campaign.subject||"").trim();
     const content=String(recipient.body||campaign.body||"").trim();
-    const sequence=String(campaign.campaign_group||"Unassigned Sequence").trim();
-    const key=JSON.stringify([sequence,subject,content]);
+    // Subject line is the reporting split; content sequence is entered manually in My Outbound.
+    const key=subject;
     const list=sequenceGroups.get(key)||[];
     list.push(recipient);
     sequenceGroups.set(key,list);
@@ -141,9 +141,7 @@ export async function POST(request:Request){
     const day=requestedDate||sentDates[0]||String(campaign.created_at||new Date().toISOString()).slice(0,10);
     const subject=String(sentRows[0]?.subject||campaign.subject||"").trim();
     const content=String(sentRows[0]?.body||campaign.body||"").trim();
-    const sequence=String(campaign.campaign_group||"Unassigned Sequence").trim();
-    const sequenceNumber=({"Fresh Outreach":1,"Follow-up 1":2,"Follow-up 2":3,"Follow-up 3":4,"Follow-up 4":5,"Follow-up 5":6} as Record<string,number>)[sequence]||0;
-    const stage=sequenceNumber?("Sequence "+sequenceNumber+" — "+sequence):sequence;
+    const stage=String(campaign.campaign_group||"").trim();
     const row={activity_date:day,employee_id:account.employee_id||campaign.created_by,employee_name:String(names.get(account.employee_id)||profile.full_name||""),email_account_text:account.email,prospect_email:account.email,company:campaign.name,region:campaign.country,lead_source:"Mail Merge",campaign:campaign.campaign_group||campaign.name,stage,subject,content,outreach_volume:sentRows.length,open_count:opens,open_rate:sentRows.length?opens/sentRows.length*100:0,positive_replies:classified("Positive"),neutral_replies:classified("Neutral"),negative_replies:classified("Negative"),unsubscribes,bounced,auto_responses:autoResponses,clicks:0,bounce_rate:sentRows.length?bounced/sentRows.length*100:0,qualified_leads:0,follow_ups:0,freshness:"fresh",response_note:"",channel:"cold_email"};
     const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id").eq("channel","cold_email").eq("region",campaign.country).eq("company",campaign.name).eq("email_account_text",account.email).eq("activity_date",day).eq("subject",subject).eq("content",content).eq("stage",stage).limit(1);
     if(existingError)return NextResponse.json({error:existingError.message},{status:500});
