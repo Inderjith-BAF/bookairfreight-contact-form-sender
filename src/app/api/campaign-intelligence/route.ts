@@ -116,32 +116,48 @@ export async function POST(request:Request){
   const byAccount=new Map<string,any[]>();
   const accountOf=(row:any)=>Array.isArray(row.outbound_email_accounts)?row.outbound_email_accounts[0]:row.outbound_email_accounts;
   for(const row of campaignRows){const account=accountOf(row);const key=String(row.sender_account_id||"");if(!account?.email||!key)continue;const list=byAccount.get(key)||[];list.push(row);byAccount.set(key,list);}
-  for(const rows of byAccount.values()){
-   const account=accountOf(rows[0]);
-   const sentRows=rows.filter((r:any)=>["Sent","Replied","Auto Response","Bounced"].includes(String(r.status)));
-   if(!sentRows.length)continue;
-   const opens=sentRows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
-   const replies=sentRows.filter((r:any)=>r.status==="Replied").length;
-   const autoResponses=sentRows.filter((r:any)=>r.status==="Auto Response").length;
-   const bounced=sentRows.filter((r:any)=>r.status==="Bounced").length;
-   const classified=(classification:string)=>sentRows.filter((r:any)=>r.status==="Replied"&&String(r.response_classification||"")===classification).length;
-   const unsubscribes=sentRows.filter((r:any)=>String(leadById.get(String(r.lead_id))?.current_status||"")==="Unsubscribed").length;
-   const sentDates=sentRows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-   const day=requestedDate||sentDates[0]||String(campaign.created_at||new Date().toISOString()).slice(0,10);
-   const row={activity_date:day,employee_id:account.employee_id||campaign.created_by,employee_name:String(names.get(account.employee_id)||profile.full_name||""),email_account_text:account.email,prospect_email:account.email,company:campaign.name,region:campaign.country,lead_source:"Mail Merge",campaign:campaign.campaign_group||campaign.name,stage:campaign.campaign_group,subject:String(sentRows[0]?.subject||campaign.subject||""),content:String(sentRows[0]?.body||campaign.body||""),outreach_volume:sentRows.length,open_count:opens,open_rate:sentRows.length?opens/sentRows.length*100:0,positive_replies:classified("Positive"),neutral_replies:classified("Neutral"),negative_replies:classified("Negative"),unsubscribes,bounced,auto_responses:autoResponses,clicks:0,bounce_rate:sentRows.length?bounced/sentRows.length*100:0,qualified_leads:0,follow_ups:0,freshness:"fresh",response_note:"",channel:"cold_email"};
-   const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id").eq("channel","cold_email").eq("region",campaign.country).eq("company",campaign.name).eq("email_account_text",account.email).limit(1);
-   if(existingError)return NextResponse.json({error:existingError.message},{status:500});
-   if(existing?.length){
-    const {error:updateError}=await admin.from("outbound_activities").update(row).eq("id",existing[0].id);
-    if(updateError)return NextResponse.json({error:updateError.message},{status:500});
-    updated++;
-   }else{
-    const {error:insertError}=await admin.from("outbound_activities").insert(row);
-    if(insertError)return NextResponse.json({error:insertError.message},{status:500});
-    added++;
+  for(const accountRows of byAccount.values()){
+   const account=accountOf(accountRows[0]);
+   // Preserve separate reporting rows for each distinct sequence/subject/content.
+   const sequenceGroups=new Map<string,any[]>();
+   for(const recipient of accountRows){
+    if(!["Sent","Replied","Auto Response","Bounced"].includes(String(recipient.status)))continue;
+    const subject=String(recipient.subject||campaign.subject||"").trim();
+    const content=String(recipient.body||campaign.body||"").trim();
+    const sequence=String(campaign.campaign_group||"Unassigned Sequence").trim();
+    const key=JSON.stringify([sequence,subject,content]);
+    const list=sequenceGroups.get(key)||[];
+    list.push(recipient);
+    sequenceGroups.set(key,list);
    }
-  }
- }
+   for(const sentRows of sequenceGroups.values()){
+    if(!sentRows.length)continue;
+    const opens=sentRows.reduce((sum:number,r:any)=>sum+Number(r.open_count||0),0);
+    const autoResponses=sentRows.filter((r:any)=>r.status==="Auto Response").length;
+    const bounced=sentRows.filter((r:any)=>r.status==="Bounced").length;
+    const classified=(classification:string)=>sentRows.filter((r:any)=>r.status==="Replied"&&String(r.response_classification||"")===classification).length;
+    const unsubscribes=sentRows.filter((r:any)=>String(leadById.get(String(r.lead_id))?.current_status||"")==="Unsubscribed").length;
+    const sentDates=sentRows.map((r:any)=>String(r.sent_at||"").slice(0,10)).filter((d:string)=>/^\\d{4}-\\d{2}-\\d{2}$/.test(d)).sort();
+    const day=requestedDate||sentDates[0]||String(campaign.created_at||new Date().toISOString()).slice(0,10);
+    const subject=String(sentRows[0]?.subject||campaign.subject||"").trim();
+    const content=String(sentRows[0]?.body||campaign.body||"").trim();
+    const sequence=String(campaign.campaign_group||"Unassigned Sequence").trim();
+    const sequenceNumber=({"Fresh Outreach":1,"Follow-up 1":2,"Follow-up 2":3,"Follow-up 3":4,"Follow-up 4":5,"Follow-up 5":6} as Record<string,number>)[sequence]||0;
+    const stage=sequenceNumber?("Sequence "+sequenceNumber+" — "+sequence):sequence;
+    const row={activity_date:day,employee_id:account.employee_id||campaign.created_by,employee_name:String(names.get(account.employee_id)||profile.full_name||""),email_account_text:account.email,prospect_email:account.email,company:campaign.name,region:campaign.country,lead_source:"Mail Merge",campaign:campaign.campaign_group||campaign.name,stage,subject,content,outreach_volume:sentRows.length,open_count:opens,open_rate:sentRows.length?opens/sentRows.length*100:0,positive_replies:classified("Positive"),neutral_replies:classified("Neutral"),negative_replies:classified("Negative"),unsubscribes,bounced,auto_responses:autoResponses,clicks:0,bounce_rate:sentRows.length?bounced/sentRows.length*100:0,qualified_leads:0,follow_ups:0,freshness:"fresh",response_note:"",channel:"cold_email"};
+    const {data:existing,error:existingError}=await admin.from("outbound_activities").select("id").eq("channel","cold_email").eq("region",campaign.country).eq("company",campaign.name).eq("email_account_text",account.email).eq("activity_date",day).eq("subject",subject).eq("content",content).eq("stage",stage).limit(1);
+    if(existingError)return NextResponse.json({error:existingError.message},{status:500});
+    if(existing?.length){
+     const {error:updateError}=await admin.from("outbound_activities").update(row).eq("id",existing[0].id);
+     if(updateError)return NextResponse.json({error:updateError.message},{status:500});
+     updated++;
+    }else{
+     const {error:insertError}=await admin.from("outbound_activities").insert(row);
+     if(insertError)return NextResponse.json({error:insertError.message},{status:500});
+     added++;
+    }
+   }
+  } }
  await admin.from("mail_merge_audit_log").insert({actor_id:profile.id,action:"campaigns_added_to_my_outbound",entity_type:"campaign",after_value:{campaign_ids:ids,added,updated,no_sent:noSent}});
  return NextResponse.json({added,updated,noSent,message:"Added "+added+" account report row(s) and refreshed "+updated+" existing row(s) with the latest replies, automatic responses, response classifications, and bounces. "+noSent+" selected campaign(s) had no sent or responded emails."});
 }
