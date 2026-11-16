@@ -4,6 +4,7 @@ import { getProviderAccess } from "@/lib/mail-merge-provider";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 const header = (m: any, name: string) => String((m.payload?.headers || m.internetMessageHeaders || []).find((h: any) => String(h.name).toLowerCase() === name.toLowerCase())?.value || "");
 function gmailText(payload: any): string {
   const parts: any[] = [];
@@ -33,12 +34,12 @@ function bounceEmails(text: string): string[] {
   const matches = text.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+/gi) || [];
   return [...new Set(matches.map(normalized))];
 }
-async function recordBounce(admin: any, account: any, sent: any[], leadsById: Map<string, any>, emails: string[], details: any) {
+async function recordBounce(admin: any, account: any, sentByLead: Map<string, any>, leadsByEmail: Map<string, any>, emails: string[], details: any) {
   let count = 0;
   for (const email of emails) {
-    const lead = [...leadsById.values()].find((item: any) => normalized(item.email) === email);
+    const lead = leadsByEmail.get(email);
     if (!lead) continue;
-    const row = sent.find((item: any) => item.lead_id === lead.id && !["Bounced", "Replied", "Suppressed"].includes(String(item.status)));
+    const row = (sentByLead.get(String(lead.id)) || []).find((item: any) => !["Bounced", "Replied", "Suppressed"].includes(String(item.status)));
     if (!row) continue;
     const now = new Date().toISOString();
     // Mark the specific failed attempt as bounced, then immediately stop any other
@@ -133,6 +134,17 @@ export async function POST(request: Request) {
       if (leadsError) throw new Error(leadsError.message);
       const leadsById = new Map<string, any>((leads || []).map((lead: any) => [String(lead.id), lead] as [string, any]));
       const leadIdByEmail = new Map<string, string>((leads || []).map((lead: any) => [normalized(lead.email), String(lead.id)] as [string, string]));
+      const leadsByEmail = new Map<string, any>((leads || []).map((lead: any) => [normalized(lead.email), lead] as [string, any]));
+      const sentByLead = new Map<string, any[]>();
+      const sentByLeadSubject = new Map<string, any>();
+      for (const row of sent || []) {
+        const leadKey = String(row.lead_id || "");
+        const list = sentByLead.get(leadKey) || [];
+        list.push(row);
+        sentByLead.set(leadKey, list);
+        const key = leadKey + "::" + subjectKey(row.subject);
+        if (!sentByLeadSubject.has(key)) sentByLeadSubject.set(key, row);
+      }
       // Rows are ordered newest-first; preserve the newest campaign recipient for a shared provider thread.
       const threadMap = new Map<string, any>();
       for (const row of sent || []) {
@@ -146,7 +158,7 @@ export async function POST(request: Request) {
         if (isBounce(from, subject, body)) {
           // The failed recipient is normally embedded in the delivery report body.
           const candidates = bounceEmails(body).filter(email => leadIdByEmail.has(email));
-          bounces += await recordBounce(admin, account, sent || [], leadsById, candidates, { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id });
+          bounces += await recordBounce(admin, account, sentByLead, leadsByEmail, candidates, { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id });
           continue;
         }
         let row: any;
@@ -156,13 +168,10 @@ export async function POST(request: Request) {
         // Automatic responses are tracked separately and never count as human replies.
         if (isAutoReply(subject, body, message.headers || [])) {
           const threadMatch = account.provider === "google" ? threadMap.get(message.threadId) : null;
-          const autoRow = threadMatch?.lead_id === leadId
+          const subjectMatch = sentByLeadSubject.get(leadId + "::" + subjectKey(subject));
+          const autoRow = threadMatch?.lead_id === leadId && !["Bounced", "Suppressed"].includes(String(threadMatch.status))
             ? threadMatch
-            : (sent || []).find((item: any) =>
-                item.lead_id === leadId &&
-                subjectKey(item.subject) === subjectKey(subject) &&
-                !["Bounced", "Suppressed"].includes(String(item.status))
-              );
+            : (subjectMatch && !["Bounced", "Suppressed"].includes(String(subjectMatch.status)) ? subjectMatch : undefined);
           const now = new Date().toISOString();
           if (autoRow && !["Bounced", "Suppressed", "Auto Response"].includes(String(autoRow.status))) {
             await admin.from("mail_merge_campaign_recipients").update({ status: "Auto Response", updated_at: now }).eq("id", autoRow.id);
@@ -188,11 +197,7 @@ export async function POST(request: Request) {
         const threadMatch = account.provider === "google" ? threadMap.get(message.threadId) : null;
         row = threadMatch?.lead_id === leadId && !["Bounced", "Suppressed"].includes(String(threadMatch.status))
           ? threadMatch
-          : (sent || []).find((item: any) =>
-              item.lead_id === leadId &&
-              subjectKey(item.subject) === subjectKey(subject) &&
-              !["Bounced", "Suppressed"].includes(String(item.status))
-            );
+          : (() => { const match = sentByLeadSubject.get(leadId + "::" + subjectKey(subject)); return match && !["Bounced", "Suppressed"].includes(String(match.status)) ? match : undefined; })();
         if (!row || ["Replied", "Bounced", "Suppressed"].includes(String(row.status))) continue;
         const now = new Date().toISOString();
         await admin.from("mail_merge_campaign_recipients").update({ status: "Replied", updated_at: now }).eq("id", row.id);
