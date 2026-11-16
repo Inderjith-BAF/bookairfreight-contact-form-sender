@@ -122,10 +122,10 @@ export async function POST(request: Request) {
       // even when the inbox contained only a handful of messages.
       const candidateEmails = new Set<string>();
       for (const message of messages) {
-        const from = String(message.from || "").match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i)?.[0];
+        const from = String(message.from || "").match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
         if (from) candidateEmails.add(normalized(from));
-        if (isBounce(normalized(message.from), String(message.subject || ""), String(message.body || "") + "\\n" + String(message.snippet || ""))) {
-          for (const email of bounceEmails(String(message.body || "") + "\\n" + String(message.snippet || ""))) candidateEmails.add(email);
+        if (isBounce(normalized(message.from), String(message.subject || ""), String(message.body || "") + "\n" + String(message.snippet || ""))) {
+          for (const email of bounceEmails(String(message.body || "") + "\n" + String(message.snippet || ""))) candidateEmails.add(email);
         }
       }
       const candidateList = [...candidateEmails];
