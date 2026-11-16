@@ -24,3 +24,7 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+        env:
+          # Build-time placeholders only; never used for deployment or runtime.
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-build-placeholder
