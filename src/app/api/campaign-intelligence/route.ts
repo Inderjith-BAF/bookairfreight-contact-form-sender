@@ -14,14 +14,14 @@ export async function GET(request:Request){
  if(cErr||aErr||bErr)return NextResponse.json({error:cErr?.message||aErr?.message||bErr?.message},{status:500});
  const campaignIds=(campaigns||[]).map((c:any)=>String(c.id));
  const allRecipients:any[]=[];
- for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("id,campaign_id,lead_id,sender_account_id,status,sent_at,open_count,response_classification").in("campaign_id",campaignIds).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
+ for(let offset=0;campaignIds.length&&true;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("id,campaign_id,lead_id,sender_account_id,status,sent_at,open_count,response_classification").in("campaign_id",campaignIds).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
  const leadIds=[...new Set(allRecipients.map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
  const leads:any[]=[];
  for(let offset=0;offset<leadIds.length;offset+=1000){const ids=leadIds.slice(offset,offset+1000);const {data:page,error}=await admin.from("master_leads").select("id,country,current_status,response_classification,suppression_reason,last_contacted_at,last_replied_at").in("id",ids);if(error)return NextResponse.json({error:error.message},{status:500});leads.push(...(page||[]));}
  const sentEvents:any[]=[];
- for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).eq("event_type","sent").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});sentEvents.push(...(page||[]));if(!page||page.length<1000)break;}
+ for(let offset=0;campaignIds.length&&true;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).eq("event_type","sent").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});sentEvents.push(...(page||[]));if(!page||page.length<1000)break;}
  const bounceEvents:any[]=[];
- for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).ilike("event_type","%bounce%").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});bounceEvents.push(...(page||[]));if(!page||page.length<1000)break;}
+ for(let offset=0;campaignIds.length&&true;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).ilike("event_type","%bounce%").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});bounceEvents.push(...(page||[]));if(!page||page.length<1000)break;}
 
  const accountMap=new Map((accounts||[]).map((a:any)=>[String(a.id),a]));
  const leadMap=new Map((leads||[]).map((l:any)=>[String(l.id),l]));
@@ -118,7 +118,7 @@ export async function POST(request:Request){
  if(!campaigns?.length)return NextResponse.json({error:"No selected campaigns were found."},{status:404});
  if(profile.role==="member"&&campaigns.some((c:any)=>c.created_by!==profile.id))return NextResponse.json({error:"You can only add campaigns you created."},{status:403});
  const recipients:any[]=[];
- for(let offset=0;offset<50000;offset+=1000){
+ for(let offset=0;true;offset+=1000){
   const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("campaign_id,lead_id,status,sent_at,open_count,subject,body,sender_account_id,response_classification,outbound_email_accounts(id,email,employee_id)").in("campaign_id",ids).in("status",["Sent","Replied","Auto Response","Bounced"]).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
   if(error)return NextResponse.json({error:error.message},{status:500});
   recipients.push(...(page||[]));
