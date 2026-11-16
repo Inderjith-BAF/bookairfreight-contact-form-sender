@@ -117,21 +117,36 @@ export async function POST(request: Request) {
         }
       }
       checked += messages.length;
+      // Resolve only leads actually mentioned by this mailbox scan. The previous
+      // implementation loaded up to 50,000 sent recipients for every account,
+      // even when the inbox contained only a handful of messages.
+      const candidateEmails = new Set<string>();
+      for (const message of messages) {
+        const from = String(message.from || "").match(/[A-Z0-9.!#$%&'*+/=?^`{|}~-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i)?.[0];
+        if (from) candidateEmails.add(normalized(from));
+        if (isBounce(normalized(message.from), String(message.subject || ""), String(message.body || "") + "\\n" + String(message.snippet || ""))) {
+          for (const email of bounceEmails(String(message.body || "") + "\\n" + String(message.snippet || ""))) candidateEmails.add(email);
+        }
+      }
+      const candidateList = [...candidateEmails];
+      const leads: any[] = [];
+      for (let offset = 0; offset < candidateList.length; offset += 500) {
+        const { data: leadRows, error: leadsError } = await admin.from("master_leads")
+          .select("id,email,current_status").in("normalized_email", candidateList.slice(offset, offset + 500));
+        if (leadsError) throw new Error(leadsError.message);
+        leads.push(...(leadRows || []));
+      }
+      const leadIds = [...new Set(leads.map((lead: any) => String(lead.id)))];
       const sent: any[] = [];
-      for (let offset = 0; offset < 50000; offset += 1000) {
-        const { data: pageRows, error: sentError } = await admin.from("mail_merge_campaign_recipients")
+      for (let offset = 0; offset < leadIds.length; offset += 500) {
+        const { data: sentRows, error: sentError } = await admin.from("mail_merge_campaign_recipients")
           .select("id,campaign_id,lead_id,sender_account_id,provider_thread_id,provider_message_id,status,subject,created_at")
           .eq("sender_account_id", account.id).in("status", ["Sent", "Replied", "Auto Response", "Bounced"])
-          .order("created_at", { ascending: false }).range(offset, offset + 999);
+          .in("lead_id", leadIds.slice(offset, offset + 500))
+          .order("created_at", { ascending: false });
         if (sentError) throw new Error(sentError.message);
-        sent.push(...(pageRows || []));
-        if (!pageRows || pageRows.length < 1000) break;
+        sent.push(...(sentRows || []));
       }
-      const leadIds = [...new Set((sent || []).map((row: any) => row.lead_id))];
-      const { data: leads, error: leadsError } = leadIds.length
-        ? await admin.from("master_leads").select("id,email,current_status").in("id", leadIds)
-        : { data: [], error: null };
-      if (leadsError) throw new Error(leadsError.message);
       const leadIdByEmail = new Map<string, string>((leads || []).map((lead: any) => [normalized(lead.email), String(lead.id)] as [string, string]));
       const leadsByEmail = new Map<string, any>((leads || []).map((lead: any) => [normalized(lead.email), lead] as [string, any]));
       const leadsById = new Map<string, any>((leads || []).map((lead: any) => [String(lead.id), lead] as [string, any]));
