@@ -134,6 +134,7 @@ export async function POST(request: Request) {
       if (leadsError) throw new Error(leadsError.message);
       const leadIdByEmail = new Map<string, string>((leads || []).map((lead: any) => [normalized(lead.email), String(lead.id)] as [string, string]));
       const leadsByEmail = new Map<string, any>((leads || []).map((lead: any) => [normalized(lead.email), lead] as [string, any]));
+      const leadsById = new Map<string, any>((leads || []).map((lead: any) => [String(lead.id), lead] as [string, any]));
       const sentByLead = new Map<string, any[]>();
       const sentByLeadSubject = new Map<string, any>();
       for (const row of sent || []) {
