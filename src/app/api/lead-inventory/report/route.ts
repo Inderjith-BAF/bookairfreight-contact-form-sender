@@ -49,13 +49,21 @@ export async function GET(request: Request) {
   const total = count || 0;
   const pageSize = 1000;
   const pageCount = Math.ceil(total / pageSize);
-  const pages = await Promise.all(Array.from({ length: pageCount }, (_, page) =>
-    admin.from("central_lead_inventory")
-      .select("created_at,fresh_outreach_assigned_to,business_personal_email,data_from_lead_generation_team,data_source,country,main_industry")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: true })
-      .range(page * pageSize, Math.min(total - 1, (page + 1) * pageSize - 1))
-  ));
+  // Keep database concurrency bounded. Promise.all over every page can
+  // open hundreds of simultaneous requests once the inventory grows.
+  const pages: any[] = [];
+  const concurrency = 5;
+  for (let start = 0; start < pageCount; start += concurrency) {
+    const batch = await Promise.all(Array.from({ length: Math.min(concurrency, pageCount - start) }, (_, index) => {
+      const page = start + index;
+      return admin.from("central_lead_inventory")
+        .select("created_at,fresh_outreach_assigned_to,business_personal_email,data_from_lead_generation_team,data_source,country,main_industry")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(page * pageSize, Math.min(total - 1, (page + 1) * pageSize - 1));
+    }));
+    pages.push(...batch);
+  }
   const failed = pages.find(page => page.error);
   if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
   const rows = pages.flatMap(page => page.data || []);
