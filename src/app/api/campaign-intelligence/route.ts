@@ -22,7 +22,7 @@ export async function GET(request:Request){
  for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).eq("event_type","sent").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});sentEvents.push(...(page||[]));if(!page||page.length<1000)break;}
  const bounceEvents:any[]=[];
  for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).ilike("event_type","%bounce%").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});bounceEvents.push(...(page||[]));if(!page||page.length<1000)break;}
- const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||(recipientsByCampaign.get(String(c.id))||[]).some((r:any)=>r.sender_account_id===account)));
+
  const accountMap=new Map((accounts||[]).map((a:any)=>[String(a.id),a]));
  const leadMap=new Map((leads||[]).map((l:any)=>[String(l.id),l]));
  const recipientsByCampaign=new Map<string,any[]>();
@@ -47,6 +47,7 @@ export async function GET(request:Request){
   if(event.campaign_recipient_id)ids.add(String(event.campaign_recipient_id));
   bounceIdsByCampaign.set(campaignId,ids);
  }
+ const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||(recipientsByCampaign.get(String(c.id))||[]).some((r:any)=>r.sender_account_id===account)));
  const stageEligible=(campaign:any,r:any)=>{
   const l=leadMap.get(String(r.lead_id||""));
   if(!l||l.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative","Needs Review"].includes(String(l.current_status||"")))return false;
@@ -70,7 +71,7 @@ export async function GET(request:Request){
    const readyAccounts=[...new Set(dispatchable.map((r:any)=>String(r.sender_account_id||"")).filter(Boolean))];
    const disconnected=readyAccounts.some(id=>{const a=accountMap.get(id);return !a||a.health_status==="Paused"||a.connection_status!=="Connected";});
    if(disconnected)return "Paused — one or more sending accounts need reconnection or health review.";
-   const now=Date.now(),dayStart=new Date();dayStart.setHours(0,0,0,0);const hourStart=now-60*60*1000;
+   const dayStart=new Date();dayStart.setHours(0,0,0,0);
    const capacityAvailable=readyAccounts.some(id=>{const a=accountMap.get(id);if(!a)return false;const sentToday=sentTodayByAccount.get(id)||0;const sentHour=sentHourByAccount.get(id)||0;return sentToday<Number(a.daily_send_limit||100)&&sentHour<Number(a.hourly_send_limit||20);});
    if(!capacityAvailable)return "Paused — sending account daily/hourly capacity is currently exhausted.";
    return "Paused — "+(stageIneligible?stageIneligible+" queued/ready recipient(s) are no longer eligible; ":"")+"remaining eligible recipients are ready to dispatch.";
