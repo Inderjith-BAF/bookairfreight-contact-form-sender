@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const all: any[] = [];
     const pageSize = 1000;
     for (let offset = 0; ; offset += pageSize) {
-      let query = admin.from("outbound_activities").select("*")
+      let query = admin.from("outbound_activities").select("id,activity_date,employee_id,employee_name,email_account_id,email_account_text,prospect_email,company,industry,region,lead_source,campaign,sequence_id,stage,subject,content,content_link,content_creator,outreach_volume,open_count,open_rate,positive_replies,neutral_replies,negative_replies,unsubscribes,bounced,auto_responses,clicks,bounce_rate,qualified_leads,follow_ups,freshness,response_note,channel,created_at")
         .order("activity_date", { ascending: false })
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);
@@ -36,7 +36,14 @@ export async function GET(request: Request) {
   const sequences = sequencesResult.data;
   const team = teamResult.data;
   const accounts = accountsResult.data;
-  const teamWithAccounts=(team??[]).map((member:any)=>({...member,accounts:(accounts??[]).filter((a:any)=>a.employee_id===member.id).map((a:any)=>a.email)}));
+  const accountsByEmployee = new Map<string, string[]>();
+  for (const account of accounts ?? []) {
+    const key = String((account as any).employee_id || "");
+    const list = accountsByEmployee.get(key) || [];
+    list.push(String((account as any).email || ""));
+    accountsByEmployee.set(key, list);
+  }
+  const teamWithAccounts = (team ?? []).map((member: any) => ({ ...member, accounts: accountsByEmployee.get(String(member.id)) || [] }));
   return NextResponse.json({ profile, activities: activities ?? [], sequences: sequences ?? [], team: teamWithAccounts });
 }
 export async function POST(request: Request) {
