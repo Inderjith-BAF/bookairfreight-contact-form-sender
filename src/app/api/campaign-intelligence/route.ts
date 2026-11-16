@@ -29,14 +29,12 @@ export async function GET(request:Request){
  const sentTodayByAccount=new Map<string,number>();
  const sentHourByAccount=new Map<string,number>();
  const bounceIdsByCampaign=new Map<string,Set<string>>();
- const recipientCampaigns=new Set<string>();
  const unsubscribedLeadIds=new Set((leads||[]).filter((l:any)=>l.current_status==="Unsubscribed").map((l:any)=>String(l.id)));
  const nowMs=Date.now(),dayStart=new Date();dayStart.setHours(0,0,0,0);
  for(const r of allRecipients){
   const campaignId=String(r.campaign_id||"");
   const list=recipientsByCampaign.get(campaignId)||[];
   list.push(r);recipientsByCampaign.set(campaignId,list);
-  recipientCampaigns.add(campaignId);
   if(r.sent_at){
    const sentAt=new Date(r.sent_at).getTime();
    if(Number.isFinite(sentAt)&&sentAt>=dayStart.getTime())sentTodayByAccount.set(String(r.sender_account_id||""),(sentTodayByAccount.get(String(r.sender_account_id||""))||0)+1);
