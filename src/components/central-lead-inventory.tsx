@@ -105,11 +105,19 @@ export function CentralLeadInventory() {
       if (!alive) return;
       if (!data.session) { setError("Sign in through the existing Outbound OS first."); return; }
       setToken(data.session.access_token);
-      try { await load(data.session.access_token); } catch (e) { setError(e instanceof Error ? e.message : "Could not load inventory"); }
     })();
     return () => { alive = false; };
-  }, [supabase, load]);
-  useEffect(() => { if (token) load(token).catch(e => setError(e instanceof Error ? e.message : "Could not refresh inventory")); }, [token, load]);
+  }, [supabase]);
+  // Search and source filters are debounced so typing does not trigger a full
+  // inventory request for every keystroke. The previous request is cancelled
+  // before the next filtered request is issued.
+  useEffect(() => {
+    if (!token) return;
+    const timer = window.setTimeout(() => {
+      load(token).catch(e => setError(e instanceof Error ? e.message : "Could not load inventory"));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [token, load]);
 
   async function uploadRows(rows: Record<string, unknown>[]) {
     if (!token || !rows.length) return;
