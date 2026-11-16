@@ -136,8 +136,15 @@ export async function POST(request:Request){
  const {data:profiles}=await admin.from("outbound_profiles").select("id,full_name");
  const names=new Map((profiles||[]).map((p:any)=>[p.id,p.full_name]));
  let added=0,updated=0,noSent=0;
+ const recipientsByCampaign=new Map<string,any[]>();
+ for(const recipient of recipients){
+  const campaignId=String(recipient.campaign_id||"");
+  const group=recipientsByCampaign.get(campaignId)||[];
+  group.push(recipient);
+  recipientsByCampaign.set(campaignId,group);
+ }
  for(const campaign of campaigns){
-  const campaignRows=(recipients||[]).filter((r:any)=>r.campaign_id===campaign.id);
+  const campaignRows=recipientsByCampaign.get(String(campaign.id))||[];
   if(!campaignRows.length){noSent++;continue;}
   const byAccount=new Map<string,any[]>();
   const accountOf=(row:any)=>Array.isArray(row.outbound_email_accounts)?row.outbound_email_accounts[0]:row.outbound_email_accounts;
