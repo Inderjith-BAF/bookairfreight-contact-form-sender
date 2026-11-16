@@ -14,7 +14,7 @@ export async function GET(request:Request){
  if(cErr||aErr||bErr)return NextResponse.json({error:cErr?.message||aErr?.message||bErr?.message},{status:500});
  const campaignIds=(campaigns||[]).map((c:any)=>String(c.id));
  const allRecipients:any[]=[];
- for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("*").in("campaign_id",campaignIds).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
+ for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("id,campaign_id,lead_id,sender_account_id,status,sent_at,open_count,response_classification").in("campaign_id",campaignIds).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
  const leadIds=[...new Set(allRecipients.map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
  const leads:any[]=[];
  for(let offset=0;offset<leadIds.length;offset+=1000){const ids=leadIds.slice(offset,offset+1000);const {data:page,error}=await admin.from("master_leads").select("id,country,current_status,response_classification,suppression_reason,last_contacted_at,last_replied_at").in("id",ids);if(error)return NextResponse.json({error:error.message},{status:500});leads.push(...(page||[]));}
