@@ -132,7 +132,6 @@ export async function POST(request: Request) {
         ? await admin.from("master_leads").select("id,email,current_status").in("id", leadIds)
         : { data: [], error: null };
       if (leadsError) throw new Error(leadsError.message);
-      const leadsById = new Map<string, any>((leads || []).map((lead: any) => [String(lead.id), lead] as [string, any]));
       const leadIdByEmail = new Map<string, string>((leads || []).map((lead: any) => [normalized(lead.email), String(lead.id)] as [string, string]));
       const leadsByEmail = new Map<string, any>((leads || []).map((lead: any) => [normalized(lead.email), lead] as [string, any]));
       const sentByLead = new Map<string, any[]>();
