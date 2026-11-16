@@ -47,24 +47,30 @@ export async function GET(request: Request) {
   const source = clean(url.searchParams.get("source"));
   const { data: members, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
-  // Page through the inventory instead of silently stopping at the API's default 1,000 rows.
+  // Apply text and source filters in Postgres so broad searches do not transfer
+  // the entire inventory to the function before filtering it in memory.
   const pageSize = 1000;
-  const data: any[] = [];
+  const leads: any[] = [];
+  const searchable = [
+    "location_on_site","country","company_name","first_name","last_name","title","email",
+    "main_product_description","secondary_product_description","main_industry","main_additional_tag",
+    "secondary_industry","secondary_additional_tag","qualified_lead","assigned_to","assigned_date",
+    "ecommerce_platform_used","data_from_lead_generation_team","data_source","email_finding_assigned_to",
+    "email_finding_assigned_date","business_personal_email","contact_form","fresh_outreach_assigned_to","fresh_outreach_assigned_date"
+  ];
+  const safeQuery = q.replace(/[\\,()%]/g, " ").trim();
+  const safeSource = source.replace(/[\\,%_]/g, " ").trim();
   for (let offset = 0; ; offset += pageSize) {
-    let query = admin.from("central_lead_inventory").select("*").order("created_at", { ascending: false }).order("id", { ascending: true }).range(offset, offset + pageSize - 1);
-    if (source) query = query.ilike("data_source", "%" + source.replace(/[%_]/g, "") + "%");
+    let query = admin.from("central_lead_inventory").select("*")
+      .order("created_at", { ascending: false }).order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (safeSource) query = query.ilike("data_source", "%" + safeSource + "%");
+    if (safeQuery) query = query.or(searchable.map(field => field + ".ilike.*" + safeQuery + "*").join(","));
     const { data: page, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    data.push(...(page || []));
+    leads.push(...(page || []));
     if (!page || page.length < pageSize) break;
   }
-  const leads = (data || []).filter((row: any) => !q || [
-    row.location_on_site,row.country,row.company_name,row.first_name,row.last_name,row.title,row.email,
-    row.main_product_description,row.secondary_product_description,row.main_industry,row.main_additional_tag,
-    row.secondary_industry,row.secondary_additional_tag,row.qualified_lead,row.assigned_to,row.assigned_date,
-    row.ecommerce_platform_used,row.data_from_lead_generation_team,row.data_source,row.email_finding_assigned_to,
-    row.email_finding_assigned_date,row.business_personal_email,row.contact_form,row.fresh_outreach_assigned_to,row.fresh_outreach_assigned_date
-  ].some(v => String(v || "").toLowerCase().includes(q)));
   return NextResponse.json({ leads, total: leads.length, team: members || [], currentRole: auth.profile.role });
 }
 
