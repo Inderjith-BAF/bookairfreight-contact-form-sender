@@ -6,19 +6,22 @@ export async function GET(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
  const {admin,profile}=auth;const {searchParams}=new URL(request.url);
  const country=searchParams.get("country")||"",group=searchParams.get("group")||"",account=searchParams.get("account")||"";
- const [{data:campaigns,error:cErr},{data:leads,error:lErr},{data:accounts,error:aErr},{data:batches,error:bErr}]=await Promise.all([
+ const [{data:campaigns,error:cErr},{data:accounts,error:aErr},{data:batches,error:bErr}]=await Promise.all([
   profile.role==="member"?admin.from("mail_merge_campaigns").select("*").eq("created_by",profile.id).order("created_at",{ascending:false}).limit(500):admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(500),
-  admin.from("master_leads").select("id,country,current_status,response_classification,suppression_status,last_contacted_at,last_replied_at"),
   profile.role==="member"?admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error").eq("employee_id",profile.id):admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error"),
   profile.role==="member"?admin.from("lead_import_batches").select("*").eq("imported_by",profile.id).order("started_at",{ascending:false}).limit(200):admin.from("lead_import_batches").select("*").order("started_at",{ascending:false}).limit(200)
  ]);
- if(cErr||lErr||aErr||bErr)return NextResponse.json({error:cErr?.message||lErr?.message||aErr?.message||bErr?.message},{status:500});
+ if(cErr||aErr||bErr)return NextResponse.json({error:cErr?.message||aErr?.message||bErr?.message},{status:500});
+ const campaignIds=(campaigns||[]).map((c:any)=>String(c.id));
  const allRecipients:any[]=[];
- for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("*").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
+ for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("*").in("campaign_id",campaignIds).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
+ const leadIds=[...new Set(allRecipients.map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
+ const leads:any[]=[];
+ for(let offset=0;offset<leadIds.length;offset+=1000){const ids=leadIds.slice(offset,offset+1000);const {data:page,error}=await admin.from("master_leads").select("id,country,current_status,response_classification,suppression_reason,last_contacted_at,last_replied_at").in("id",ids);if(error)return NextResponse.json({error:error.message},{status:500});leads.push(...(page||[]));}
  const sentEvents:any[]=[];
- for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").eq("event_type","sent").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});sentEvents.push(...(page||[]));if(!page||page.length<1000)break;}
+ for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).eq("event_type","sent").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});sentEvents.push(...(page||[]));if(!page||page.length<1000)break;}
  const bounceEvents:any[]=[];
- for(let offset=0;offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").ilike("event_type","%bounce%").range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});bounceEvents.push(...(page||[]));if(!page||page.length<1000)break;}
+ for(let offset=0;campaignIds.length&&offset<50000;offset+=1000){const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",campaignIds).ilike("event_type","%bounce%").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});bounceEvents.push(...(page||[]));if(!page||page.length<1000)break;}
  const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||allRecipients.some((r:any)=>r.campaign_id===c.id&&r.sender_account_id===account)));
  const accountMap=new Map((accounts||[]).map((a:any)=>[String(a.id),a]));
  const leadMap=new Map((leads||[]).map((l:any)=>[String(l.id),l]));
