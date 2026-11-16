@@ -90,9 +90,9 @@ export function CentralLeadInventory() {
   const [excelFilterSearch, setExcelFilterSearch] = useState("");
   const [excelFilterPosition, setExcelFilterPosition] = useState<{top:number;left:number} | null>(null);
   const [summary, setSummary] = useState<{added:number;duplicate:number;invalid:number;total:number;results?:{row:number;email:string;result:string;reason:string}[]}|null>(null);
-  const load = useCallback(async (t: string) => {
+  const load = useCallback(async (t: string, signal?: AbortSignal) => {
     const params = new URLSearchParams({ q, source });
-    const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + t } });
+    const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + t }, signal });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Could not load central inventory");
     setLeads(data.leads || []); setTeam(data.team || []); setCurrentRole(String(data.currentRole || "").toLowerCase());
@@ -113,10 +113,14 @@ export function CentralLeadInventory() {
   // before the next filtered request is issued.
   useEffect(() => {
     if (!token) return;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      load(token).catch(e => setError(e instanceof Error ? e.message : "Could not load inventory"));
+      load(token, controller.signal).catch(e => {
+        if (e instanceof Error && e.name === "AbortError") return;
+        setError(e instanceof Error ? e.message : "Could not load inventory");
+      });
     }, 300);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [token, load]);
 
   async function uploadRows(rows: Record<string, unknown>[]) {
