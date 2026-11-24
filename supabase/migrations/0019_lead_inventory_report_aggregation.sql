@@ -20,8 +20,8 @@ as $$
     from public.central_lead_inventory
   ),
   last_days as (
-    select (current_date - n)::date as day
-    from generate_series(6, 0, -1) as n
+    select (current_date - day_offset)::date as day
+    from generate_series(6, 0, -1) as days(day_offset)
   )
   select jsonb_build_object(
     'total', (select count(*) from base),
