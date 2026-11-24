@@ -76,7 +76,9 @@ export async function POST(request: Request) {
   for (const account of accounts || []) {
     if (profile?.role === "member" && account.employee_id !== profile.id) continue;
     try {
-      await admin.from("outbound_email_accounts").update({ mailbox_sync_started_at: new Date().toISOString(), mailbox_sync_error: null }).eq("id", account.id);
+      const { data: syncClaimed, error: syncClaimError } = await admin.rpc("claim_mailbox_sync", { p_account_id: account.id });
+      if (syncClaimError) throw new Error("Could not claim mailbox sync: " + syncClaimError.message);
+      if (!syncClaimed) continue;
       const access = await getProviderAccess(account, admin);
       let messages: any[] = [];
       const pendingCursors: Record<string, string> = {};
