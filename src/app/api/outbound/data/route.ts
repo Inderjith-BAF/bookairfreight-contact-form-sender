@@ -89,14 +89,23 @@ export async function POST(request: Request) {
   const updates = normalized.filter(hasId);
   const inserts = normalized.filter((r: (typeof normalized)[number]) => !r.id).map(({ id: _id, ...values }: (typeof normalized)[number]) => values);
   if (updates.length) {
-    const { error } = await Promise.all(updates.map(async (row: (typeof updates)[number]) => {
-      const { id, ...values } = row;
-      let query = admin.from("outbound_activities").update(values).eq("id", id);
-      if (profile.role === "member") query = query.eq("employee_id", profile.id);
-      const result = await query;
-      return result.error;
-    })).then(errors => ({ error: errors.find(Boolean) ?? null }));
-    if (error) { console.error("[outbound/data] update failed:", error); return NextResponse.json({ error: error.message }, { status: 500 }); }
+    // Bound database concurrency: firing one request per spreadsheet row can
+    // overwhelm PostgREST and make imports appear frozen on large workbooks.
+    const concurrency = 25;
+    for (let offset = 0; offset < updates.length; offset += concurrency) {
+      const batch = updates.slice(offset, offset + concurrency);
+      const results = await Promise.all(batch.map(async (row: (typeof updates)[number]) => {
+        const { id, ...values } = row;
+        let query = admin.from("outbound_activities").update(values).eq("id", id);
+        if (profile.role === "member") query = query.eq("employee_id", profile.id);
+        return query;
+      }));
+      const failed = results.find(result => result.error);
+      if (failed?.error) {
+        console.error("[outbound/data] update failed:", failed.error);
+        return NextResponse.json({ error: failed.error.message }, { status: 500 });
+      }
+    }
   }
   let inserted = 0;
   if (inserts.length) {
