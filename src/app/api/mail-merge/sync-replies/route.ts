@@ -79,43 +79,116 @@ export async function POST(request: Request) {
       await admin.from("outbound_email_accounts").update({ mailbox_sync_started_at: new Date().toISOString(), mailbox_sync_error: null }).eq("id", account.id);
       const access = await getProviderAccess(account, admin);
       let messages: any[] = [];
+      const pendingCursors: Record<string, string> = {};
+      const fetchGmailMessage = async (id: string) => {
+        const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/" + encodeURIComponent(id) + "?format=full", { headers: { Authorization: "Bearer " + access } });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error?.message || "Could not read Gmail message " + id);
+        const labels: string[] = Array.isArray(payload.labelIds) ? payload.labelIds : [];
+        if (!labels.includes("INBOX") && !labels.includes("SPAM")) return null;
+        return { provider: "google", id: payload.id, threadId: payload.threadId, from: header(payload, "From"), subject: header(payload, "Subject"), headers: payload.payload?.headers || [], body: gmailText(payload.payload), snippet: String(payload.snippet || "") };
+      };
       if (account.provider === "google") {
-        let pageToken = "";
-        for (;;) {
-          const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-          url.searchParams.set("includeSpamTrash", "true");
-          url.searchParams.set("maxResults", "100");
-          url.searchParams.set("q", "{in:inbox in:spam} newer_than:30d");
-          if (pageToken) url.searchParams.set("pageToken", pageToken);
-          const r = await fetch(url, { headers: { Authorization: "Bearer " + access } });
-          const d = await r.json();
-          if (!r.ok) throw new Error(d.error?.message || "Gmail inbox sync failed.");
-          const listed = (d.messages || []).slice(0, 100);
-          for (let offset = 0; offset < listed.length; offset += 10) {
-            const group = listed.slice(offset, offset + 10);
-            const details = await Promise.all(group.map(async (item: any) => {
-              const full = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/" + item.id + "?format=full", { headers: { Authorization: "Bearer " + access } });
-              if (!full.ok) return null;
-              const x = await full.json();
-              return { provider: "google", id: x.id, threadId: x.threadId, from: header(x, "From"), subject: header(x, "Subject"), headers: x.payload?.headers || [], body: gmailText(x.payload), snippet: String(x.snippet || "") };
-            }));
-            messages.push(...details.filter(Boolean));
+        let historyId = String(account.gmail_history_id || "");
+        let ids = new Set<string>();
+        if (historyId) {
+          let pageToken = "";
+          let latestHistoryId = historyId;
+          try {
+            do {
+              const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/history");
+              url.searchParams.set("startHistoryId", historyId);
+              url.searchParams.set("historyTypes", "messageAdded");
+              url.searchParams.set("maxResults", "500");
+              if (pageToken) url.searchParams.set("pageToken", pageToken);
+              const response = await fetch(url, { headers: { Authorization: "Bearer " + access } });
+              const data = await response.json();
+              if (!response.ok) {
+                if (response.status === 404) throw Object.assign(new Error("GMAIL_HISTORY_EXPIRED"), { code: "GMAIL_HISTORY_EXPIRED" });
+                throw new Error(data.error?.message || "Gmail History API sync failed.");
+              }
+              latestHistoryId = String(data.historyId || latestHistoryId);
+              for (const history of data.history || []) for (const added of history.messagesAdded || []) if (added.message?.id) ids.add(String(added.message.id));
+              pageToken = String(data.nextPageToken || "");
+            } while (pageToken);
+            pendingCursors.gmail_history_id = latestHistoryId;
+          } catch (error: any) {
+            if (error?.code !== "GMAIL_HISTORY_EXPIRED") throw error;
+            historyId = "";
+            ids.clear();
           }
-          pageToken = String(d.nextPageToken || "");
-          if (!pageToken) break;
+        }
+        if (!historyId) {
+          // Establish the history baseline before the bootstrap scan. Any messages
+          // arriving during the scan are then replayed by the next History request.
+          const profileResponse = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", { headers: { Authorization: "Bearer " + access } });
+          const profileData = await profileResponse.json();
+          if (!profileResponse.ok || !profileData.historyId) throw new Error(profileData.error?.message || "Could not establish Gmail history baseline.");
+          const baseline = String(profileData.historyId);
+          let pageToken = "";
+          do {
+            const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+            url.searchParams.set("includeSpamTrash", "true");
+            url.searchParams.set("maxResults", "500");
+            url.searchParams.set("q", "{in:inbox in:spam} newer_than:30d");
+            if (pageToken) url.searchParams.set("pageToken", pageToken);
+            const response = await fetch(url, { headers: { Authorization: "Bearer " + access } });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error?.message || "Gmail mailbox bootstrap failed.");
+            for (const item of data.messages || []) if (item.id) ids.add(String(item.id));
+            pageToken = String(data.nextPageToken || "");
+          } while (pageToken);
+          pendingCursors.gmail_history_id = baseline;
+        }
+        const allIds = [...ids];
+        for (let offset = 0; offset < allIds.length; offset += 10) {
+          const batch = await Promise.all(allIds.slice(offset, offset + 10).map(fetchGmailMessage));
+          messages.push(...batch.filter(Boolean));
+        }
+      } else if (account.provider === "microsoft") {
+        const folders = [
+          { key: "graph_inbox_delta_link", name: "inbox" },
+          { key: "graph_junk_delta_link", name: "junkemail" }
+        ];
+        const seen = new Set<string>();
+        for (const folder of folders) {
+          let url: string | null = account[folder.key]
+            ? String(account[folder.key])
+            : "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder.name + "/messages/delta?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body";
+          let deltaLink = "";
+          while (url) {
+            const response: Response = await fetch(url, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
+            const data = await response.json();
+            if (!response.ok) {
+              // An expired delta token must not replace the saved cursor. Retry a
+              // clean folder bootstrap and only commit its new deltaLink on success.
+              const expired = response.status === 410 || (response.status === 400 && /sync state|delta token|resync/i.test(JSON.stringify(data)));
+              if (expired && account[folder.key] && !url.includes("/messages/delta?")) {
+                url = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder.name + "/messages/delta?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body";
+                deltaLink = "";
+                continue;
+              }
+              throw new Error(data.error?.message || ("Microsoft " + folder.name + " delta sync failed."));
+            }
+            for (const item of data.value || []) {
+              if (item["@removed"] || !item.id || seen.has(String(item.id))) continue;
+              seen.add(String(item.id));
+              messages.push({ provider: "microsoft", id: String(item.id), from: String(item.from?.emailAddress?.address || ""), subject: String(item.subject || ""), headers: item.internetMessageHeaders || [], body: String(item.body?.content || ""), snippet: "" });
+            }
+            if (typeof data["@odata.deltaLink"] === "string") deltaLink = data["@odata.deltaLink"];
+            url = typeof data["@odata.nextLink"] === "string" ? data["@odata.nextLink"] : null;
+          }
+          if (!deltaLink) throw new Error("Microsoft " + folder.name + " delta response did not include a final deltaLink.");
+          pendingCursors[folder.key] = deltaLink;
         }
       } else {
-        // Scan both Inbox and Junk Email; automatic replies can be classified as junk.
-        for (const folder of ["inbox", "junkemail"]) {
-          let url: string | null = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder + "/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body&$orderby=receivedDateTime%20desc";
-          while (url) {
-            const r: Response = await fetch(url, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.error?.message || ("Microsoft " + folder + " sync failed."));
-            messages.push(...(d.value || []).slice(0, 100).map((m: any) => ({ provider: "microsoft", id: m.id, from: String(m.from?.emailAddress?.address || ""), subject: String(m.subject || ""), headers: m.internetMessageHeaders || [], body: String(m.body?.content || ""), snippet: "" })));
-            url = typeof d["@odata.nextLink"] === "string" ? d["@odata.nextLink"] : null;
-          }
-        }
+        throw new Error("Unsupported mailbox provider: " + String(account.provider));
+      }
+      // Commit provider cursors only after every collected message has been
+      // classified and persisted. Failed processing replays the same delta next run.
+      if (Object.keys(pendingCursors).length) {
+        const { error: cursorError } = await admin.from("outbound_email_accounts").update(pendingCursors).eq("id", account.id);
+        if (cursorError) throw new Error("Could not save mailbox sync cursor: " + cursorError.message);
       }
       checked += messages.length;
       // Resolve only leads actually mentioned by this mailbox scan. The previous
