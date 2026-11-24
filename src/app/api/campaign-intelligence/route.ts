@@ -6,13 +6,24 @@ export async function GET(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
  const {admin,profile}=auth;const {searchParams}=new URL(request.url);
  const country=searchParams.get("country")||"",group=searchParams.get("group")||"",account=searchParams.get("account")||"";
- const [{data:campaigns,error:cErr},{data:accounts,error:aErr},{data:batches,error:bErr}]=await Promise.all([
-  profile.role==="member"?admin.from("mail_merge_campaigns").select("*").eq("created_by",profile.id).order("created_at",{ascending:false}).limit(500):admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).limit(500),
+ const campaignRows:any[]=[];
+ for(let offset=0;;offset+=500){
+  let campaignQuery=admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).order("id",{ascending:true}).range(offset,offset+499);
+  if(profile.role==="member")campaignQuery=campaignQuery.eq("created_by",profile.id);
+  if(country)campaignQuery=campaignQuery.eq("country",country);
+  if(group)campaignQuery=campaignQuery.eq("campaign_group",group);
+  const {data:page,error}=await campaignQuery;
+  if(error)return NextResponse.json({error:error.message},{status:500});
+  campaignRows.push(...(page||[]));
+  if(!page||page.length<500)break;
+ }
+ const [{data:accounts,error:aErr},{data:batches,error:bErr}]=await Promise.all([
   profile.role==="member"?admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error").eq("employee_id",profile.id):admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error"),
   profile.role==="member"?admin.from("lead_import_batches").select("*").eq("imported_by",profile.id).order("started_at",{ascending:false}).limit(200):admin.from("lead_import_batches").select("*").order("started_at",{ascending:false}).limit(200)
  ]);
- if(cErr||aErr||bErr)return NextResponse.json({error:cErr?.message||aErr?.message||bErr?.message},{status:500});
- const campaignIds=(campaigns||[]).map((c:any)=>String(c.id));
+ if(aErr||bErr)return NextResponse.json({error:aErr?.message||bErr?.message},{status:500});
+ const campaigns=campaignRows;
+ const campaignIds=campaigns.map((c:any)=>String(c.id));
  const allRecipients:any[]=[];
  for(let offset=0;campaignIds.length&&true;offset+=1000){const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("id,campaign_id,lead_id,sender_account_id,status,sent_at,open_count,response_classification").in("campaign_id",campaignIds).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);if(error)return NextResponse.json({error:error.message},{status:500});allRecipients.push(...(page||[]));if(!page||page.length<1000)break;}
  const leadIds=[...new Set(allRecipients.map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
