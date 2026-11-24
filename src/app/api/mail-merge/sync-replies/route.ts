@@ -152,7 +152,9 @@ export async function POST(request: Request) {
         ];
         const seen = new Set<string>();
         for (const folder of folders) {
-          let url: string | null = account[folder.key]
+          const usingSavedCursor = Boolean(account[folder.key]);
+          let restartedExpiredCursor = false;
+          let url: string | null = usingSavedCursor
             ? String(account[folder.key])
             : "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder.name + "/messages/delta?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body";
           let deltaLink = "";
@@ -163,7 +165,8 @@ export async function POST(request: Request) {
               // An expired delta token must not replace the saved cursor. Retry a
               // clean folder bootstrap and only commit its new deltaLink on success.
               const expired = response.status === 410 || (response.status === 400 && /sync state|delta token|resync/i.test(JSON.stringify(data)));
-              if (expired && account[folder.key] && !url.includes("/messages/delta?")) {
+              if (expired && usingSavedCursor && !restartedExpiredCursor) {
+                restartedExpiredCursor = true;
                 url = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder.name + "/messages/delta?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body";
                 deltaLink = "";
                 continue;
