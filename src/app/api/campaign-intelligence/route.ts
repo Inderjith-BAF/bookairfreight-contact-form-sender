@@ -6,12 +6,28 @@ export async function GET(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
  const {admin,profile}=auth;const {searchParams}=new URL(request.url);
  const country=searchParams.get("country")||"",group=searchParams.get("group")||"",account=searchParams.get("account")||"";
+ let accountCampaignIds:string[]|null=null;
+ if(account){
+  const ids=new Set<string>();
+  for(let offset=0;;offset+=1000){
+   const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("campaign_id")
+    .eq("sender_account_id",account).order("campaign_id",{ascending:true}).range(offset,offset+999);
+   if(error)return NextResponse.json({error:error.message},{status:500});
+   for(const row of page||[])if(row.campaign_id)ids.add(String(row.campaign_id));
+   if(!page||page.length<1000)break;
+  }
+  accountCampaignIds=[...ids];
+ }
  const campaignRows:any[]=[];
  for(let offset=0;;offset+=500){
   let campaignQuery=admin.from("mail_merge_campaigns").select("*").order("created_at",{ascending:false}).order("id",{ascending:true}).range(offset,offset+499);
   if(profile.role==="member")campaignQuery=campaignQuery.eq("created_by",profile.id);
   if(country)campaignQuery=campaignQuery.eq("country",country);
   if(group)campaignQuery=campaignQuery.eq("campaign_group",group);
+  if(accountCampaignIds!==null){
+   if(!accountCampaignIds.length)break;
+   campaignQuery=campaignQuery.in("id",accountCampaignIds);
+  }
   const {data:page,error}=await campaignQuery;
   if(error)return NextResponse.json({error:error.message},{status:500});
   campaignRows.push(...(page||[]));
@@ -58,7 +74,7 @@ export async function GET(request:Request){
   if(event.campaign_recipient_id)ids.add(String(event.campaign_recipient_id));
   bounceIdsByCampaign.set(campaignId,ids);
  }
- const cs=(campaigns||[]).filter((c:any)=>(!country||c.country===country)&&(!group||c.campaign_group===group)&&(!account||(recipientsByCampaign.get(String(c.id))||[]).some((r:any)=>r.sender_account_id===account)));
+ const cs=campaigns||[];
  const stageEligible=(campaign:any,r:any)=>{
   const l=leadMap.get(String(r.lead_id||""));
   if(!l||l.suppression_reason||["Bounced","Unsubscribed","Suppressed","Positive","Neutral","Negative","Needs Review"].includes(String(l.current_status||"")))return false;
