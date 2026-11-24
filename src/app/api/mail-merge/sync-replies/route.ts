@@ -293,14 +293,20 @@ export async function POST(request: Request) {
         row = threadMatch?.lead_id === leadId && !["Bounced", "Suppressed"].includes(String(threadMatch.status))
           ? threadMatch
           : (() => { const match = sentByLeadSubject.get(leadId + "::" + subjectKey(subject)); return match && !["Bounced", "Suppressed"].includes(String(match.status)) ? match : undefined; })();
-        if (!row || ["Replied", "Bounced", "Suppressed"].includes(String(row.status))) continue;
+        if (!row || ["Bounced", "Suppressed"].includes(String(row.status))) continue;
         const now = new Date().toISOString();
         const { error: replyStatusError } = await admin.from("mail_merge_campaign_recipients").update({ status: "Replied", updated_at: now }).eq("id", row.id);
         if (replyStatusError) throw new Error("Could not mark recipient as replied: " + replyStatusError.message);
         const { error: leadReplyError } = await admin.from("master_leads").update({ current_status: "Needs Review", last_replied_at: now, updated_at: now }).eq("id", row.lead_id);
         if (leadReplyError) throw new Error("Could not move replied lead to Needs Review: " + leadReplyError.message);
-        const { error: replyEventError } = await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: row.lead_id, sender_account_id: account.id, event_type: "reply", details: { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id } });
-        if (replyEventError) throw new Error("Could not record reply event: " + replyEventError.message);
+        const { data: existingReplyEvent, error: existingReplyEventError } = await admin.from("mail_merge_events")
+          .select("id").eq("campaign_recipient_id", row.id).eq("event_type", "reply")
+          .contains("details", { message_id: message.id }).limit(1);
+        if (existingReplyEventError) throw new Error("Could not check existing reply event: " + existingReplyEventError.message);
+        if (!existingReplyEvent?.length) {
+          const { error: replyEventError } = await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: row.lead_id, sender_account_id: account.id, event_type: "reply", details: { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id } });
+          if (replyEventError) throw new Error("Could not record reply event: " + replyEventError.message);
+        }
         replies++;
       }
       // Advance provider cursors only after all fetched messages have been
