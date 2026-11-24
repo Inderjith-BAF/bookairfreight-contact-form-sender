@@ -76,6 +76,7 @@ export async function POST(request: Request) {
   for (const account of accounts || []) {
     if (profile?.role === "member" && account.employee_id !== profile.id) continue;
     try {
+      await admin.from("outbound_email_accounts").update({ mailbox_sync_started_at: new Date().toISOString(), mailbox_sync_error: null }).eq("id", account.id);
       const access = await getProviderAccess(account, admin);
       let messages: any[] = [];
       if (account.provider === "google") {
@@ -220,10 +221,11 @@ export async function POST(request: Request) {
         await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: row.lead_id, sender_account_id: account.id, event_type: "reply", details: { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id } });
         replies++;
       }
+      await admin.from("outbound_email_accounts").update({ mailbox_last_synced_at: new Date().toISOString(), mailbox_sync_started_at: null, mailbox_sync_error: null }).eq("id", account.id);
     } catch (error) {
       errors.push(account.email + ": " + (error instanceof Error ? error.message : "Mailbox sync failed"));
       // A failed inbox sync must not mark a healthy OAuth connection as disconnected.
-      await admin.from("outbound_email_accounts").update({ connection_error: errors[errors.length - 1] }).eq("id", account.id);
+      await admin.from("outbound_email_accounts").update({ connection_error: errors[errors.length - 1], mailbox_sync_error: errors[errors.length - 1], mailbox_sync_started_at: null }).eq("id", account.id);
     }
   }
   const parts = [];
