@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       let messages: any[] = [];
       if (account.provider === "google") {
         let pageToken = "";
-        for (let page = 0; page < 10; page++) {
+        for (;;) {
           const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
           url.searchParams.set("includeSpamTrash", "true");
           url.searchParams.set("maxResults", "100");
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
         // Scan both Inbox and Junk Email; automatic replies can be classified as junk.
         for (const folder of ["inbox", "junkemail"]) {
           let url: string | null = "https://graph.microsoft.com/v1.0/me/mailFolders/" + folder + "/messages?$top=100&$select=id,subject,from,receivedDateTime,internetMessageId,internetMessageHeaders,body&$orderby=receivedDateTime%20desc";
-          for (let page = 0; page < 10 && url; page++) {
+          while (url) {
             const r: Response = await fetch(url, { headers: { Authorization: "Bearer " + access, Prefer: 'outlook.body-content-type="text"' } });
             const d = await r.json();
             if (!r.ok) throw new Error(d.error?.message || ("Microsoft " + folder + " sync failed."));
