@@ -43,54 +43,25 @@ const countBy = (rows: Record<string, unknown>[], field: string) => {
 export async function GET(request: Request) {
   const auth = await requireOutboundUser(request);
   if ("error" in auth) return auth.error;
-  const { admin } = auth;
-  const { count, error: countError } = await admin.from("central_lead_inventory").select("id", { count: "exact", head: true });
-  if (countError) return NextResponse.json({ error: countError.message }, { status: 500 });
-  const total = count || 0;
-  const pageSize = 1000;
-  const pageCount = Math.ceil(total / pageSize);
-  // Keep database concurrency bounded. Promise.all over every page can
-  // open hundreds of simultaneous requests once the inventory grows.
-  const pages: any[] = [];
-  const concurrency = 5;
-  for (let start = 0; start < pageCount; start += concurrency) {
-    const batch = await Promise.all(Array.from({ length: Math.min(concurrency, pageCount - start) }, (_, index) => {
-      const page = start + index;
-      return admin.from("central_lead_inventory")
-        .select("created_at,fresh_outreach_assigned_to,business_personal_email,data_from_lead_generation_team,data_source,country,main_industry")
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: true })
-        .range(page * pageSize, Math.min(total - 1, (page + 1) * pageSize - 1));
-    }));
-    pages.push(...batch);
+  const { data, error } = await auth.admin.rpc("get_lead_inventory_report");
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const report = (data || {}) as Record<string, any>;
+  const countries = new Map<string, number>();
+  for (const item of report.countries || []) {
+    const key = normalizeCountry(item.key);
+    countries.set(key, (countries.get(key) || 0) + Number(item.count || 0));
   }
-  const failed = pages.find(page => page.error);
-  if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
-  const rows = pages.flatMap(page => page.data || []);
-  const today = new Date();
-  const todayKey = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-  const last7 = new Map<string, number>();
-  for (let offset = 6; offset >= 0; offset--) {
-    const date = new Date();
-    date.setDate(date.getDate() - offset);
-    const key = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-    last7.set(key, 0);
-  }
-  let assigned = 0, business = 0, personal = 0, addedToday = 0;
-  for (const row of rows) {
-    if (String(row.fresh_outreach_assigned_to || "").trim()) assigned++;
-    if (/business/i.test(String(row.business_personal_email || ""))) business++;
-    if (/personal/i.test(String(row.business_personal_email || ""))) personal++;
-    const day = String(row.created_at || "").slice(0, 10);
-    if (day === todayKey) addedToday++;
-    if (last7.has(day)) last7.set(day, (last7.get(day) || 0) + 1);
-  }
+  const sort = (items: any[]) => (items || []).map(item => ({ key: clean(item.key), count: Number(item.count || 0) })).sort((a,b) => b.count-a.count);
   return NextResponse.json({
-    total, addedToday, assigned, business, personal,
-    sources: countBy(rows, "data_from_lead_generation_team"),
-    rawSheets: countBy(rows, "data_source"),
-    countries: countBy(rows, "country"),
-    industries: countBy(rows, "main_industry"),
-    last7: [...last7.entries()].map(([key, count]) => ({ key, count }))
+    total: Number(report.total || 0),
+    addedToday: Number(report.addedToday || 0),
+    assigned: Number(report.assigned || 0),
+    business: Number(report.business || 0),
+    personal: Number(report.personal || 0),
+    sources: sort(report.sources),
+    rawSheets: sort(report.rawSheets),
+    countries: [...countries.entries()].map(([key,count]) => ({key,count})).sort((a,b)=>b.count-a.count),
+    industries: sort(report.industries),
+    last7: (report.last7 || []).map((item: any) => ({ key: String(item.key), count: Number(item.count || 0) }))
   });
 }
