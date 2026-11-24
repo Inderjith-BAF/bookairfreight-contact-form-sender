@@ -44,10 +44,14 @@ async function recordBounce(admin: any, account: any, sentByLead: Map<string, an
     const now = new Date().toISOString();
     // Mark the specific failed attempt as bounced, then immediately stop any other
     // unsent attempts for this lead across campaigns so queued follow-ups cannot linger.
-    await admin.from("mail_merge_campaign_recipients").update({ status: "Bounced", error_message: "Delivery failure reported by mailbox", updated_at: now }).eq("id", row.id);
-    await admin.from("mail_merge_campaign_recipients").update({ status: "Suppressed", send_not_before: null, error_message: "Lead bounced; removed from pending outreach.", updated_at: now }).eq("lead_id", lead.id).in("status", ["Ready", "Queued", "Sending"]);
-    await admin.from("master_leads").update({ current_status: "Bounced", suppression_reason: "Bounce reported by mail provider", suppressed_at: now, updated_at: now }).eq("id", lead.id);
-    await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: lead.id, sender_account_id: account.id, event_type: "bounce", details });
+    const { error: bouncedError } = await admin.from("mail_merge_campaign_recipients").update({ status: "Bounced", error_message: "Delivery failure reported by mailbox", updated_at: now }).eq("id", row.id);
+    if (bouncedError) throw new Error("Could not mark bounced recipient: " + bouncedError.message);
+    const { error: suppressError } = await admin.from("mail_merge_campaign_recipients").update({ status: "Suppressed", send_not_before: null, error_message: "Lead bounced; removed from pending outreach.", updated_at: now }).eq("lead_id", lead.id).in("status", ["Ready", "Queued", "Sending"]);
+    if (suppressError) throw new Error("Could not suppress bounced lead follow-ups: " + suppressError.message);
+    const { error: leadBounceError } = await admin.from("master_leads").update({ current_status: "Bounced", suppression_reason: "Bounce reported by mail provider", suppressed_at: now, updated_at: now }).eq("id", lead.id);
+    if (leadBounceError) throw new Error("Could not update bounced lead: " + leadBounceError.message);
+    const { error: bounceEventError } = await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: lead.id, sender_account_id: account.id, event_type: "bounce", details });
+    if (bounceEventError) throw new Error("Could not record bounce event: " + bounceEventError.message);
     count++;
   }
   return count;
@@ -189,12 +193,6 @@ export async function POST(request: Request) {
       } else {
         throw new Error("Unsupported mailbox provider: " + String(account.provider));
       }
-      // Commit provider cursors only after every collected message has been
-      // classified and persisted. Failed processing replays the same delta next run.
-      if (Object.keys(pendingCursors).length) {
-        const { error: cursorError } = await admin.from("outbound_email_accounts").update(pendingCursors).eq("id", account.id);
-        if (cursorError) throw new Error("Could not save mailbox sync cursor: " + cursorError.message);
-      }
       checked += messages.length;
       // Resolve only leads actually mentioned by this mailbox scan. The previous
       // implementation loaded up to 50,000 sent recipients for every account,
@@ -268,8 +266,9 @@ export async function POST(request: Request) {
             : (subjectMatch && !["Bounced", "Suppressed"].includes(String(subjectMatch.status)) ? subjectMatch : undefined);
           const now = new Date().toISOString();
           if (autoRow && !["Bounced", "Suppressed", "Auto Response"].includes(String(autoRow.status))) {
-            await admin.from("mail_merge_campaign_recipients").update({ status: "Auto Response", updated_at: now }).eq("id", autoRow.id);
-            await admin.from("mail_merge_events").insert({
+            const { error: autoStatusError } = await admin.from("mail_merge_campaign_recipients").update({ status: "Auto Response", updated_at: now }).eq("id", autoRow.id);
+            if (autoStatusError) throw new Error("Could not classify automatic response: " + autoStatusError.message);
+            const { error: autoEventError } = await admin.from("mail_merge_events").insert({
               campaign_recipient_id: autoRow.id,
               campaign_id: autoRow.campaign_id,
               lead_id: autoRow.lead_id,
@@ -277,10 +276,12 @@ export async function POST(request: Request) {
               event_type: "auto_reply",
               details: { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id }
             });
+            if (autoEventError) throw new Error("Could not record automatic response event: " + autoEventError.message);
           }
           const knownLead = leadsById.get(leadId);
           if (knownLead?.current_status !== "Out of Office") {
-            await admin.from("master_leads").update({ current_status: "Out of Office", last_replied_at: now, updated_at: now }).eq("id", leadId);
+            const { error: leadAutoError } = await admin.from("master_leads").update({ current_status: "Out of Office", last_replied_at: now, updated_at: now }).eq("id", leadId);
+            if (leadAutoError) throw new Error("Could not update out-of-office lead: " + leadAutoError.message);
             knownLead.current_status = "Out of Office";
           }
           autoResponses++;
@@ -294,12 +295,25 @@ export async function POST(request: Request) {
           : (() => { const match = sentByLeadSubject.get(leadId + "::" + subjectKey(subject)); return match && !["Bounced", "Suppressed"].includes(String(match.status)) ? match : undefined; })();
         if (!row || ["Replied", "Bounced", "Suppressed"].includes(String(row.status))) continue;
         const now = new Date().toISOString();
-        await admin.from("mail_merge_campaign_recipients").update({ status: "Replied", updated_at: now }).eq("id", row.id);
-        await admin.from("master_leads").update({ current_status: "Needs Review", last_replied_at: now, updated_at: now }).eq("id", row.lead_id);
-        await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: row.lead_id, sender_account_id: account.id, event_type: "reply", details: { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id } });
+        const { error: replyStatusError } = await admin.from("mail_merge_campaign_recipients").update({ status: "Replied", updated_at: now }).eq("id", row.id);
+        if (replyStatusError) throw new Error("Could not mark recipient as replied: " + replyStatusError.message);
+        const { error: leadReplyError } = await admin.from("master_leads").update({ current_status: "Needs Review", last_replied_at: now, updated_at: now }).eq("id", row.lead_id);
+        if (leadReplyError) throw new Error("Could not move replied lead to Needs Review: " + leadReplyError.message);
+        const { error: replyEventError } = await admin.from("mail_merge_events").insert({ campaign_recipient_id: row.id, campaign_id: row.campaign_id, lead_id: row.lead_id, sender_account_id: account.id, event_type: "reply", details: { source: account.provider + "_inbox_sync", from: message.from, subject, message_id: message.id } });
+        if (replyEventError) throw new Error("Could not record reply event: " + replyEventError.message);
         replies++;
       }
-      await admin.from("outbound_email_accounts").update({ mailbox_last_synced_at: new Date().toISOString(), mailbox_sync_started_at: null, mailbox_sync_error: null }).eq("id", account.id);
+      // Advance provider cursors only after all fetched messages have been
+      // classified and every required database write has succeeded. If anything
+      // above fails, the next run replays this same provider window.
+      if (Object.keys(pendingCursors).length) {
+        const { error: cursorError } = await admin.from("outbound_email_accounts").update(pendingCursors).eq("id", account.id);
+        if (cursorError) throw new Error("Could not save mailbox sync cursor: " + cursorError.message);
+      }
+      const { error: syncCompleteError } = await admin.from("outbound_email_accounts")
+        .update({ mailbox_last_synced_at: new Date().toISOString(), mailbox_sync_started_at: null, mailbox_sync_error: null })
+        .eq("id", account.id);
+      if (syncCompleteError) throw new Error("Could not finalize mailbox sync: " + syncCompleteError.message);
     } catch (error) {
       errors.push(account.email + ": " + (error instanceof Error ? error.message : "Mailbox sync failed"));
       // A failed inbox sync must not mark a healthy OAuth connection as disconnected.
