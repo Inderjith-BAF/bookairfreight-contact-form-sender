@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   const safeQuery = q.replace(/[\\,()%]/g, " ").trim();
   const safeSource = source.replace(/[\\,%_]/g, " ").trim();
   for (let offset = 0; ; offset += pageSize) {
-    let query = admin.from("central_lead_inventory").select("*")
+    let query = admin.from("central_lead_inventory").select("id,location_on_site,country,company_name,first_name,last_name,title,email,main_product_description,secondary_product_description,main_industry,main_additional_tag,secondary_industry,secondary_additional_tag,qualified_lead,assigned_to,assigned_date,ecommerce_platform_used,data_from_lead_generation_team,data_source,email_finding_assigned_to,email_finding_assigned_date,business_personal_email,contact_form,fresh_outreach_assigned_to,fresh_outreach_assigned_date,created_at,updated_at")
       .order("created_at", { ascending: false }).order("id", { ascending: true })
       .range(offset, offset + pageSize - 1);
     if (safeSource) query = query.ilike("data_source", "%" + safeSource + "%");
