@@ -197,10 +197,19 @@ export function CentralLeadInventory() {
     const ids = leads.slice(lo, hi + 1).map(row => row.id);
     void fillAssignment(ids, field, dragFill.value);
   }
-  const excelFilterKeys = ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"];
-  const excelFilterOptions = (key: string) => Array.from(new Set(leads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a,b) => a.localeCompare(b));
-  const uniqueLeads = Array.from(new Map(leads.filter(row => row.id).map(row => [row.id, row])).values());
-  const visible = uniqueLeads.filter(row => COLUMNS.every(([key]) => {
+  const excelFilterKeys = useMemo(() => ["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"], []);
+  const uniqueLeads = useMemo(
+    () => Array.from(new Map(leads.filter(row => row.id).map(row => [row.id, row])).values()),
+    [leads]
+  );
+  const excelFilterOptionValues = useMemo(() => Object.fromEntries(
+    excelFilterKeys.map(key => [
+      key,
+      Array.from(new Set(uniqueLeads.map(row => key === "country" ? normalizeCountry(row[key]) : String(row[key] ?? "").trim()))).sort((a, b) => a.localeCompare(b))
+    ])
+  ) as Record<string, string[]>, [excelFilterKeys, uniqueLeads]);
+  const excelFilterOptions = (key: string) => excelFilterOptionValues[key] ?? [];
+  const visible = useMemo(() => uniqueLeads.filter(row => COLUMNS.every(([key]) => {
     const textFilter = columnFilters[key]?.trim();
     if (textFilter && !String(row[key] ?? "").toLowerCase().includes(textFilter.toLowerCase())) return false;
     const selectedValues = excelFilters[key];
@@ -211,7 +220,7 @@ export function CentralLeadInventory() {
     }
     if (key === "fresh_outreach_assigned_to" && textFilter && !String(row.fresh_outreach_assigned_to ?? "").trim()) return false;
     return true;
-  }));
+  })), [uniqueLeads, columnFilters, excelFilters, excelFilterKeys]);
   const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
     if (rect) setExcelFilterPosition({top: Math.min(rect.bottom + 4, window.innerHeight - 320), left: Math.min(rect.left, window.innerWidth - 280)});
     setOpenExcelFilter(key);
@@ -226,9 +235,9 @@ export function CentralLeadInventory() {
   };
   const pageCount = Math.max(1, Math.ceil(visible.length / tablePageSize));
   const currentPage = Math.min(tablePage, pageCount);
-  const pageRows = visible.slice((currentPage - 1) * tablePageSize, currentPage * tablePageSize);
-  const visibleIds = [...new Set(visible.map(row => row.id).filter(Boolean))];
-  const selectedVisibleIds = visibleIds.filter(id => selected.includes(id));
+  const pageRows = useMemo(() => visible.slice((currentPage - 1) * tablePageSize, currentPage * tablePageSize), [visible, currentPage]);
+  const visibleIds = useMemo(() => [...new Set(visible.map(row => row.id).filter(Boolean))], [visible]);
+  const selectedVisibleIds = useMemo(() => visibleIds.filter(id => selected.includes(id)), [visibleIds, selected]);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selected.includes(id));
   const toggleAll = (checked:boolean) => setSelected(old => checked ? [...new Set([...old, ...visibleIds])] : old.filter(id => !visibleIds.includes(id)));
   const downloadSelected = () => {
