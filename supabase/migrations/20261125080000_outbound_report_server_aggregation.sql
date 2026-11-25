@@ -46,7 +46,7 @@ with source as (
     coalesce(nullif(btrim(a.lead_source), ''), 'Unspecified') as lead_source,
     coalesce(nullif(btrim(a.subject), ''), 'Unspecified') as subject,
     coalesce(nullif(btrim(a.campaign), ''), 'Unspecified') as campaign,
-    coalesce(nullif(btrim(a.content_creator), ''), 'Unassigned') as content_creator,
+    coalesce(nullif(btrim(a.content_creator), ''), 'Unspecified') as content_creator,
     coalesce(nullif(btrim(a.content_link), ''), '') as content_link,
     a.sequence_id, a.stage,
     coalesce(nullif(a.prospect_email, ''), nullif(a.email_account_text, ''), '') as prospect_email,
@@ -136,14 +136,15 @@ totals as (
     sum(neutral) neutral, sum(negative) negative
   from forms group by employee_id
 ), country_campaign as (
-  select region country, campaign, sum(outreach) outreach, sum(positive) positive,
-    sum(neutral) neutral, sum(negative) negative
+  select case when region = 'Unspecified' then 'Unspecified country' else region end country,
+    case when campaign = 'Unspecified' then 'Unspecified campaign' else campaign end campaign,
+    sum(outreach) outreach, sum(positive) positive, sum(neutral) neutral, sum(negative) negative
   from email group by region, campaign
 ), sequence_rank as (
   select id, row_number() over (order by created_at asc, id asc)::integer as sequence_number
   from public.outbound_sequences where active = true
 ), content_links as (
-  select content_link as link, content_creator as creator, sequence_number as sequence, sum(positive) as positive
+  select content_link as link, case when content_creator = 'Unspecified' then 'Unassigned' else content_creator end as creator, sequence_number as sequence, sum(positive) as positive
   from (
     select e.content_link, e.content_creator, e.positive,
       case
