@@ -62,12 +62,13 @@ export async function GET(request: Request) {
         p_limit: 2000,
       });
       if (error) throw new Error(field + ": " + error.message);
-      const values: string[] = Array.from(new Set<string>(
-        (data || [])
-          .map((row: { value: string | null }) => clean(row.value))
-          .filter((value): value is string => value.length > 0)
-      ));
-      return [field, values.sort((a, b) => a.localeCompare(b))] as const;
+      const values = ((data || []) as { value: string | null }[]).reduce<string[]>((unique, row) => {
+        const value = clean(row.value);
+        if (value && !unique.includes(value)) unique.push(value);
+        return unique;
+      }, []);
+      values.sort((a: string, b: string) => a.localeCompare(b));
+      return [field, values] as const;
     }));
     return NextResponse.json({ options: Object.fromEntries(results) });
   }
