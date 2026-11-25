@@ -3,19 +3,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { BarChart3, Globe2, MailCheck, PieChart, Rocket, Ship, Sparkles, Target, TrendingUp, Users } from "lucide-react";
 
-type ReportSummary = { total:number; addedToday:number; assigned:number; business:number; personal:number; sources:[string,number][]; rawSheets:[string,number][]; countries:[string,number][]; industries:[string,number][]; last7:{key:string;count:number}[] };
+type ReportItem = { key: string; count: number };
+type ReportSummary = { total:number; addedToday:number; assigned:number; business:number; personal:number; sources:ReportItem[]; rawSheets:ReportItem[]; countries:ReportItem[]; industries:ReportItem[]; last7:{key:string;count:number}[] };
 const palette = ["#4f46e5","#06b6d4","#f97316","#22c55e","#e879f9","#eab308","#64748b"];
-function Donut({items, total}:{items:[string,number][];total:number}) {
+function Donut({items, total}:{items:ReportItem[];total:number}) {
   let cursor = 0;
-  const stops = items.slice(0,7).map(([label,count],i)=>{const start=cursor;cursor += total ? count/total*100 : 0;return `${palette[i%palette.length]} ${start}% ${cursor}%`;});
+  const stops = items.slice(0,7).map(({count},i)=>{const start=cursor;cursor += total ? count/total*100 : 0;return `${palette[i%palette.length]} ${start}% ${cursor}%`;});
   return <div className="relative mx-auto h-36 w-36 shrink-0 rounded-full" style={{background:total?`conic-gradient(${stops.join(",")})`:"conic-gradient(#dbeafe 0% 100%)", animation:"leadDonutIn .9s ease-out both"}}>
     <div className="absolute inset-5 grid place-content-center rounded-full bg-white text-center shadow-inner"><b className="text-2xl text-slate-900">{total.toLocaleString()}</b><span className="text-[9px] font-black uppercase tracking-wider text-slate-500">Leads</span></div>
   </div>;
 }
-function Breakdown({title,items,total,limit=7}:{title:string;items:[string,number][];total:number;limit?:number}) {
+function Breakdown({title,items,total,limit=7}:{title:string;items:ReportItem[];total:number;limit?:number}) {
   return <section className="rounded-2xl border border-blue-100 bg-white/90 p-4 shadow-sm">
     <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-slate-800"><BarChart3 size={16} className="text-indigo-500"/>{title}</h3>
-    {items.length ? <div className="space-y-3">{items.slice(0,limit).map(([label,count],i)=><div key={label}>
+    {items.length ? <div className="space-y-3">{items.slice(0,limit).map(({key:label,count},i)=><div key={label}>
       <div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="min-w-0 truncate font-semibold text-slate-600" title={label}>{label}</span><b className="shrink-0 tabular-nums text-slate-900">{count.toLocaleString()} <span className="font-normal text-slate-400">({total?Math.round(count/total*100):0}%)</span></b></div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{width:(total?count/total*100:0)+"%",background:palette[i%palette.length],animation:"leadBarGrow .9s ease-out both"}}/></div>
     </div>)}</div> : <p className="text-xs text-slate-400">Metrics appear after new leads are uploaded.</p>}
@@ -47,7 +48,7 @@ export function LeadGenerationReport() {
   const rawSheets = report?.rawSheets ?? [];
   const countries = report?.countries ?? [];
   const industries = report?.industries ?? [];
-  const emailTypes: [string, number][] = ([["Business Email",business],["Personal Email",personal],["Not specified",Math.max(0,total-business-personal)]] as [string, number][]).filter((x) => x[1] > 0);
+  const emailTypes: ReportItem[] = [{key:"Business Email",count:business},{key:"Personal Email",count:personal},{key:"Not specified",count:Math.max(0,total-business-personal)}].filter((item) => item.count > 0);
   const last7 = (report?.last7 ?? []).map(day=>({...day,label:new Date(day.key+"T12:00:00").toLocaleDateString("en",{weekday:"short"})}));
   const maxDaily=Math.max(1,...last7.map(x=>x.count));
   return <div className="mb-6 space-y-5">
@@ -70,7 +71,7 @@ export function LeadGenerationReport() {
       ].map((card,i)=>{const Icon=card.icon;return <article key={card.label} className="group relative overflow-hidden rounded-2xl border border-blue-100 bg-white p-4 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg"><div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${card.accent}`}/><div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">{card.label}</span><Icon size={20} className={i===1?"lead-rocket text-orange-500":i===2?"lead-fly text-blue-500":"text-indigo-500"}/></div><div className="mt-3 text-3xl font-black tabular-nums text-slate-900">{busy?"…":card.value.toLocaleString()}</div><p className="mt-1 text-xs text-slate-500">{card.note}</p></article>})}
     </div>
     <div className="grid gap-4 xl:grid-cols-[1.05fr_1fr_1fr]">
-      <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"><h3 className="mb-4 flex items-center gap-2 text-sm font-black"><PieChart size={16} className="text-indigo-500"/>Email type mix</h3><div className="flex flex-wrap items-center gap-5"><Donut items={emailTypes} total={total}/><div className="min-w-32 flex-1 space-y-2">{emailTypes.map(([label,count],i)=><div key={label} className="flex items-center gap-2 text-xs"><span className="h-2.5 w-2.5 rounded-full" style={{background:palette[i]}}/><span className="flex-1 text-slate-600">{label}</span><b>{count.toLocaleString()}</b></div>)}</div></div><p className="mt-3 text-[10px] text-slate-400">Based on the Business / Personal Email column.</p></section>
+      <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"><h3 className="mb-4 flex items-center gap-2 text-sm font-black"><PieChart size={16} className="text-indigo-500"/>Email type mix</h3><div className="flex flex-wrap items-center gap-5"><Donut items={emailTypes} total={total}/><div className="min-w-32 flex-1 space-y-2">{emailTypes.map(({key:label,count},i)=><div key={label} className="flex items-center gap-2 text-xs"><span className="h-2.5 w-2.5 rounded-full" style={{background:palette[i]}}/><span className="flex-1 text-slate-600">{label}</span><b>{count.toLocaleString()}</b></div>)}</div></div><p className="mt-3 text-[10px] text-slate-400">Based on the Business / Personal Email column.</p></section>
       <Breakdown title="Leads by lead source" items={sources} total={total}/>
       <Breakdown title="Leads by raw data sheet" items={rawSheets} total={total}/>
     </div>
