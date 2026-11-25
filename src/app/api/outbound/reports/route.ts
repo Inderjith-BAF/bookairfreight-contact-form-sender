@@ -32,9 +32,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Provide a valid report date range." }, { status: 400 });
   }
 
-  // Members can explicitly request team-wide reporting; otherwise their RPC
-  // call is constrained to their own employee_id. Non-member scope semantics
-  // match the existing report screen.
+  // Member requests are always constrained to their own employee_id.
+  // Admin and manager scope follows the report screen selection.
   const employeeId = profile.role === "member" ? profile.id : null;
   const [reportResult, teamResult] = await Promise.all([
     admin.rpc("get_outbound_report", {
