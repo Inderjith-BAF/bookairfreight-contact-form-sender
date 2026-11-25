@@ -49,18 +49,23 @@ export async function GET(request: Request) {
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
   const filterOptionFields = ["country","fresh_outreach_assigned_to","ecommerce_platform_used","data_from_lead_generation_team"] as const;
   if (url.searchParams.get("filterOptions") === "1") {
-    const options: Record<string,string[]> = {};
-    for (const field of filterOptionFields) {
-      const values = new Set<string>();
-      for (let offset = 0; ; offset += 1000) {
-        const { data, error } = await admin.from("central_lead_inventory").select(field+",id").not(field,"is",null).order(field,{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
-        if (error) return NextResponse.json({error:error.message},{status:500});
-        for (const row of data || []) { const value = clean((row as any)[field]); if (value) values.add(value); }
-        if (!data || data.length < 1000) break;
-      }
-      options[field] = [...values].sort((a,b)=>a.localeCompare(b));
-    }
-    return NextResponse.json({options});
+    // Use the database's DISTINCT-value function rather than downloading every
+    // inventory row and deduplicating in the Vercel function. This avoids row
+    // caps, pagination gaps, and inconsistent option lists on large datasets.
+    const results = await Promise.all(filterOptionFields.map(async (field) => {
+      const { data, error } = await admin.rpc("central_lead_inventory_filter_values", {
+        p_field: field,
+        p_q: "",
+        p_source: "",
+        p_column_filters: {},
+        p_excel_filters: {},
+        p_limit: 2000,
+      });
+      if (error) throw new Error(field + ": " + error.message);
+      const values = [...new Set((data || []).map((row: { value: string | null }) => clean(row.value)).filter(Boolean))];
+      return [field, values.sort((a, b) => a.localeCompare(b))] as const;
+    }));
+    return NextResponse.json({ options: Object.fromEntries(results) });
   }
   // Apply text and source filters in Postgres so broad searches do not transfer
   // the entire inventory to the function before filtering it in memory.
