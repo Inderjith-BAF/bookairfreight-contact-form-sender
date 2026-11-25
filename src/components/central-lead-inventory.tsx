@@ -22,8 +22,8 @@ const COLUMNS = [
 ] as const;
 
 const COUNTRY_ALIASES: Record<string, string> = {
-  "australia":"Australia","commonwealth of australia":"Australia","uk": "United Kingdom","u k": "United Kingdom","gb": "United Kingdom","gbr": "United Kingdom","great britain": "United Kingdom","britain": "United Kingdom","england": "United Kingdom","scotland": "United Kingdom","wales": "United Kingdom","northern ireland": "United Kingdom","united kingdom": "United Kingdom",
-  "albania":"EU","andorra":"EU","austria":"EU","belarus":"EU","belgium":"EU","bosnia and herzegovina":"EU","bulgaria":"EU","croatia":"EU","cyprus":"EU","czechia":"EU","denmark":"EU","estonia":"EU","finland":"EU","france":"EU","germany":"EU","greece":"EU","hungary":"EU","iceland":"EU","ireland":"EU","italy":"EU","kosovo":"EU","latvia":"EU","liechtenstein":"EU","lithuania":"EU","luxembourg":"EU","malta":"EU","monaco":"EU","montenegro":"EU","north macedonia":"EU","norway":"EU","poland":"EU","portugal":"EU","romania":"EU","san marino":"EU","serbia":"EU","slovakia":"EU","slovenia":"EU","spain":"EU","sweden":"EU","switzerland":"EU","ukraine":"EU","vatican city":"EU","us":"United States","u s":"United States","usa":"United States","u s a":"United States","united states of america":"United States","america":"United States",
+  "australia":"Australia","au":"Australia","aus":"Australia","commonwealth of australia":"Australia","uk": "United Kingdom","u k": "United Kingdom","gb": "United Kingdom","gbr": "United Kingdom","great britain": "United Kingdom","britain": "United Kingdom","england": "United Kingdom","scotland": "United Kingdom","wales": "United Kingdom","northern ireland": "United Kingdom","united kingdom": "United Kingdom",
+"albania":"Albania","andorra":"Andorra","austria":"Austria","belarus":"Belarus","belgium":"Belgium","bosnia and herzegovina":"Bosnia and Herzegovina","bulgaria":"Bulgaria","croatia":"Croatia","cyprus":"Cyprus","czechia":"Czechia","denmark":"Denmark","estonia":"Estonia","finland":"Finland","france":"France","germany":"Germany","greece":"Greece","hungary":"Hungary","iceland":"Iceland","ireland":"Ireland","italy":"Italy","kosovo":"Kosovo","latvia":"Latvia","liechtenstein":"Liechtenstein","lithuania":"Lithuania","luxembourg":"Luxembourg","malta":"Malta","monaco":"Monaco","montenegro":"Montenegro","north macedonia":"North Macedonia","norway":"Norway","poland":"Poland","portugal":"Portugal","romania":"Romania","san marino":"San Marino","serbia":"Serbia","slovakia":"Slovakia","slovenia":"Slovenia","spain":"Spain","sweden":"Sweden","switzerland":"Switzerland","ukraine":"Ukraine","vatican city":"Vatican City","us":"United States","u s":"United States","usa":"United States","u s a":"United States","united states of america":"United States","america":"United States",
   "uae":"United Arab Emirates","u a e":"United Arab Emirates","emirates":"United Arab Emirates",
   "south korea":"South Korea","republic of korea":"South Korea","korea south":"South Korea","kr":"South Korea",
   "north korea":"North Korea","korea north":"North Korea","kp":"North Korea",
@@ -221,7 +221,7 @@ export function CentralLeadInventory() {
   const excelFilterOptionValues = useMemo(() => Object.fromEntries(
     excelFilterKeys.map(key => [
       key,
-      Array.from(new Set((serverFilterOptions[key] || uniqueLeads.map(row => String(row[key] ?? "").trim())).map(value => String(value ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+      Array.from(new Set((serverFilterOptions[key] || uniqueLeads.map(row => String(row[key] ?? "").trim())).map(value => key === "country" ? normalizeCountry(value) : String(value ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
     ])
   ) as Record<string, string[]>, [excelFilterKeys, uniqueLeads, serverFilterOptions]);
   const excelFilterOptions = (key: string) => excelFilterOptionValues[key] ?? [];
