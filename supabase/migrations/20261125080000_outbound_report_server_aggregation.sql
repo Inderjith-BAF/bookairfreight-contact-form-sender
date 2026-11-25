@@ -49,7 +49,7 @@ with source as (
     coalesce(nullif(btrim(a.content_creator), ''), 'Unassigned') as content_creator,
     coalesce(nullif(btrim(a.content_link), ''), '') as content_link,
     a.sequence_id, a.stage,
-    coalesce(a.prospect_email, a.email_account_text, '') as prospect_email,
+    coalesce(nullif(a.prospect_email, ''), nullif(a.email_account_text, ''), '') as prospect_email,
     coalesce(a.channel, 'cold_email') as channel,
     greatest(0, coalesce(a.outreach_volume, 0)) as outreach,
     least(greatest(0, coalesce(a.outreach_volume, 0)),
