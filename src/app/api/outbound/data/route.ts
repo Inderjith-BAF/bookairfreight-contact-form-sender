@@ -8,7 +8,8 @@ export async function GET(request: Request) {
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth; const { searchParams } = new URL(request.url);
   const from = searchParams.get("from"); const to = searchParams.get("to"); const channel = searchParams.get("channel"); const scope = searchParams.get("scope") === "team" ? "team" : "mine";
-  const activitiesPromise = (async () => {
+  const includeActivities = searchParams.get("includeActivities") !== "false";
+  const activitiesPromise = includeActivities ? (async () => {
     const all: any[] = [];
     const pageSize = 1000;
     for (let offset = 0; ; offset += pageSize) {
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
       if (!page || page.length < pageSize) break;
     }
     return all;
-  })();
+  })() : Promise.resolve([]);
   const [activities, sequencesResult, teamResult, accountsResult] = await Promise.all([
     activitiesPromise,
     admin.from("outbound_sequences").select("*").eq("active", true).order("created_at"),
