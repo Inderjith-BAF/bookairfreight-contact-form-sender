@@ -4,13 +4,13 @@ create or replace function public.outbound_report_safe_num(p_value text)
 returns numeric
 language plpgsql
 immutable
-as $
+as $$
 begin
   return coalesce(nullif(btrim(p_value), '')::numeric, 0);
 exception when others then
   return 0;
 end;
-$;
+$$;
 
 create or replace function public.outbound_report_response_meta(p_note text)
 returns jsonb
@@ -46,8 +46,9 @@ with source as (
     coalesce(nullif(btrim(a.lead_source), ''), 'Unspecified') as lead_source,
     coalesce(nullif(btrim(a.subject), ''), 'Unspecified') as subject,
     coalesce(nullif(btrim(a.campaign), ''), 'Unspecified') as campaign,
-    coalesce(nullif(btrim(a.content_creator), ''), 'Unspecified') as content_creator,
+    coalesce(nullif(btrim(a.content_creator), ''), 'Unassigned') as content_creator,
     coalesce(nullif(btrim(a.content_link), ''), '') as content_link,
+    a.sequence_id, a.stage,
     coalesce(a.prospect_email, a.email_account_text, '') as prospect_email,
     coalesce(a.channel, 'cold_email') as channel,
     greatest(0, coalesce(a.outreach_volume, 0)) as outreach,
@@ -138,13 +139,28 @@ totals as (
   select region country, campaign, sum(outreach) outreach, sum(positive) positive,
     sum(neutral) neutral, sum(negative) negative
   from email group by region, campaign
+), sequence_rank as (
+  select id, row_number() over (order by created_at asc, id asc)::integer as sequence_number
+  from public.outbound_sequences where active = true
 ), content_links as (
-  select distinct on (content_link, content_creator, stage)
-    content_link as link, coalesce(nullif(content_creator,''),'Unassigned') creator,
-    coalesce(nullif(stage,''),'Unspecified') as sequence, sum(positive) over (partition by content_link, content_creator, stage) positive
-  from email
-  where content_link <> '' and positive > 0
-  order by content_link, content_creator, stage
+  select content_link as link, content_creator as creator, sequence_number as sequence, sum(positive) as positive
+  from (
+    select e.content_link, e.content_creator, e.positive,
+      case
+        when e.stage ~* 'draft\\s*[0-9]+' then least(200, greatest(1, substring(e.stage from 'draft\\s*([0-9]+)')::integer))
+        when sr.sequence_number is not null then least(200, sr.sequence_number)
+        else case e.stage
+          when 'Email 1' then 1 when 'Fresh Outreach' then 1
+          when 'Email 2' then 2 when 'Follow-Up 2' then 2
+          when 'Follow-up 1' then 3 when 'Follow-Up 3' then 3
+          when 'Follow-up 2' then 4 when 'Follow-Up 4' then 4
+          when 'Follow-up 3' then 5 when 'Follow-Up 5' then 5
+          else 1 end
+      end as sequence_number
+    from email e left join sequence_rank sr on sr.id = e.sequence_id
+    where e.content_link <> '' and e.positive > 0
+  ) link_rows
+  group by content_link, content_creator, sequence_number
 )
 select jsonb_build_object(
   'email', (select to_jsonb(t) from totals t),
