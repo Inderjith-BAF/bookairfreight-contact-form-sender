@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const to = searchParams.get("to") || "";
   const scope = searchParams.get("scope") === "team" ? "team" : "mine";
 
-  if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to)) || (from && to && from > to)) {
+  if ((from && !isValidDate(from)) || (to && !isValidDate(to)) || (from && to && from > to)) {
     return NextResponse.json({ error: "Provide a valid report date range." }, { status: 400 });
   }
 
