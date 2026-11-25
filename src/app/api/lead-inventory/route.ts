@@ -52,25 +52,40 @@ export async function GET(request: Request) {
     // Use the database's DISTINCT-value function rather than downloading every
     // inventory row and deduplicating in the Vercel function. This avoids row
     // caps, pagination gaps, and inconsistent option lists on large datasets.
-    const results = await Promise.all(filterOptionFields.map(async (field) => {
-      const { data, error } = await admin.rpc("central_lead_inventory_filter_values", {
-        p_field: field,
-        p_q: "",
-        p_source: "",
-        p_column_filters: {},
-        p_excel_filters: {},
-        p_limit: 2000,
+    try {
+      const results = await Promise.all(filterOptionFields.map(async (field) => {
+        const { data, error } = await admin.rpc("central_lead_inventory_filter_values", {
+          p_field: field,
+          p_q: "",
+          p_source: "",
+          p_column_filters: {},
+          p_excel_filters: {},
+          p_limit: 2000,
+        });
+        if (error) return { field, error: error.message };
+        const values = ((data || []) as { value: string | null }[]).reduce<string[]>((unique, row) => {
+          const value = clean(row.value);
+          if (value && !unique.includes(value)) unique.push(value);
+          return unique;
+        }, []);
+        values.sort((a, b) => a.localeCompare(b));
+        return { field, values };
+      }));
+      const failed = results.filter((item): item is { field: string; error: string } => "error" in item);
+      if (failed.length) {
+        return NextResponse.json({
+          error: "Could not load complete inventory filter values.",
+          details: failed.map(item => ({ field: item.field, error: item.error })),
+        }, { status: 502 });
+      }
+      return NextResponse.json({
+        options: Object.fromEntries(results.map(item => [item.field, item.values])),
       });
-      if (error) throw new Error(field + ": " + error.message);
-      const values = ((data || []) as { value: string | null }[]).reduce<string[]>((unique, row) => {
-        const value = clean(row.value);
-        if (value && !unique.includes(value)) unique.push(value);
-        return unique;
-      }, []);
-      values.sort((a: string, b: string) => a.localeCompare(b));
-      return [field, values] as const;
-    }));
-    return NextResponse.json({ options: Object.fromEntries(results) });
+    } catch (error) {
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : "Could not load inventory filter values.",
+      }, { status: 500 });
+    }
   }
   // Apply text and source filters in Postgres so broad searches do not transfer
   // the entire inventory to the function before filtering it in memory.
