@@ -127,8 +127,8 @@ totals as (
     sum(pc_positive) previous_positive, sum(pc_neutral) previous_neutral, sum(pc_negative) previous_negative
   from email group by employee_id
 ), form_country as (
-  select region country, sum(outreach) outreach, sum(positive) positive,
-    sum(neutral) neutral, sum(negative) negative
+  select region country, sum(outreach) outreach, sum(raw_positive) positive,
+    sum(raw_neutral) neutral, sum(raw_negative) negative
   from forms group by region
 ), form_member as (
   select employee_id, coalesce(max(employee_name), 'Unassigned') employee_name, sum(outreach) outreach, sum(positive) positive,
