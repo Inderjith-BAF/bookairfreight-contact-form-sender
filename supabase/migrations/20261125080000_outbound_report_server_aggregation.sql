@@ -177,3 +177,5 @@ revoke all on function public.get_outbound_report(date, date, uuid) from public,
 grant execute on function public.get_outbound_report(date, date, uuid) to service_role;
 revoke all on function public.outbound_report_safe_num(text) from public, anon, authenticated;
 revoke all on function public.outbound_report_response_meta(text) from public, anon, authenticated;
+grant execute on function public.outbound_report_safe_num(text) to service_role;
+grant execute on function public.outbound_report_response_meta(text) to service_role;
