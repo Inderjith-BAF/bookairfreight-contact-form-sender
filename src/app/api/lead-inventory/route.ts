@@ -83,7 +83,7 @@ export async function GET(request: Request) {
     }
     for (const [field, rawValues] of Object.entries(parsed.excelFilters || {})) {
       if (!excelKeys.has(field) || !Array.isArray(rawValues)) continue;
-      const values = rawValues.map(clean);
+      const values = rawValues.map(value => String(value ?? "").trim());
       if (values.length) query = query.in(field, values);
     }
     const start = (pageNumber - 1) * size;
