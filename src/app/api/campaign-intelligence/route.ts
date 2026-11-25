@@ -2,6 +2,16 @@ import { NextResponse } from "next/server";
 import { requireOutboundUser } from "@/lib/outbound-auth";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
 const SENT_STATUSES=new Set(["Sent","Replied","Auto Response","Bounced"]);
+function campaignQueryFailure(scope:string,error:any){
+ console.error("[campaign-intelligence] Database query failed:",scope,{
+  message:error?.message||"Unknown database error",
+  code:error?.code||null,
+  details:error?.details||null,
+  hint:error?.hint||null
+ });
+ return NextResponse.json({error:"Campaign Intelligence data query failed.",query:scope},{status:500});
+}
+
 export async function GET(request:Request){
  const auth=await requireOutboundUser(request);if("error" in auth)return auth.error;
  const {admin,profile}=auth;const {searchParams}=new URL(request.url);
@@ -12,7 +22,7 @@ export async function GET(request:Request){
   for(let offset=0;;offset+=1000){
    const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("campaign_id")
     .eq("sender_account_id",account).order("campaign_id",{ascending:true}).range(offset,offset+999);
-   if(error)return NextResponse.json({error:error.message},{status:500});
+   if(error)return campaignQueryFailure("account_campaign_recipients",error);
    for(const row of page||[])if(row.campaign_id)ids.add(String(row.campaign_id));
    if(!page||page.length<1000)break;
   }
@@ -33,7 +43,7 @@ export async function GET(request:Request){
     .order("created_at",{ascending:false}).order("id",{ascending:true})
     .range(offset,offset+campaignQueryPageSize-1);
    const {data:page,error}=await query;
-   if(error)return NextResponse.json({error:error.message},{status:500});
+   if(error)return campaignQueryFailure("campaigns_page",error);
    campaignRows.push(...(page||[]));
    if(!page||page.length<campaignQueryPageSize)break;
   }
@@ -44,7 +54,7 @@ export async function GET(request:Request){
    const query=applyCampaignFilters(admin.from("mail_merge_campaigns").select("*"))
     .in("id",ids);
    const {data:page,error}=await query;
-   if(error)return NextResponse.json({error:error.message},{status:500});
+   if(error)return campaignQueryFailure("campaign_recipients",error);
    campaignRows.push(...(page||[]));
   }
   campaignRows.sort((a:any,b:any)=>String(b.created_at||"").localeCompare(String(a.created_at||""))||String(a.id).localeCompare(String(b.id)));
@@ -53,7 +63,7 @@ export async function GET(request:Request){
   profile.role==="member"?admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error").eq("employee_id",profile.id):admin.from("outbound_email_accounts").select("id,email,health_status,connection_status,daily_send_limit,hourly_send_limit,connection_error"),
   profile.role==="member"?admin.from("lead_import_batches").select("*").eq("imported_by",profile.id).order("started_at",{ascending:false}).limit(200):admin.from("lead_import_batches").select("*").order("started_at",{ascending:false}).limit(200)
  ]);
- if(aErr||bErr)return NextResponse.json({error:aErr?.message||bErr?.message},{status:500});
+ if(aErr||bErr)return campaignQueryFailure(aErr?"outbound_email_accounts":"lead_import_batches",aErr||bErr);
  const campaigns=campaignRows;
  const campaignIds=campaigns.map((c:any)=>String(c.id));
  const allRecipients:any[]=[];
@@ -61,21 +71,21 @@ export async function GET(request:Request){
   const ids=campaignIds.slice(campaignOffset,campaignOffset+campaignIdBatchSize);
   for(let offset=0;;offset+=1000){
    const {data:page,error}=await admin.from("mail_merge_campaign_recipients").select("id,campaign_id,lead_id,sender_account_id,status,sent_at,open_count,response_classification").in("campaign_id",ids).order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
-   if(error)return NextResponse.json({error:error.message},{status:500});
+   if(error)return campaignQueryFailure("master_leads",error);
    allRecipients.push(...(page||[]));
    if(!page||page.length<1000)break;
   }
  }
  const leadIds=[...new Set(allRecipients.map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
  const leads:any[]=[];
- for(let offset=0;offset<leadIds.length;offset+=1000){const ids=leadIds.slice(offset,offset+1000);const {data:page,error}=await admin.from("master_leads").select("id,country,current_status,response_classification,suppression_reason,last_contacted_at,last_replied_at").in("id",ids);if(error)return NextResponse.json({error:error.message},{status:500});leads.push(...(page||[]));}
+ for(let offset=0;offset<leadIds.length;offset+=1000){const ids=leadIds.slice(offset,offset+1000);const {data:page,error}=await admin.from("master_leads").select("id,country,current_status,response_classification,suppression_reason,last_contacted_at,last_replied_at").in("id",ids);if(error)return campaignQueryFailure("sent_mail_merge_events",error);leads.push(...(page||[]));}
  const sentEvents:any[]=[];
  const bounceEvents:any[]=[];
  for(let campaignOffset=0;campaignOffset<campaignIds.length;campaignOffset+=campaignIdBatchSize){
   const ids=campaignIds.slice(campaignOffset,campaignOffset+campaignIdBatchSize);
   for(let offset=0;;offset+=1000){
    const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",ids).eq("event_type","sent").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
-   if(error)return NextResponse.json({error:error.message},{status:500});
+   if(error)return campaignQueryFailure("bounce_mail_merge_events",error);
    sentEvents.push(...(page||[]));
    if(!page||page.length<1000)break;
   }
