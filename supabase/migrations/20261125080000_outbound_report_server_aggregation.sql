@@ -147,7 +147,7 @@ totals as (
   from (
     select e.content_link, e.content_creator, e.positive,
       case
-        when e.stage ~* 'draft\\s*[0-9]+' then least(200, greatest(1, substring(e.stage from 'draft\\s*([0-9]+)')::integer))
+        when e.stage ~* 'draft[[:space:]]*[0-9]+' then least(200, greatest(1, substring(e.stage from 'draft[[:space:]]*([0-9]+)')::integer))
         when sr.sequence_number is not null then least(200, sr.sequence_number)
         else case e.stage
           when 'Email 1' then 1 when 'Fresh Outreach' then 1
