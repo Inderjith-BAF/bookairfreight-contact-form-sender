@@ -62,7 +62,11 @@ export async function GET(request: Request) {
         p_limit: 2000,
       });
       if (error) throw new Error(field + ": " + error.message);
-      const values = [...new Set((data || []).map((row: { value: string | null }) => clean(row.value)).filter(Boolean))];
+      const values: string[] = Array.from(new Set<string>(
+        (data || [])
+          .map((row: { value: string | null }) => clean(row.value))
+          .filter((value): value is string => value.length > 0)
+      ));
       return [field, values.sort((a, b) => a.localeCompare(b))] as const;
     }));
     return NextResponse.json({ options: Object.fromEntries(results) });
