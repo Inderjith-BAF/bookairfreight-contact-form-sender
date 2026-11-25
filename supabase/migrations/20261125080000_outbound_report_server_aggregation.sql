@@ -1,5 +1,17 @@
 -- Server-side Outbound Reports aggregation.
 -- Additive only: no existing activity rows or report definitions are changed.
+create or replace function public.outbound_report_safe_num(p_value text)
+returns numeric
+language plpgsql
+immutable
+as $
+begin
+  return coalesce(nullif(btrim(p_value), '')::numeric, 0);
+exception when others then
+  return 0;
+end;
+$;
+
 create or replace function public.outbound_report_response_meta(p_note text)
 returns jsonb
 language plpgsql
@@ -57,9 +69,9 @@ with source as (
     and (p_employee_id is null or a.employee_id = p_employee_id)
 ), normalized as (
   select s.*,
-    coalesce((pc->>'positive')::numeric, 0) as pc_positive,
-    coalesce((pc->>'neutral')::numeric, 0) as pc_neutral,
-    coalesce((pc->>'negative')::numeric, 0) as pc_negative
+    public.outbound_report_safe_num(pc->>'positive') as pc_positive,
+    public.outbound_report_safe_num(pc->>'neutral') as pc_neutral,
+    public.outbound_report_safe_num(pc->>'negative') as pc_negative
   from source s
 ), metrics as (
   select n.*,
@@ -110,18 +122,18 @@ totals as (
     count(distinct case when has_pc and prospect_email <> '' then prospect_email end) pc_accounts
   from dimensions group by dimension, name
 ), member_groups as (
-  select employee_id, employee_name, sum(outreach) outreach, sum(opens) open,
+  select employee_id, coalesce(max(employee_name), 'Unassigned') employee_name, sum(outreach) outreach, sum(opens) open,
     sum(positive) positive, sum(neutral) neutral, sum(negative) negative,
     sum(pc_positive) previous_positive, sum(pc_neutral) previous_neutral, sum(pc_negative) previous_negative
-  from email group by employee_id, employee_name
+  from email group by employee_id
 ), form_country as (
   select region country, sum(outreach) outreach, sum(positive) positive,
     sum(neutral) neutral, sum(negative) negative
   from forms group by region
 ), form_member as (
-  select employee_id, employee_name, sum(outreach) outreach, sum(positive) positive,
+  select employee_id, coalesce(max(employee_name), 'Unassigned') employee_name, sum(outreach) outreach, sum(positive) positive,
     sum(neutral) neutral, sum(negative) negative
-  from forms group by employee_id, employee_name
+  from forms group by employee_id
 ), country_campaign as (
   select region country, campaign, sum(outreach) outreach, sum(positive) positive,
     sum(neutral) neutral, sum(negative) negative
@@ -160,3 +172,8 @@ select jsonb_build_object(
 $$;
 
 grant execute on function public.get_outbound_report(date, date, uuid) to service_role;
+
+revoke all on function public.get_outbound_report(date, date, uuid) from public, anon, authenticated;
+grant execute on function public.get_outbound_report(date, date, uuid) to service_role;
+revoke all on function public.outbound_report_safe_num(text) from public, anon, authenticated;
+revoke all on function public.outbound_report_response_meta(text) from public, anon, authenticated;
