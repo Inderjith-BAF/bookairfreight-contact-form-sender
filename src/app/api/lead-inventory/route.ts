@@ -60,6 +60,39 @@ export async function GET(request: Request) {
   ];
   const safeQuery = q.replace(/[\\,()%]/g, " ").trim();
   const safeSource = source.replace(/[\\,%_]/g, " ").trim();
+  // Opt-in server pagination. The existing full-response path remains
+  // available until the inventory UI is switched over in the next phase.
+  if (url.searchParams.has("page")) {
+    const pageNumber = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
+    const requestedSize = Number.parseInt(url.searchParams.get("pageSize") || "100", 10) || 100;
+    const size = Math.min(200, Math.max(1, requestedSize));
+    const allowed = new Set(searchable);
+    const excelKeys = new Set(["country", "fresh_outreach_assigned_to", "ecommerce_platform_used", "data_from_lead_generation_team"]);
+    let parsed: { columnFilters?: Record<string, unknown>; excelFilters?: Record<string, unknown> } = {};
+    try { parsed = JSON.parse(url.searchParams.get("filters") || "{}"); }
+    catch { return NextResponse.json({ error: "Invalid inventory filters." }, { status: 400 }); }
+    let query: any = admin.from("central_lead_inventory")
+      .select("id,location_on_site,country,company_name,first_name,last_name,title,email,main_product_description,secondary_product_description,main_industry,main_additional_tag,secondary_industry,secondary_additional_tag,qualified_lead,assigned_to,assigned_date,ecommerce_platform_used,data_from_lead_generation_team,data_source,email_finding_assigned_to,email_finding_assigned_date,business_personal_email,contact_form,fresh_outreach_assigned_to,fresh_outreach_assigned_date,created_at,updated_at", { count: "exact" })
+      .order("created_at", { ascending: false }).order("id", { ascending: true });
+    if (safeSource) query = query.ilike("data_source", "%" + safeSource + "%");
+    if (safeQuery) query = query.or(searchable.map(field => field + ".ilike.*" + safeQuery + "*").join(","));
+    for (const [field, rawValue] of Object.entries(parsed.columnFilters || {})) {
+      if (!allowed.has(field)) continue;
+      const value = clean(rawValue);
+      if (value) query = query.ilike(field, "%" + value.replace(/[\\\\,%_]/g, " ") + "%");
+    }
+    for (const [field, rawValues] of Object.entries(parsed.excelFilters || {})) {
+      if (!excelKeys.has(field) || !Array.isArray(rawValues)) continue;
+      const values = rawValues.map(clean);
+      if (values.length) query = query.in(field, values);
+    }
+    const start = (pageNumber - 1) * size;
+    const { data, error, count } = await query.range(start, start + size - 1);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ leads: data || [], total: count || 0, page: pageNumber, pageSize: size,
+      pageCount: Math.max(1, Math.ceil((count || 0) / size)), team: members || [], currentRole: auth.profile.role });
+  }
+
   for (let offset = 0; ; offset += pageSize) {
     let query = admin.from("central_lead_inventory").select("id,location_on_site,country,company_name,first_name,last_name,title,email,main_product_description,secondary_product_description,main_industry,main_additional_tag,secondary_industry,secondary_additional_tag,qualified_lead,assigned_to,assigned_date,ecommerce_platform_used,data_from_lead_generation_team,data_source,email_finding_assigned_to,email_finding_assigned_date,business_personal_email,contact_form,fresh_outreach_assigned_to,fresh_outreach_assigned_date,created_at,updated_at")
       .order("created_at", { ascending: false }).order("id", { ascending: true })
