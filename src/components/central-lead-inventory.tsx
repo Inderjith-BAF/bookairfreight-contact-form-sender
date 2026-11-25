@@ -239,7 +239,7 @@ export function CentralLeadInventory() {
       key,
       Array.from(new Set((serverFilterOptions[key] || []).map(value => key === "country" ? normalizeCountry(value) : String(value ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
     ])
-  ) as Record<string, string[]>, [excelFilterKeys, uniqueLeads, serverFilterOptions]);
+  ) as Record<string, string[]>, [excelFilterKeys, serverFilterOptions]);
   const excelFilterOptions = (key: string) => excelFilterOptionValues[key] ?? [];
   const visible = uniqueLeads;
   const openExcelFilterMenu = (key: string, rect?: DOMRect) => {
