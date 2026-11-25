@@ -24,7 +24,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const from = searchParams.get("from") || "";
   const to = searchParams.get("to") || "";
-  const scope = searchParams.get("scope") === "team" ? "team" : "mine";
+  const requestedScope = searchParams.get("scope") === "team" ? "team" : "mine";
+  // The service-role client bypasses RLS, so enforce member scope here.
+  const scope = profile.role === "member" ? "mine" : requestedScope;
 
   if ((from && !isValidDate(from)) || (to && !isValidDate(to)) || (from && to && from > to)) {
     return NextResponse.json({ error: "Provide a valid report date range." }, { status: 400 });
@@ -33,14 +35,14 @@ export async function GET(request: Request) {
   // Members can explicitly request team-wide reporting; otherwise their RPC
   // call is constrained to their own employee_id. Non-member scope semantics
   // match the existing report screen.
-  const employeeId = profile.role === "member" && scope !== "team" ? profile.id : null;
+  const employeeId = profile.role === "member" ? profile.id : null;
   const [reportResult, teamResult] = await Promise.all([
     admin.rpc("get_outbound_report", {
       p_from: from || null,
       p_to: to || null,
       p_employee_id: employeeId,
     }),
-    profile.role === "member" && scope !== "team"
+    profile.role === "member"
       ? Promise.resolve({ data: [profile], error: null })
       : admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name"),
   ]);
