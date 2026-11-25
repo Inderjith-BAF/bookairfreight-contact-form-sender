@@ -128,7 +128,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireOutboundUser(request, ["admin", "lead_generation_admin"]);
+  const auth = await requireOutboundUser(request);
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth;
   const body = await request.json().catch(() => null);
@@ -141,11 +141,14 @@ export async function POST(request: Request) {
     const filters = body.filters && typeof body.filters === "object" ? body.filters : {};
     const columnFilters = filters.columnFilters && typeof filters.columnFilters === "object" ? filters.columnFilters : {};
     const excelFilters = filters.excelFilters && typeof filters.excelFilters === "object" ? filters.excelFilters : {};
+    const searchTerm=clean(body.q).toLowerCase().replace(/[\\\\,()%]/g," ").trim();
+    const sourceTerm=clean(body.source).replace(/[\\\\,%_]/g," ").trim();
+    const searchable=["location_on_site","country","company_name","first_name","last_name","title","email","main_product_description","secondary_product_description","main_industry","main_additional_tag","secondary_industry","secondary_additional_tag","qualified_lead","assigned_to","assigned_date","ecommerce_platform_used","data_from_lead_generation_team","data_source","email_finding_assigned_to","email_finding_assigned_date","business_personal_email","contact_form","fresh_outreach_assigned_to","fresh_outreach_assigned_date"];
     const allowed = new Set(searchable);
     const excelKeys = new Set(["country","fresh_outreach_assigned_to","ecommerce_platform_used","data_from_lead_generation_team"]);
     let query:any=admin.from("central_lead_inventory").select("id").or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.").order("created_at",{ascending:false}).order("id",{ascending:true}).limit(quantity);
-    if(safeSource)query=query.ilike("data_source","%"+safeSource+"%");
-    if(safeQuery)query=query.or(searchable.map(field=>field+".ilike.*"+safeQuery+"*").join(","));
+    if(sourceTerm)query=query.ilike("data_source","%"+sourceTerm+"%");
+    if(searchTerm)query=query.or(searchable.map(field=>field+".ilike.*"+searchTerm+"*").join(","));
     for(const [field,rawValue] of Object.entries(columnFilters)){if(!allowed.has(field))continue;const value=clean(rawValue);if(value)query=query.ilike(field,"%"+value.replace(/[\\\\,%_]/g," ")+"%");}
     for(const [field,rawValues] of Object.entries(excelFilters)){
       if(!excelKeys.has(field)||!Array.isArray(rawValues))continue;
@@ -169,6 +172,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({updated,requested:quantity,assignee});
   }
+  if (!["admin","lead_generation_admin"].includes(profile.role)) return NextResponse.json({error:"You do not have permission to upload leads."},{status:403});
   const rows = Array.isArray(body?.rows) ? body.rows : [];
   if (!rows.length || rows.length > 5000) return NextResponse.json({ error: "Upload between 1 and 5,000 new lead rows." }, { status: 400 });
 
