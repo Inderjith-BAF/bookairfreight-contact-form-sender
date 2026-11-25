@@ -49,67 +49,38 @@ export async function GET(request: Request) {
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
   const filterOptionFields = ["country","fresh_outreach_assigned_to","ecommerce_platform_used","data_from_lead_generation_team"] as const;
   if (url.searchParams.get("filterOptions") === "1") {
-    // Prefer database DISTINCT queries. If any fails, use one complete,
-    // paginated scan of the four filter columns as a compatibility fallback.
-    try {
-      const results = await Promise.all(filterOptionFields.map(async (field) => {
-        const { data, error } = await admin.rpc("central_lead_inventory_filter_values", {
-          p_field: field,
-          p_q: "",
-          p_source: "",
-          p_column_filters: {},
-          p_excel_filters: {},
-          p_limit: 2000,
-        });
-        if (error) return { field, error: error.message };
-        const values = [...new Set(((data || []) as { value: string | null }[])
-          .map(row => clean(row.value))
-          .filter(value => value.length > 0))];
-        return { field, values: values.sort((a, b) => a.localeCompare(b)) };
-      }));
-      const failed = results.filter(item => "error" in item);
-      if (!failed.length) {
+    // Build dropdown values from the actual inventory rows. Do not depend on
+    // an optional RPC or a fixed country list: every stored value is included.
+    const valuesByField = Object.fromEntries(
+      filterOptionFields.map(field => [field, new Set<string>()])
+    ) as Record<(typeof filterOptionFields)[number], Set<string>>;
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data: page, error: pageError } = await admin
+        .from("central_lead_inventory")
+        .select("country,fresh_outreach_assigned_to,ecommerce_platform_used,data_from_lead_generation_team")
+        .order("created_at", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (pageError) {
         return NextResponse.json({
-          options: Object.fromEntries(results.map(item => [item.field, item.values])),
-        });
+          error: "Could not load inventory filter values.",
+          details: pageError.message,
+        }, { status: 502 });
       }
-
-      const valuesByField = Object.fromEntries(filterOptionFields.map(field => [field, new Set<string>()])) as Record<(typeof filterOptionFields)[number], Set<string>>;
-      const pageSize = 1000;
-      for (let offset = 0; ; offset += pageSize) {
-        const { data: page, error: pageError } = await admin
-          .from("central_lead_inventory")
-          .select("country,fresh_outreach_assigned_to,ecommerce_platform_used,data_from_lead_generation_team")
-          .order("id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-        if (pageError) {
-          return NextResponse.json({
-            error: "Could not load complete inventory filter values.",
-            details: failed.map(item => ({ field: item.field, error: item.error })).concat({
-              field: "paginated_fallback",
-              error: pageError.message,
-            }),
-          }, { status: 502 });
+      for (const row of (page || []) as Record<string, unknown>[]) {
+        for (const field of filterOptionFields) {
+          const value = clean(row[field]);
+          if (value) valuesByField[field].add(value);
         }
-        for (const row of (page || []) as Record<string, unknown>[]) {
-          for (const field of filterOptionFields) {
-            const value = clean(row[field]);
-            if (value) valuesByField[field].add(value);
-          }
-        }
-        if (!page || page.length < pageSize) break;
       }
-      return NextResponse.json({
-        options: Object.fromEntries(filterOptionFields.map(field => [
-          field,
-          [...valuesByField[field]].sort((a, b) => a.localeCompare(b)),
-        ])),
-      });
-    } catch (error) {
-      return NextResponse.json({
-        error: error instanceof Error ? error.message : "Could not load inventory filter values.",
-      }, { status: 500 });
+      if (!page || page.length < pageSize) break;
     }
+    return NextResponse.json({
+      options: Object.fromEntries(filterOptionFields.map(field => [
+        field,
+        [...valuesByField[field]].sort((a, b) => a.localeCompare(b)),
+      ])),
+    });
   }
   // Apply text and source filters in Postgres so broad searches do not transfer
   // the entire inventory to the function before filtering it in memory.
