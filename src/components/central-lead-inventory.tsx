@@ -5,6 +5,19 @@ import * as XLSX from "xlsx";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { ArrowDownToLine, Check, FileUp, GripVertical, LoaderCircle, RefreshCw, Search, Upload, Users } from "lucide-react";
 
+async function readJsonResponse(response: Response): Promise<any> {
+  const body = await response.text();
+  if (!body.trim()) {
+    throw new Error("Server returned an empty response (HTTP " + response.status + "). Check the Vercel function logs.");
+  }
+  try {
+    return JSON.parse(body);
+  } catch {
+    const detail = body.trim().replace(/\s+/g, " ").slice(0, 180);
+    throw new Error("Server returned a non-JSON response (HTTP " + response.status + "): " + detail);
+  }
+}
+
 type TeamMember = { id: string; full_name: string; role: string; active: boolean };
 type Lead = { id: string; [key: string]: any };
 const COLUMNS = [
@@ -101,7 +114,7 @@ export function CentralLeadInventory() {
       const filters = { columnFilters, excelFilters };
       const params = new URLSearchParams({ q, source, page: String(tablePage), pageSize: String(tablePageSize), filters: JSON.stringify(filters) });
       const res = await fetch("/api/lead-inventory?" + params, { headers: { Authorization: "Bearer " + t }, signal });
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!res.ok) throw new Error(data.error || "Could not load central inventory");
       setLeads(data.leads || []); setTotalLeads(Number(data.total || 0)); setServerPageCount(Number(data.pageCount || 1));
       setTeam(data.team || []); setCurrentRole(String(data.currentRole || "").toLowerCase());
@@ -122,7 +135,7 @@ export function CentralLeadInventory() {
     const controller = new AbortController();
     setFilterOptionsLoading(true);
     fetch("/api/lead-inventory?filterOptions=1", {headers:{Authorization:"Bearer "+token},signal:controller.signal})
-      .then(async res=>{const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not load filter values");setServerFilterOptions(data.options||{});})
+      .then(async res=>{const data=await readJsonResponse(res);if(!res.ok)throw new Error(data.error||"Could not load filter values");setServerFilterOptions(data.options||{});})
       .catch(error=>{if(error instanceof Error&&error.name!=="AbortError")setError(error.message);})
       .finally(()=>{if(!controller.signal.aborted)setFilterOptionsLoading(false);});
     return ()=>controller.abort();
@@ -198,7 +211,7 @@ export function CentralLeadInventory() {
     setBusy(true); setError(""); setMessage("");
     try {
       const res = await fetch("/api/lead-inventory", {method:"PATCH",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({ids,field,value})});
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!res.ok) throw new Error(data.error || "Could not save assignment");
       setLeads(old => old.map(row => ids.includes(row.id) ? {...row,[field]:value} : row));
       setMessage(`Copied the same ${field === "fresh_outreach_assigned_to" ? "team member" : "date"} to ${data.updated} row(s).`);
@@ -296,7 +309,7 @@ export function CentralLeadInventory() {
       for (let i = 0; i < ids.length; i += 500) {
         const batch = ids.slice(i, i + 500);
         const res = await fetch("/api/lead-inventory", {method:"PATCH",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({ids:batch,field:"fresh_outreach_assigned_to",value})});
-        const data = await res.json();
+        const data = await readJsonResponse(res);
         if (!res.ok) throw new Error(data.error || "Could not update assignments");
         updated += Number(data.updated || 0);
       }
@@ -314,7 +327,7 @@ export function CentralLeadInventory() {
     setBusy(true); setError(""); setMessage("Assigning up to " + quantity.toLocaleString() + " leads from the full filtered result…");
     try {
       const res = await fetch("/api/lead-inventory",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({action:"assign-filtered",quantity,assignee:bulkAssignee,q,source,filters:{columnFilters,excelFilters}})});
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if(!res.ok)throw new Error(data.error||"Could not assign filtered leads");
       setMessage("Assigned " + Number(data.updated||0).toLocaleString() + " lead(s) to " + bulkAssignee + " from the complete filtered result.");
       setSelected([]);
