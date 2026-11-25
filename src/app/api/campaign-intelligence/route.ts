@@ -78,20 +78,20 @@ export async function GET(request:Request){
  }
  const leadIds=[...new Set(allRecipients.map((r:any)=>String(r.lead_id||"")).filter(Boolean))];
  const leads:any[]=[];
- for(let offset=0;offset<leadIds.length;offset+=1000){const ids=leadIds.slice(offset,offset+1000);const {data:page,error}=await admin.from("master_leads").select("id,country,current_status,response_classification,suppression_reason,last_contacted_at,last_replied_at").in("id",ids);if(error)return campaignQueryFailure("sent_mail_merge_events",error);leads.push(...(page||[]));}
+ const leadIdBatchSize=100; for(let offset=0;offset<leadIds.length;offset+=leadIdBatchSize){const ids=leadIds.slice(offset,offset+leadIdBatchSize);const {data:page,error}=await admin.from("master_leads").select("id,country,current_status,response_classification,suppression_reason,last_contacted_at,last_replied_at").in("id",ids);if(error)return campaignQueryFailure("master_leads",error);leads.push(...(page||[]));}
  const sentEvents:any[]=[];
  const bounceEvents:any[]=[];
  for(let campaignOffset=0;campaignOffset<campaignIds.length;campaignOffset+=campaignIdBatchSize){
   const ids=campaignIds.slice(campaignOffset,campaignOffset+campaignIdBatchSize);
   for(let offset=0;;offset+=1000){
    const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",ids).eq("event_type","sent").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
-   if(error)return campaignQueryFailure("bounce_mail_merge_events",error);
+   if(error)return campaignQueryFailure("sent_mail_merge_events",error);
    sentEvents.push(...(page||[]));
    if(!page||page.length<1000)break;
   }
   for(let offset=0;;offset+=1000){
    const {data:page,error}=await admin.from("mail_merge_events").select("campaign_id,campaign_recipient_id,event_type").in("campaign_id",ids).ilike("event_type","%bounce%").order("campaign_id",{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
-   if(error)return NextResponse.json({error:error.message},{status:500});
+   if(error)return campaignQueryFailure("bounce_mail_merge_events",error);
    bounceEvents.push(...(page||[]));
    if(!page||page.length<1000)break;
   }
