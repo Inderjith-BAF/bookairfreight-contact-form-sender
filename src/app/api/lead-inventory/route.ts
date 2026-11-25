@@ -47,6 +47,21 @@ export async function GET(request: Request) {
   const source = clean(url.searchParams.get("source"));
   const { data: members, error: teamError } = await admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name");
   if (teamError) return NextResponse.json({ error: teamError.message }, { status: 500 });
+  const filterOptionFields = ["country","fresh_outreach_assigned_to","ecommerce_platform_used","data_from_lead_generation_team"] as const;
+  if (url.searchParams.get("filterOptions") === "1") {
+    const options: Record<string,string[]> = {};
+    for (const field of filterOptionFields) {
+      const values = new Set<string>();
+      for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await admin.from("central_lead_inventory").select(field).not(field,"is",null).order(field,{ascending:true}).range(offset,offset+999);
+        if (error) return NextResponse.json({error:error.message},{status:500});
+        for (const row of data || []) { const value = clean((row as any)[field]); if (value) values.add(value); }
+        if (!data || data.length < 1000) break;
+      }
+      options[field] = [...values].sort((a,b)=>a.localeCompare(b));
+    }
+    return NextResponse.json({options});
+  }
   // Apply text and source filters in Postgres so broad searches do not transfer
   // the entire inventory to the function before filtering it in memory.
   const pageSize = 1000;
@@ -84,7 +99,12 @@ export async function GET(request: Request) {
     for (const [field, rawValues] of Object.entries(parsed.excelFilters || {})) {
       if (!excelKeys.has(field) || !Array.isArray(rawValues)) continue;
       const values = rawValues.map(value => String(value ?? "").trim());
-      if (values.length) query = query.in(field, values);
+      if (values.length) {
+        if (field === "country" && values.includes("EU")) {
+          const euCountries = ["Albania","Andorra","Austria","Belarus","Belgium","Bosnia and Herzegovina","Bulgaria","Croatia","Cyprus","Czechia","Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy","Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro","Netherlands","North Macedonia","Norway","Poland","Portugal","Romania","San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","Vatican City"];
+          query = query.in("country", [...new Set([...values.filter(value=>value!=="EU"), ...euCountries])]);
+        } else query = query.in(field, values);
+      }
     }
     const start = (pageNumber - 1) * size;
     const { data, error, count } = await query.range(start, start + size - 1);
@@ -112,6 +132,43 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error;
   const { admin, profile } = auth;
   const body = await request.json().catch(() => null);
+  if (body?.action === "assign-filtered") {
+    const quantity = Math.max(1, Math.min(5000, Math.floor(Number(body.quantity) || 0)));
+    const assignee = clean(body.assignee);
+    if (!assignee) return NextResponse.json({error:"Choose an active team member."},{status:400});
+    const {data:person,error:personError}=await admin.from("outbound_profiles").select("id,full_name,active").eq("full_name",assignee).eq("active",true).maybeSingle();
+    if(personError||!person)return NextResponse.json({error:"Select an active team member from the dropdown."},{status:400});
+    const filters = body.filters && typeof body.filters === "object" ? body.filters : {};
+    const columnFilters = filters.columnFilters && typeof filters.columnFilters === "object" ? filters.columnFilters : {};
+    const excelFilters = filters.excelFilters && typeof filters.excelFilters === "object" ? filters.excelFilters : {};
+    const allowed = new Set(searchable);
+    const excelKeys = new Set(["country","fresh_outreach_assigned_to","ecommerce_platform_used","data_from_lead_generation_team"]);
+    let query:any=admin.from("central_lead_inventory").select("id").or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.").order("created_at",{ascending:false}).order("id",{ascending:true}).limit(quantity);
+    if(safeSource)query=query.ilike("data_source","%"+safeSource+"%");
+    if(safeQuery)query=query.or(searchable.map(field=>field+".ilike.*"+safeQuery+"*").join(","));
+    for(const [field,rawValue] of Object.entries(columnFilters)){if(!allowed.has(field))continue;const value=clean(rawValue);if(value)query=query.ilike(field,"%"+value.replace(/[\\\\,%_]/g," ")+"%");}
+    for(const [field,rawValues] of Object.entries(excelFilters)){
+      if(!excelKeys.has(field)||!Array.isArray(rawValues))continue;
+      const values=rawValues.map(value=>String(value??"").trim());
+      if(!values.length)continue;
+      if(field==="country"&&values.includes("EU")){
+        const euCountries=["Albania","Andorra","Austria","Belarus","Belgium","Bosnia and Herzegovina","Bulgaria","Croatia","Cyprus","Czechia","Denmark","Estonia","Finland","France","Germany","Greece","Hungary","Iceland","Ireland","Italy","Kosovo","Latvia","Liechtenstein","Lithuania","Luxembourg","Malta","Moldova","Monaco","Montenegro","Netherlands","North Macedonia","Norway","Poland","Portugal","Romania","San Marino","Serbia","Slovakia","Slovenia","Spain","Sweden","Switzerland","Ukraine","Vatican City"];
+        query=query.in("country",[...new Set([...values.filter(value=>value!=="EU"),...euCountries])]);
+      } else query=query.in(field,values);
+    }
+    const {data:targets,error:targetError}=await query;
+    if(targetError)return NextResponse.json({error:targetError.message},{status:500});
+    const ids=(targets||[]).map((row:any)=>String(row.id));
+    if(!ids.length)return NextResponse.json({updated:0,requested:quantity,message:"No unassigned leads match the current filters."});
+    let updated=0;const assignedDate=new Date().toISOString().slice(0,10);
+    for(let offset=0;offset<ids.length;offset+=500){
+      const batch=ids.slice(offset,offset+500);
+      const {error:updateError}=await admin.from("central_lead_inventory").update({fresh_outreach_assigned_to:assignee,fresh_outreach_assigned_date:assignedDate,updated_at:new Date().toISOString()}).in("id",batch);
+      if(updateError)return NextResponse.json({error:updateError.message,updated},{status:500});
+      updated+=batch.length;
+    }
+    return NextResponse.json({updated,requested:quantity,assignee});
+  }
   const rows = Array.isArray(body?.rows) ? body.rows : [];
   if (!rows.length || rows.length > 5000) return NextResponse.json({ error: "Upload between 1 and 5,000 new lead rows." }, { status: 400 });
 
