@@ -71,7 +71,7 @@ export async function GET(request: Request) {
         values.sort((a, b) => a.localeCompare(b));
         return { field, values };
       }));
-      const failed = results.filter((item): item is { field: string; error: string } => "error" in item);
+      const failed = results.filter(item => "error" in item);
       if (failed.length) {
         return NextResponse.json({
           error: "Could not load complete inventory filter values.",
