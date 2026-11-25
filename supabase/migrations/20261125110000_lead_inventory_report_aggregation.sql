@@ -20,7 +20,7 @@ as $$
     from public.central_lead_inventory
   ),
   last_days as (
-    select (current_date - day_offset)::date as day
+    select (current_date - day_offset)::date as report_day
     from generate_series(6, 0, -1) as days(day_offset)
   )
   select jsonb_build_object(
@@ -33,7 +33,7 @@ as $$
     'rawSheets', coalesce((select jsonb_agg(jsonb_build_object('key', raw_sheet, 'count', n) order by n desc) from (select raw_sheet, count(*) n from base group by raw_sheet) x), '[]'::jsonb),
     'countries', coalesce((select jsonb_agg(jsonb_build_object('key', country_name, 'count', n) order by n desc) from (select country_name, count(*) n from base group by country_name) x), '[]'::jsonb),
     'industries', coalesce((select jsonb_agg(jsonb_build_object('key', industry_name, 'count', n) order by n desc) from (select industry_name, count(*) n from base group by industry_name) x), '[]'::jsonb),
-    'last7', (select jsonb_agg(jsonb_build_object('key', to_char(d.day, 'YYYY-MM-DD'), 'count', coalesce(c.n, 0)) order by d.day) from last_days d left join (select created_at::date day, count(*) n from base where created_at >= current_date - 6 group by created_at::date) c on c.day = d.day)
+    'last7', (select jsonb_agg(jsonb_build_object('key', to_char(d.report_day, 'YYYY-MM-DD'), 'count', coalesce(c.n, 0)) order by d.report_day) from last_days d left join (select created_at::date as activity_day, count(*) n from base where created_at >= current_date - 6 group by created_at::date) c on c.activity_day = d.report_day)
   );
 $$;
 
