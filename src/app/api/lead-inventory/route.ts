@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     for (const field of filterOptionFields) {
       const values = new Set<string>();
       for (let offset = 0; ; offset += 1000) {
-        const { data, error } = await admin.from("central_lead_inventory").select(field).not(field,"is",null).order(field,{ascending:true}).range(offset,offset+999);
+        const { data, error } = await admin.from("central_lead_inventory").select(field+",id").not(field,"is",null).order(field,{ascending:true}).order("id",{ascending:true}).range(offset,offset+999);
         if (error) return NextResponse.json({error:error.message},{status:500});
         for (const row of data || []) { const value = clean((row as any)[field]); if (value) values.add(value); }
         if (!data || data.length < 1000) break;
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
     const searchable=["location_on_site","country","company_name","first_name","last_name","title","email","main_product_description","secondary_product_description","main_industry","main_additional_tag","secondary_industry","secondary_additional_tag","qualified_lead","assigned_to","assigned_date","ecommerce_platform_used","data_from_lead_generation_team","data_source","email_finding_assigned_to","email_finding_assigned_date","business_personal_email","contact_form","fresh_outreach_assigned_to","fresh_outreach_assigned_date"];
     const allowed = new Set(searchable);
     const excelKeys = new Set(["country","fresh_outreach_assigned_to","ecommerce_platform_used","data_from_lead_generation_team"]);
-    let query:any=admin.from("central_lead_inventory").select("id").or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.").order("created_at",{ascending:false}).order("id",{ascending:true}).limit(quantity);
+    let query:any=admin.from("central_lead_inventory").select("id").or("fresh_outreach_assigned_to.is.null,fresh_outreach_assigned_to.eq.").order("created_at",{ascending:false}).order("id",{ascending:true});
     if(sourceTerm)query=query.ilike("data_source","%"+sourceTerm+"%");
     if(searchTerm)query=query.or(searchable.map(field=>field+".ilike.*"+searchTerm+"*").join(","));
     for(const [field,rawValue] of Object.entries(columnFilters)){if(!allowed.has(field))continue;const value=clean(rawValue);if(value)query=query.ilike(field,"%"+value.replace(/[\\\\,%_]/g," ")+"%");}
@@ -159,9 +159,13 @@ export async function POST(request: Request) {
         query=query.in("country",[...new Set([...values.filter(value=>value!=="EU"),...euCountries])]);
       } else query=query.in(field,values);
     }
-    const {data:targets,error:targetError}=await query;
-    if(targetError)return NextResponse.json({error:targetError.message},{status:500});
-    const ids=(targets||[]).map((row:any)=>String(row.id));
+    const ids:string[]=[];
+    for(let offset=0;offset<quantity;offset+=1000){
+      const {data:targets,error:targetError}=await query.range(offset,Math.min(offset+999,quantity-1));
+      if(targetError)return NextResponse.json({error:targetError.message},{status:500});
+      ids.push(...(targets||[]).map((row:any)=>String(row.id)));
+      if(!targets||targets.length<Math.min(1000,quantity-offset))break;
+    }
     if(!ids.length)return NextResponse.json({updated:0,requested:quantity,message:"No unassigned leads match the current filters."});
     let updated=0;const assignedDate=new Date().toISOString().slice(0,10);
     for(let offset=0;offset<ids.length;offset+=500){
