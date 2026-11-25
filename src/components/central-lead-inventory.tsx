@@ -221,7 +221,7 @@ export function CentralLeadInventory() {
   const excelFilterOptionValues = useMemo(() => Object.fromEntries(
     excelFilterKeys.map(key => [
       key,
-      Array.from(new Set((serverFilterOptions[key] || uniqueLeads.map(row => String(row[key] ?? "").trim())).map(value => key === "country" ? normalizeCountry(value) : String(value ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+      Array.from(new Set((serverFilterOptions[key] || uniqueLeads.map(row => String(row[key] ?? "").trim())).map(value => String(value ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
     ])
   ) as Record<string, string[]>, [excelFilterKeys, uniqueLeads, serverFilterOptions]);
   const excelFilterOptions = (key: string) => excelFilterOptionValues[key] ?? [];
