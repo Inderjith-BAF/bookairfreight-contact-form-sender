@@ -323,7 +323,15 @@ export async function POST(request: Request) {
     if (error) { resultError = error; break; }
   }
   if (updateError || resultError) return NextResponse.json({ error: updateError?.message || resultError?.message, batchId: batch.id, partial: true }, { status: 500 });
-  return NextResponse.json({ batchId: batch.id, ...counts, results, added_leads: addedLeads, resolved_leads: resolvedLeads }, { status: 201 });
+  // Duplicate emails are intentionally not reassigned during import. For members,
+  // only return leads they actually own to the Mail Merge picker; otherwise an
+  // existing lead owned by another uploader could be auto-selected and rejected
+  // later by the recipient ownership check.
+  const visibleResolvedLeads = profile.role === "member"
+    ? resolvedLeads.filter((lead: any) => lead.lead_owner === profile.id)
+    : resolvedLeads;
+
+  return NextResponse.json({ batchId: batch.id, ...counts, results, added_leads: addedLeads, resolved_leads: visibleResolvedLeads }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
