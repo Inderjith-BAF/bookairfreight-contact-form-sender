@@ -36,14 +36,14 @@ export async function GET(request: Request) {
   // "My Performance" is always limited to the signed-in member.
   // "Entire Team" is an explicit report choice available to authenticated
   // team members; return active team labels so the member breakdown can render.
-  const employeeId = scope === "mine" ? profile.id : null;
+  const employeeId = requestedScope === "mine" ? profile.id : null;
   const [reportResult, teamResult] = await Promise.all([
     admin.rpc("get_outbound_report", {
       p_from: from || null,
       p_to: to || null,
       p_employee_id: employeeId,
     }),
-    scope === "mine"
+    requestedScope === "mine"
       ? Promise.resolve({ data: [profile], error: null })
       : admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name"),
   ]);
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
     profile,
     report: reportResult.data || {},
     team: teamResult.data || [],
-    scope,
+    scope: requestedScope,
     from: from || null,
     to: to || null,
   });
