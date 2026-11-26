@@ -25,23 +25,25 @@ export async function GET(request: Request) {
   const from = searchParams.get("from") || "";
   const to = searchParams.get("to") || "";
   const requestedScope = searchParams.get("scope") === "team" ? "team" : "mine";
-  // The service-role client bypasses RLS, so enforce member scope here.
-  const scope = profile.role === "member" ? "mine" : requestedScope;
+  // The service-role client bypasses RLS. Respect the explicitly selected
+  // report scope: "mine" is restricted to the signed-in member, while
+  // "team" intentionally returns team-wide aggregate performance.
 
   if ((from && !isValidDate(from)) || (to && !isValidDate(to)) || (from && to && from > to)) {
     return NextResponse.json({ error: "Provide a valid report date range." }, { status: 400 });
   }
 
-  // Member requests are always constrained to their own employee_id.
-  // Admin and manager scope follows the report screen selection.
-  const employeeId = profile.role === "member" ? profile.id : null;
+  // "My Performance" is always limited to the signed-in member.
+  // "Entire Team" is an explicit report choice available to authenticated
+  // team members; return active team labels so the member breakdown can render.
+  const employeeId = scope === "mine" ? profile.id : null;
   const [reportResult, teamResult] = await Promise.all([
     admin.rpc("get_outbound_report", {
       p_from: from || null,
       p_to: to || null,
       p_employee_id: employeeId,
     }),
-    profile.role === "member"
+    scope === "mine"
       ? Promise.resolve({ data: [profile], error: null })
       : admin.from("outbound_profiles").select("id,full_name,role,active").eq("active", true).order("full_name"),
   ]);
